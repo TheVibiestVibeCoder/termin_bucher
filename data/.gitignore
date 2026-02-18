@@ -1,0 +1,8 @@
+*
+!.gitignore
+!.htaccess
+!backups/
+!backups/.gitkeep
+!logs/
+!logs/.gitkeep
+
