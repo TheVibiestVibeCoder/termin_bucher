@@ -103,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
         <a href="https://disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting – Startseite">
-            <img src="https://disinfoconsulting.eu/wp-content/uploads/2025/04/DCblau1-scaled.jpg"
+            <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/02/Gemini_Generated_Image_vjal0gvjal0gvjal-scaled.png"
                  alt="Disinfo Consulting" height="30">
         </a>
         <button class="nav-burger" aria-label="Navigation öffnen" aria-expanded="false" id="burger">
