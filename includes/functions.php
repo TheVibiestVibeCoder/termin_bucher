@@ -107,3 +107,46 @@ function redirect(string $url): never {
     header('Location: ' . $url);
     exit;
 }
+
+// ── Price formatting ─────────────────────────────────────────────────────────
+function format_price(float $price, string $currency = 'EUR'): string {
+    $symbols = ['EUR' => '€', 'CHF' => 'CHF', 'USD' => '$'];
+    $symbol  = $symbols[$currency] ?? $currency;
+    $formatted = number_format($price, 2, ',', '.');
+    return $currency === 'USD' ? $symbol . ' ' . $formatted : $formatted . ' ' . $symbol;
+}
+
+// ── Date formatting (German) ─────────────────────────────────────────────────
+function format_event_date(string $date, string $dateEnd = ''): string {
+    if (!$date) return '';
+    $ts = strtotime($date);
+    if ($ts === false) return e($date);
+
+    $days   = ['Sun'=>'So','Mon'=>'Mo','Tue'=>'Di','Wed'=>'Mi','Thu'=>'Do','Fri'=>'Fr','Sat'=>'Sa'];
+    $months = ['January'=>'Januar','February'=>'Februar','March'=>'März','April'=>'April',
+               'May'=>'Mai','June'=>'Juni','July'=>'Juli','August'=>'August',
+               'September'=>'September','October'=>'Oktober','November'=>'November','December'=>'Dezember'];
+
+    $dow   = $days[date('D', $ts)]   ?? date('D', $ts);
+    $day   = (int) date('j', $ts);
+    $month = $months[date('F', $ts)] ?? date('F', $ts);
+    $year  = date('Y', $ts);
+    $time  = date('H:i', $ts);
+    $str   = "{$dow}., {$day}. {$month} {$year}, {$time} Uhr";
+
+    if ($dateEnd) {
+        $tsEnd = strtotime($dateEnd);
+        if ($tsEnd) {
+            if (date('Y-m-d', $ts) === date('Y-m-d', $tsEnd)) {
+                $str .= ' – ' . date('H:i', $tsEnd) . ' Uhr';
+            } else {
+                $dowE   = $days[date('D', $tsEnd)]   ?? date('D', $tsEnd);
+                $dayE   = (int) date('j', $tsEnd);
+                $monthE = $months[date('F', $tsEnd)] ?? date('F', $tsEnd);
+                $yearE  = date('Y', $tsEnd);
+                $str   .= ' – ' . "{$dowE}., {$dayE}. {$monthE} {$yearE}";
+            }
+        }
+    }
+    return $str;
+}

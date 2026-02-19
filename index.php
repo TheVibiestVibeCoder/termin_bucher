@@ -1,7 +1,6 @@
 <?php
 require __DIR__ . '/includes/config.php';
 
-// Fetch active workshops
 $result = $db->query('SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order ASC, id ASC');
 $workshops = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
@@ -9,7 +8,6 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $workshops[] = $row;
 }
 
-// Collect unique audience keys for filter buttons
 $allAudiences = [];
 foreach ($workshops as $w) {
     foreach (explode(',', $w['audiences']) as $a) {
@@ -42,7 +40,6 @@ $audienceLabels = [
 
 <a href="#main-content" class="skip-link">Direkt zum Inhalt</a>
 
-<!-- NAV -->
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
         <a href="https://disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting – Startseite">
@@ -62,15 +59,12 @@ $audienceLabels = [
     </div>
 </nav>
 
-<!-- HERO -->
 <section id="hero" role="banner" aria-label="Seiteneinleitung">
     <div class="hero-noise"></div>
     <div class="hero-spotlight"></div>
     <div class="hero-content">
         <span class="hero-eyebrow">Disinfo Consulting – Workshops</span>
-        <h1 class="hero-h1">
-            Kompetenz, die schützt.<br>Wissen, das wirkt.
-        </h1>
+        <h1 class="hero-h1">Kompetenz, die schützt.<br>Wissen, das wirkt.</h1>
         <p class="hero-p">
             Praktische Workshops zur Desinformationsabwehr – maßgeschneidert für Unternehmen, NGOs und öffentliche Einrichtungen. Von Experten mit direkter Regierungserfahrung.
         </p>
@@ -91,7 +85,6 @@ $audienceLabels = [
     </div>
 </section>
 
-<!-- WORKSHOPS -->
 <main id="main-content">
 <section id="workshops" class="section">
     <div class="container">
@@ -99,7 +92,6 @@ $audienceLabels = [
         <h2 class="section-title fade-in">Wählen Sie Ihr Format.</h2>
         <p class="section-sub fade-in">Alle Workshops sind auf Deutsch oder Englisch buchbar und können auf Ihre Organisation angepasst werden.</p>
 
-        <!-- Filter -->
         <div class="filter-row fade-in" role="group" aria-label="Workshop-Filter">
             <button class="filter-btn active" data-filter="all">Alle</button>
             <?php foreach ($allAudiences as $aud): ?>
@@ -109,12 +101,19 @@ $audienceLabels = [
 
         <div class="workshops-grid" id="workshopGrid">
             <?php foreach ($workshops as $i => $w):
-                $booked = $w['booked'];
-                $capacity = (int) $w['capacity'];
-                $spotsLeft = $capacity > 0 ? max(0, $capacity - $booked) : null;
-                $fillPct = ($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0;
-                $fillClass = ($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : '');
-                $audienceLabelsArr = array_filter(array_map('trim', explode(',', $w['audience_labels'])));
+                $booked       = $w['booked'];
+                $capacity     = (int) $w['capacity'];
+                $spotsLeft    = $capacity > 0 ? max(0, $capacity - $booked) : null;
+                $fillPct      = ($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0;
+                $fillClass    = ($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : '');
+                $audLabels    = array_filter(array_map('trim', explode(',', $w['audience_labels'])));
+                $isOpen       = ($w['workshop_type'] ?? 'auf_anfrage') === 'open';
+                $price        = (float) ($w['price_netto'] ?? 0);
+                $currency     = $w['price_currency'] ?? 'EUR';
+                $minP         = (int) ($w['min_participants'] ?? 0);
+                $eventDate    = $w['event_date']     ?? '';
+                $eventDateEnd = $w['event_date_end'] ?? '';
+                $location     = $w['location']       ?? '';
             ?>
             <article class="workshop-card <?= $w['featured'] ? 'featured' : '' ?> fade-in"
                      data-audiences="<?= e($w['audiences']) ?>"
@@ -122,9 +121,42 @@ $audienceLabels = [
                 <?php if ($w['featured']): ?>
                     <div class="featured-badge">Empfohlen</div>
                 <?php endif; ?>
-                <div class="card-tag"><span class="card-tag-dot"></span><?= e($w['tag_label']) ?></div>
+
+                <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem;">
+                    <?php if ($isOpen): ?>
+                        <span class="type-badge type-badge-open"><span class="badge-dot"></span>Fester Termin</span>
+                    <?php else: ?>
+                        <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
+                    <?php endif; ?>
+                    <div class="card-tag" style="margin-bottom:0;"><span class="card-tag-dot"></span><?= e($w['tag_label']) ?></div>
+                </div>
+
                 <h3 class="card-h3"><?= e($w['title']) ?></h3>
                 <p class="card-main-text"><?= e($w['description']) ?></p>
+
+                <?php if ($isOpen && $eventDate): ?>
+                <div class="event-info">
+                    <div class="event-info-row">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <?= format_event_date($eventDate, $eventDateEnd) ?>
+                    </div>
+                    <?php if ($location): ?>
+                    <div class="event-info-row">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <?= e($location) ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($price > 0): ?>
+                    <div class="price-pill">
+                        <span><?= e(format_price($price, $currency)) ?></span>
+                        <span class="price-label">/ Person &middot; netto</span>
+                    </div>
+                <?php else: ?>
+                    <div class="price-pill price-pill-free">Preis auf Anfrage</div>
+                <?php endif; ?>
 
                 <div class="card-meta">
                     <?php if ($capacity > 0): ?>
@@ -134,28 +166,31 @@ $audienceLabels = [
                     </span>
                     <?php endif; ?>
                     <span class="meta-pill">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        Auf Anfrage
-                    </span>
-                    <span class="meta-pill">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         <?= e($w['format']) ?>
                     </span>
                 </div>
 
-                <?php if ($capacity > 0): ?>
-                <div class="seats-indicator">
-                    <div class="seats-bar">
-                        <div class="seats-bar-fill <?= $fillClass ?>" style="width: <?= $fillPct ?>%"></div>
-                    </div>
-                    <span class="seats-text"><?= $spotsLeft ?> von <?= $capacity ?> frei</span>
+                <?php if ($minP > 0): ?>
+                <div class="min-participants-note">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Mindestens <?= $minP ?> Teilnehmende erforderlich
                 </div>
                 <?php endif; ?>
 
-                <div class="card-divider"></div>
+                <?php if ($capacity > 0): ?>
+                <div class="seats-indicator" style="margin-top:1rem;">
+                    <div class="seats-bar">
+                        <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                    </div>
+                    <span class="seats-text"><?= $spotsLeft ?> / <?= $capacity ?> frei</span>
+                </div>
+                <?php endif; ?>
+
+                <div class="card-divider" style="margin-top:1.25rem;"></div>
                 <p class="card-audience">Zielgruppen</p>
                 <div class="card-audience-tags">
-                    <?php foreach ($audienceLabelsArr as $al): ?>
+                    <?php foreach ($audLabels as $al): ?>
                         <span class="aud-tag"><?= e($al) ?></span>
                     <?php endforeach; ?>
                 </div>
@@ -166,7 +201,6 @@ $audienceLabels = [
     </div>
 </section>
 
-<!-- CTA -->
 <section id="cta-section">
     <div class="container">
         <h2 class="cta-h2 fade-in">Bereit für den nächsten Schritt?</h2>
@@ -174,15 +208,12 @@ $audienceLabels = [
             Kein Workshop passt exakt? Kontaktieren Sie uns für ein individuelles Konzept – wir entwickeln auch vollständig maßgeschneiderte Formate.
         </p>
         <div class="cta-btns fade-in" style="transition-delay:0.2s">
-            <a href="https://disinfoconsulting.eu/kontakt/" class="btn-primary">
-                Kontakt aufnehmen
-            </a>
+            <a href="https://disinfoconsulting.eu/kontakt/" class="btn-primary">Kontakt aufnehmen</a>
         </div>
     </div>
 </section>
 </main>
 
-<!-- FOOTER -->
 <footer>
     <p>&copy; <?= date('Y') ?> Disinfo Combat GmbH &nbsp;&middot;&nbsp;
        <a href="https://disinfoconsulting.eu/impressum/">Impressum</a> &nbsp;&middot;&nbsp;
@@ -191,7 +222,6 @@ $audienceLabels = [
 </footer>
 
 <script>
-// Burger menu
 const burger = document.getElementById('burger');
 const navLinks = document.getElementById('nav-links');
 burger.addEventListener('click', () => {
@@ -199,18 +229,13 @@ burger.addEventListener('click', () => {
     burger.setAttribute('aria-expanded', open);
 });
 
-// Fade-in observer
 const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-            observer.unobserve(entry.target);
-        }
+        if (entry.isIntersecting) { entry.target.classList.add('visible'); observer.unobserve(entry.target); }
     });
 }, { threshold: 0.08 });
 document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
-// Filter
 const filterBtns = document.querySelectorAll('.filter-btn');
 const cards = document.querySelectorAll('#workshopGrid .workshop-card');
 filterBtns.forEach(btn => {
@@ -219,8 +244,7 @@ filterBtns.forEach(btn => {
         btn.classList.add('active');
         const f = btn.dataset.filter;
         cards.forEach(card => {
-            const audiences = card.dataset.audiences || '';
-            const show = f === 'all' || audiences.includes(f);
+            const show = f === 'all' || (card.dataset.audiences || '').includes(f);
             card.style.display = show ? '' : 'none';
         });
     });
