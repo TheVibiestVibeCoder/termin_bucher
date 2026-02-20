@@ -133,6 +133,102 @@ function send_booking_cancelled_email(string $to, string $name, string $workshop
 }
 
 /**
+ * Send an invoice (Rechnung) email.
+ *
+ * $d keys:
+ *   empfaenger, adresse, plz_ort, anrede, kontakt_name, kontakt_email,
+ *   rechnung_datum (YYYY-MM-DD), rechnungs_nr,
+ *   fuer_text, workshop_titel, veranstaltungs_datum,
+ *   pos1_label, pos1_betrag, pos2_label (opt), pos2_betrag (opt),
+ *   absender_name
+ */
+function send_rechnung_email(string $to, array $d): bool {
+    $months = [
+        '01' => 'Januar',  '02' => 'Februar', '03' => 'März',     '04' => 'April',
+        '05' => 'Mai',     '06' => 'Juni',    '07' => 'Juli',     '08' => 'August',
+        '09' => 'September','10' => 'Oktober','11' => 'November', '12' => 'Dezember',
+    ];
+
+    // Format invoice date
+    $datumTs = strtotime($d['rechnung_datum']);
+    $datumFormatted = ($datumTs)
+        ? (int)date('j', $datumTs) . '. ' . ($months[date('m', $datumTs)] ?? date('m', $datumTs)) . ' ' . date('Y', $datumTs)
+        : e($d['rechnung_datum']);
+
+    // Amounts
+    $pos1 = (float) str_replace(',', '.', $d['pos1_betrag'] ?? '0');
+    $pos2 = !empty($d['pos2_betrag']) ? (float) str_replace(',', '.', $d['pos2_betrag']) : 0.0;
+    $hasPos2 = !empty($d['pos2_label']) && $pos2 > 0;
+
+    $zwischensumme = $pos1 + $pos2;
+    $ust           = $zwischensumme * 0.20;
+    $summe         = $zwischensumme + $ust;
+
+    $fmt = fn(float $n): string => 'EUR&nbsp;' . number_format($n, 2, ',', '.');
+
+    // Row helper
+    $row = fn(string $label, string $amount, bool $bold = false, string $topBorder = '', string $fs = '14px'): string =>
+        '<tr>'
+        . '<td style="padding:8px 0 8px 0;' . ($bold ? 'font-weight:bold;' : '') . ($topBorder ? "border-top:{$topBorder};" : '') . 'font-size:' . $fs . ';">' . $label . '</td>'
+        . '<td style="text-align:right;white-space:nowrap;padding:8px 0 8px 16px;' . ($bold ? 'font-weight:bold;' : '') . ($topBorder ? "border-top:{$topBorder};" : '') . 'font-size:' . $fs . ';">' . $amount . '</td>'
+        . '</tr>';
+
+    $pos2Row = $hasPos2
+        ? $row(e($d['pos2_label']), $fmt($pos2))
+        : '';
+
+    $html = '
+<div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;padding:50px 40px;color:#000;background:#fff;line-height:1.65;font-size:14px;">
+
+  <!-- Recipient block -->
+  <div style="margin-bottom:48px;">
+    <strong>' . e($d['empfaenger']) . '</strong><br>
+    ' . e($d['adresse']) . '<br>
+    ' . e($d['plz_ort']) . '<br>
+    z.&nbsp;Hd. ' . e($d['anrede']) . ' ' . e($d['kontakt_name']) . '<br>
+    per E-Mail: ' . e($d['kontakt_email']) . '
+  </div>
+
+  <!-- Date + invoice number (right-aligned) -->
+  <div style="text-align:right;margin-bottom:40px;">
+    Wien, ' . $datumFormatted . '<br>
+    Nr.&nbsp;' . e($d['rechnungs_nr']) . '
+  </div>
+
+  <!-- Salutation + intro -->
+  <p style="margin:0 0 6px 0;">Sehr geehrte Damen und Herren,</p>
+  <p style="margin:0 0 28px 0;">für ' . e($d['fuer_text']) . '<br>
+  <strong>' . e($d['workshop_titel']) . '</strong><br>
+  am ' . e($d['veranstaltungs_datum']) . ' berechnen wir wie vereinbart:</p>
+
+  <!-- Line items -->
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+    ' . $row(e($d['pos1_label']), $fmt($pos1))
+    . $pos2Row
+    . $row('Zwischensumme', $fmt($zwischensumme), true, '1px solid #bbb')
+    . $row('20&nbsp;%&nbsp;USt.', $fmt($ust))
+    . $row('SUMME', $fmt($summe), true, '2px solid #000', '16px') . '
+  </table>
+
+  <!-- Payment instructions -->
+  <p style="margin:32px 0 6px 0;">Wir bitten um Überweisung auf das untenstehende Konto binnen 14 Tagen ab Rechnungsdatum:</p>
+  <div style="background:#f4f4f4;padding:16px 20px;border-radius:4px;margin:0 0 28px 0;">
+    <strong>Disinfo Combat GmbH</strong><br>
+    IBAN: AT39 2011 1844 5223 9900<br>
+    BIC: GIBAATWWXXX
+  </div>
+
+  <!-- Closing -->
+  <p style="margin:0 0 4px 0;">Wir danken für Ihren Auftrag und verbleiben<br>mit freundlichen Grüßen</p>
+  <p style="margin:28px 0 0 0;"><strong>' . e($d['absender_name']) . '</strong></p>
+
+</div>';
+
+    $subject = 'Rechnung: ' . $d['workshop_titel'] . ' – Nr. ' . $d['rechnungs_nr'];
+    return send_email($to, $subject, $html);
+}
+
+/**
  * Send a custom email from admin.
  */
 function send_custom_email(string $to, string $subject, string $messageText): bool {
