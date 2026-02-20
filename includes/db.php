@@ -56,6 +56,8 @@ function _col_exists(SQLite3 $db, string $table, string $col): bool {
 }
 
 $migrations = [
+    // short description for listing cards (long description stays in 'description')
+    ['workshops', 'description_short', "TEXT NOT NULL DEFAULT ''"],
     // type: 'auf_anfrage' (contact-us) | 'open' (fixed scheduled event)
     ['workshops', 'workshop_type',    "TEXT NOT NULL DEFAULT 'auf_anfrage'"],
     // fixed event date/time (ISO: 'YYYY-MM-DD HH:MM')

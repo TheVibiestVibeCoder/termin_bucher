@@ -941,3 +941,163 @@ footer a:hover { color: #fff; }
     border-radius: 12px;
     padding: 2rem; margin-top: 1rem;
 }
+
+/* ─── EVENT DETAILS PANEL (index.php cards – open workshops) ─── */
+.event-details-panel {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-left: 2px solid rgba(255,255,255,0.22);
+    border-radius: 6px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.event-details-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    font-size: 0.88rem;
+    color: #d8d8d8;
+    line-height: 1.45;
+}
+.event-details-row svg { opacity: 0.5; flex-shrink: 0; margin-top: 2px; }
+
+.event-details-price-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 0.65rem;
+    margin-top: 0.15rem;
+}
+
+.event-price-main {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: -0.01em;
+}
+.event-price-label {
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+}
+.event-price-onrequest {
+    font-size: 0.88rem;
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.min-p-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #f5a623;
+    background: rgba(245,166,35,0.1);
+    border: 1px solid rgba(245,166,35,0.25);
+    border-radius: 4px;
+    padding: 3px 8px;
+    white-space: nowrap;
+}
+.min-p-badge svg { opacity: 0.8; }
+
+/* ─── MOBILE CARD DESCRIPTION CLAMP ─── */
+@media (max-width: 600px) {
+    .workshop-card { padding: 1.75rem 1.25rem; }
+
+    .card-main-text {
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+}
+
+/* ─── DETAIL PAGE: MOBILE COLLAPSIBLE DESCRIPTION ─── */
+.detail-desc-wrap {
+    position: relative;
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 680px) {
+    .detail-desc-wrap:not(.expanded) .detail-desc-content {
+        max-height: 130px;
+        overflow: hidden;
+    }
+
+    .detail-desc-wrap:not(.expanded)::after {
+        content: '';
+        position: absolute;
+        bottom: 36px; left: 0; right: 0;
+        height: 64px;
+        background: linear-gradient(to bottom, transparent, var(--bg));
+        pointer-events: none;
+    }
+
+    .detail-desc-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.82rem;
+        color: var(--muted);
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border);
+        border-radius: 99px;
+        cursor: pointer;
+        padding: 6px 14px;
+        margin-top: 0.5rem;
+        transition: color 0.2s, background 0.2s;
+        font-family: var(--font-b);
+    }
+    .detail-desc-toggle:hover {
+        color: #fff;
+        background: rgba(255,255,255,0.1);
+        border-color: rgba(255,255,255,0.3);
+    }
+    .toggle-arrow { transition: transform 0.3s; }
+}
+
+@media (min-width: 681px) {
+    .detail-desc-toggle { display: none; }
+}
+
+/* ─── DETAIL PAGE: MOBILE META GRID ─── */
+@media (max-width: 600px) {
+    .detail-meta-grid {
+        grid-template-columns: 1fr;
+    }
+    .detail-meta-item[style*="grid-column"] {
+        grid-column: 1 !important;
+    }
+
+    .booking-box { padding: 1.5rem 1.25rem; }
+
+    .detail-hero { padding: 100px 1rem 3rem; }
+}
+
+/* ─── GENERAL MOBILE POLISH ─── */
+@media (max-width: 480px) {
+    .hero-stats { gap: 1.5rem; }
+    .stat-item .stat-num { font-size: 1.8rem; }
+
+    .section { padding: 3.5rem 1rem; }
+
+    .filter-row { gap: 0.5rem; }
+    .filter-btn { padding: 7px 14px; font-size: 0.8rem; }
+
+    .workshops-grid { gap: 1rem; }
+
+    .card-h3 { font-size: 1.4rem; }
+
+    .event-details-panel { padding: 0.75rem 0.875rem; }
+}

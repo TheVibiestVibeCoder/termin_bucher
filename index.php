@@ -132,23 +132,45 @@ $audienceLabels = [
                 </div>
 
                 <h3 class="card-h3"><?= e($w['title']) ?></h3>
-                <p class="card-main-text"><?= e($w['description']) ?></p>
+                <?php
+                    $cardDesc = trim($w['description_short'] ?? '');
+                    if (!$cardDesc) {
+                        $cardDesc = mb_substr(strip_tags($w['description']), 0, 155);
+                        if (mb_strlen($w['description']) > 155) $cardDesc .= '…';
+                    }
+                ?>
+                <p class="card-main-text"><?= e($cardDesc) ?></p>
 
                 <?php if ($isOpen && $eventDate): ?>
-                <div class="event-info">
-                    <div class="event-info-row">
+                <div class="event-details-panel">
+                    <div class="event-details-row">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        <?= format_event_date($eventDate, $eventDateEnd) ?>
+                        <span><?= format_event_date($eventDate, $eventDateEnd) ?></span>
                     </div>
                     <?php if ($location): ?>
-                    <div class="event-info-row">
+                    <div class="event-details-row">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        <?= e($location) ?>
+                        <span><?= e($location) ?></span>
                     </div>
                     <?php endif; ?>
+                    <div class="event-details-price-row">
+                        <?php if ($price > 0): ?>
+                            <span class="event-price-main">
+                                <?= e(format_price($price, $currency)) ?>
+                                <span class="event-price-label">&nbsp;/ Person &middot; netto</span>
+                            </span>
+                        <?php else: ?>
+                            <span class="event-price-main event-price-onrequest">Preis auf Anfrage</span>
+                        <?php endif; ?>
+                        <?php if ($minP > 0): ?>
+                            <span class="min-p-badge">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                                min. <?= $minP ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <?php endif; ?>
-
+                <?php else: ?>
                 <?php if ($price > 0): ?>
                     <div class="price-pill">
                         <span><?= e(format_price($price, $currency)) ?></span>
@@ -156,6 +178,7 @@ $audienceLabels = [
                     </div>
                 <?php else: ?>
                     <div class="price-pill price-pill-free">Preis auf Anfrage</div>
+                <?php endif; ?>
                 <?php endif; ?>
 
                 <div class="card-meta">
@@ -171,7 +194,7 @@ $audienceLabels = [
                     </span>
                 </div>
 
-                <?php if ($minP > 0): ?>
+                <?php if ($minP > 0 && !$isOpen): ?>
                 <div class="min-participants-note">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     Mindestens <?= $minP ?> Teilnehmende erforderlich

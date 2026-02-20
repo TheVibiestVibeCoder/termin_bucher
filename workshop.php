@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($workshop['title']) ?> – <?= e(SITE_NAME) ?></title>
-    <meta name="description" content="<?= e(mb_substr($workshop['description'], 0, 160)) ?>">
+    <meta name="description" content="<?= e(mb_substr(($workshop['description_short'] ?? '') ?: $workshop['description'], 0, 160)) ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -146,7 +146,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 </div>
 
                 <h1><?= e($workshop['title']) ?></h1>
-                <p class="detail-desc"><?= nl2br(e($workshop['description'])) ?></p>
+                <div class="detail-desc-wrap" id="detailDescWrap">
+                    <div class="detail-desc-content">
+                        <p class="detail-desc"><?= nl2br(e($workshop['description'])) ?></p>
+                    </div>
+                    <button class="detail-desc-toggle" id="detailDescToggle" aria-expanded="false">
+                        Vollständig lesen <span class="toggle-arrow">&#8595;</span>
+                    </button>
+                </div>
 
                 <!-- Price banner -->
                 <?php if ($price > 0): ?>
@@ -358,6 +365,19 @@ const observer = new IntersectionObserver((entries) => {
     });
 }, { threshold: 0.08 });
 document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// Mobile description expand/collapse
+const descWrap   = document.getElementById('detailDescWrap');
+const descToggle = document.getElementById('detailDescToggle');
+if (descToggle && descWrap) {
+    descToggle.addEventListener('click', () => {
+        const expanded = descWrap.classList.toggle('expanded');
+        descToggle.setAttribute('aria-expanded', expanded);
+        descToggle.innerHTML = expanded
+            ? 'Weniger anzeigen <span class="toggle-arrow" style="transform:rotate(180deg);display:inline-block;">&#8595;</span>'
+            : 'Vollständig lesen <span class="toggle-arrow">&#8595;</span>';
+    });
+}
 </script>
 
 </body>
