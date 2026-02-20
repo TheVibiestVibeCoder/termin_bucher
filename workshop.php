@@ -22,6 +22,8 @@ $isOpen       = ($workshop['workshop_type'] ?? 'auf_anfrage') === 'open';
 $price        = (float) ($workshop['price_netto'] ?? 0);
 $currency     = $workshop['price_currency'] ?? 'EUR';
 $minP         = (int) ($workshop['min_participants'] ?? 0);
+$minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
+$belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
 $eventDate    = $workshop['event_date']     ?? '';
 $eventDateEnd = $workshop['event_date_end'] ?? '';
 $location     = $workshop['location']       ?? '';
@@ -157,10 +159,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
 
                 <!-- Price banner -->
                 <?php if ($price > 0): ?>
-                <div style="display:flex;align-items:center;gap:1rem;margin-bottom:2rem;padding:1.25rem;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:var(--radius);">
+                <div class="price-banner">
                     <div>
-                        <div style="font-family:var(--font-h);font-size:1.8rem;font-weight:400;line-height:1;"><?= e(format_price($price, $currency)) ?></div>
-                        <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:4px;">pro Person &middot; Netto-Preis zzgl. MwSt.</div>
+                        <div class="price-banner-amount"><?= e(format_price($price, $currency)) ?></div>
+                        <div class="price-banner-label">pro Person &middot; Netto-Preis zzgl. MwSt.</div>
                     </div>
                 </div>
                 <?php else: ?>
@@ -222,9 +224,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 <?php endif; ?>
 
                 <?php if ($capacity > 0): ?>
-                <div class="seats-indicator" style="max-width:400px;margin-bottom:2rem;">
+                <div class="seats-indicator <?= $belowMin ? 'below-min' : '' ?>"
+                     style="max-width:400px;margin-bottom:2rem;"
+                     <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
                     <div class="seats-bar">
-                        <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                        <div class="seats-bar-track">
+                            <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                        </div>
+                        <?php if ($minP > 0 && $capacity > 0): ?>
+                        <div class="seats-bar-marker" style="left:<?= $minPct ?>%">
+                            <span class="seats-bar-marker-label">min <?= $minP ?></span>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <span class="seats-text"><?= $booked ?> / <?= $capacity ?> gebucht</span>
                 </div>

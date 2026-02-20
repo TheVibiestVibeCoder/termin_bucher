@@ -111,6 +111,8 @@ $audienceLabels = [
                 $price        = (float) ($w['price_netto'] ?? 0);
                 $currency     = $w['price_currency'] ?? 'EUR';
                 $minP         = (int) ($w['min_participants'] ?? 0);
+                $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
+                $belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
                 $eventDate    = $w['event_date']     ?? '';
                 $eventDateEnd = $w['event_date_end'] ?? '';
                 $location     = $w['location']       ?? '';
@@ -202,9 +204,18 @@ $audienceLabels = [
                 <?php endif; ?>
 
                 <?php if ($capacity > 0): ?>
-                <div class="seats-indicator" style="margin-top:1rem;">
+                <div class="seats-indicator <?= $belowMin ? 'below-min' : '' ?>"
+                     style="margin-top:1rem;"
+                     <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
                     <div class="seats-bar">
-                        <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                        <div class="seats-bar-track">
+                            <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                        </div>
+                        <?php if ($minP > 0 && $capacity > 0): ?>
+                        <div class="seats-bar-marker" style="left:<?= $minPct ?>%">
+                            <span class="seats-bar-marker-label">min <?= $minP ?></span>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <span class="seats-text"><?= $spotsLeft ?> / <?= $capacity ?> frei</span>
                 </div>
