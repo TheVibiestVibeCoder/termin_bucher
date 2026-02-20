@@ -42,7 +42,7 @@ $audienceLabels = [
 
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
-        <a href="https://disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting – Startseite">
+        <a href="https://workshops.disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting Workshops – Startseite">
             <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/02/Gemini_Generated_Image_vjal0gvjal0gvjal-scaled.png"
                  alt="Disinfo Consulting" height="30">
         </a>
@@ -50,11 +50,7 @@ $audienceLabels = [
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
-            <li><a href="https://disinfoconsulting.eu/leistungen/">Leistungen</a></li>
-            <li><a href="#workshops" class="active">Workshops</a></li>
-            <li><a href="https://disinfoconsulting.eu/whitepaper-anfordern/">Whitepaper</a></li>
-            <li><a href="https://disinfoconsulting.eu/das-team/">Das Team</a></li>
-            <li><a href="https://disinfoconsulting.eu/kontakt/" class="nav-cta">Kontakt</a></li>
+            <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
 </nav>
@@ -111,6 +107,9 @@ $audienceLabels = [
                 $price        = (float) ($w['price_netto'] ?? 0);
                 $currency     = $w['price_currency'] ?? 'EUR';
                 $minP         = (int) ($w['min_participants'] ?? 0);
+                $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
+                $belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
+                $aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
                 $eventDate    = $w['event_date']     ?? '';
                 $eventDateEnd = $w['event_date_end'] ?? '';
                 $location     = $w['location']       ?? '';
@@ -132,23 +131,45 @@ $audienceLabels = [
                 </div>
 
                 <h3 class="card-h3"><?= e($w['title']) ?></h3>
-                <p class="card-main-text"><?= e($w['description']) ?></p>
+                <?php
+                    $cardDesc = trim($w['description_short'] ?? '');
+                    if (!$cardDesc) {
+                        $cardDesc = mb_substr(strip_tags($w['description']), 0, 155);
+                        if (mb_strlen($w['description']) > 155) $cardDesc .= '…';
+                    }
+                ?>
+                <p class="card-main-text"><?= e($cardDesc) ?></p>
 
                 <?php if ($isOpen && $eventDate): ?>
-                <div class="event-info">
-                    <div class="event-info-row">
+                <div class="event-details-panel">
+                    <div class="event-details-row">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        <?= format_event_date($eventDate, $eventDateEnd) ?>
+                        <span><?= format_event_date($eventDate, $eventDateEnd) ?></span>
                     </div>
                     <?php if ($location): ?>
-                    <div class="event-info-row">
+                    <div class="event-details-row">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        <?= e($location) ?>
+                        <span><?= e($location) ?></span>
                     </div>
                     <?php endif; ?>
+                    <div class="event-details-price-row">
+                        <?php if ($price > 0): ?>
+                            <span class="event-price-main">
+                                <?= e(format_price($price, $currency)) ?>
+                                <span class="event-price-label">&nbsp;/ Person &middot; netto</span>
+                            </span>
+                        <?php else: ?>
+                            <span class="event-price-main event-price-onrequest">Preis auf Anfrage</span>
+                        <?php endif; ?>
+                        <?php if ($minP > 0): ?>
+                            <span class="min-p-badge">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                                min. <?= $minP ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <?php endif; ?>
-
+                <?php else: ?>
                 <?php if ($price > 0): ?>
                     <div class="price-pill">
                         <span><?= e(format_price($price, $currency)) ?></span>
@@ -156,6 +177,7 @@ $audienceLabels = [
                     </div>
                 <?php else: ?>
                     <div class="price-pill price-pill-free">Preis auf Anfrage</div>
+                <?php endif; ?>
                 <?php endif; ?>
 
                 <div class="card-meta">
@@ -171,7 +193,7 @@ $audienceLabels = [
                     </span>
                 </div>
 
-                <?php if ($minP > 0): ?>
+                <?php if ($minP > 0 && !$isOpen): ?>
                 <div class="min-participants-note">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     Mindestens <?= $minP ?> Teilnehmende erforderlich
@@ -179,9 +201,18 @@ $audienceLabels = [
                 <?php endif; ?>
 
                 <?php if ($capacity > 0): ?>
-                <div class="seats-indicator" style="margin-top:1rem;">
+                <div class="seats-indicator <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
+                     style="margin-top:1rem;"
+                     <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
                     <div class="seats-bar">
-                        <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                        <div class="seats-bar-track">
+                            <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                        </div>
+                        <?php if ($minP > 0 && $capacity > 0): ?>
+                        <div class="seats-bar-marker" style="left:<?= $minPct ?>%">
+                            <span class="seats-bar-marker-label">min <?= $minP ?></span>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <span class="seats-text"><?= $spotsLeft ?> / <?= $capacity ?> frei</span>
                 </div>
@@ -208,7 +239,7 @@ $audienceLabels = [
             Kein Workshop passt exakt? Kontaktieren Sie uns für ein individuelles Konzept – wir entwickeln auch vollständig maßgeschneiderte Formate.
         </p>
         <div class="cta-btns fade-in" style="transition-delay:0.2s">
-            <a href="https://disinfoconsulting.eu/kontakt/" class="btn-primary">Kontakt aufnehmen</a>
+            <a href="kontakt.php" class="btn-primary">Kontakt aufnehmen</a>
         </div>
     </div>
 </section>

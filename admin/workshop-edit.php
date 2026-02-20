@@ -15,10 +15,11 @@ if ($isEdit) {
 }
 
 $formData = $workshop ?? [
-    'title'           => '',
-    'slug'            => '',
-    'description'     => '',
-    'tag_label'       => '',
+    'title'             => '',
+    'slug'              => '',
+    'description_short' => '',
+    'description'       => '',
+    'tag_label'         => '',
     'capacity'        => 30,
     'audiences'       => '',
     'audience_labels' => '',
@@ -42,9 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
         $errors[] = 'Ungültige Sitzung.';
     }
 
-    $formData['title']            = trim($_POST['title'] ?? '');
-    $formData['slug']             = trim($_POST['slug'] ?? '') ?: slugify($formData['title']);
-    $formData['description']      = trim($_POST['description'] ?? '');
+    $formData['title']              = trim($_POST['title'] ?? '');
+    $formData['slug']               = trim($_POST['slug'] ?? '') ?: slugify($formData['title']);
+    $formData['description_short']  = trim($_POST['description_short'] ?? '');
+    $formData['description']        = trim($_POST['description'] ?? '');
     $formData['tag_label']        = trim($_POST['tag_label'] ?? '');
     $formData['capacity']         = max(0, (int) ($_POST['capacity'] ?? 0));
     $formData['audiences']        = trim($_POST['audiences'] ?? '');
@@ -83,7 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
         if ($isEdit) {
             $stmt = $db->prepare('
                 UPDATE workshops SET
-                    title = :title, slug = :slug, description = :desc, tag_label = :tag,
+                    title = :title, slug = :slug,
+                    description_short = :desc_short, description = :desc,
+                    tag_label = :tag,
                     capacity = :cap, audiences = :aud, audience_labels = :audl,
                     format = :fmt, featured = :feat, sort_order = :sort, active = :active,
                     workshop_type = :wtype, event_date = :edate, event_date_end = :edate_end,
@@ -96,18 +100,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
         } else {
             $stmt = $db->prepare('
                 INSERT INTO workshops
-                    (title, slug, description, tag_label, capacity, audiences, audience_labels,
+                    (title, slug, description_short, description, tag_label, capacity, audiences, audience_labels,
                      format, featured, sort_order, active, workshop_type, event_date, event_date_end,
                      location, min_participants, price_netto, price_currency)
                 VALUES
-                    (:title, :slug, :desc, :tag, :cap, :aud, :audl,
+                    (:title, :slug, :desc_short, :desc, :tag, :cap, :aud, :audl,
                      :fmt, :feat, :sort, :active, :wtype, :edate, :edate_end,
                      :loc, :minp, :price, :currency)
             ');
         }
-        $stmt->bindValue(':title',    $formData['title'],            SQLITE3_TEXT);
-        $stmt->bindValue(':slug',     $formData['slug'],             SQLITE3_TEXT);
-        $stmt->bindValue(':desc',     $formData['description'],      SQLITE3_TEXT);
+        $stmt->bindValue(':title',      $formData['title'],             SQLITE3_TEXT);
+        $stmt->bindValue(':slug',       $formData['slug'],              SQLITE3_TEXT);
+        $stmt->bindValue(':desc_short', $formData['description_short'], SQLITE3_TEXT);
+        $stmt->bindValue(':desc',       $formData['description'],       SQLITE3_TEXT);
         $stmt->bindValue(':tag',      $formData['tag_label'],        SQLITE3_TEXT);
         $stmt->bindValue(':cap',      $formData['capacity'],         SQLITE3_INTEGER);
         $stmt->bindValue(':aud',      $formData['audiences'],        SQLITE3_TEXT);
@@ -271,9 +276,17 @@ function to_datetime_local(string $val): string {
                            placeholder="Wird automatisch generiert">
                 </div>
                 <div class="form-group">
-                    <label for="description">Beschreibung *</label>
-                    <textarea id="description" name="description" rows="5" required
-                              placeholder="Ausführliche Beschreibung des Workshops..."><?= e($formData['description']) ?></textarea>
+                    <label for="description_short">Kurzbeschreibung <span style="color:var(--dim);font-weight:400;">(Übersichtsseite / Karte)</span></label>
+                    <textarea id="description_short" name="description_short" rows="3"
+                              placeholder="Kurzer Teaser-Text, der auf der Übersichtsseite in der Workshop-Karte erscheint. Empfohlen: max. 160 Zeichen."><?= e($formData['description_short']) ?></textarea>
+                    <span id="desc_short_count" style="font-size:0.75rem;color:var(--dim);margin-top:4px;display:block;">
+                        <?= mb_strlen($formData['description_short']) ?> / 160 Zeichen
+                    </span>
+                </div>
+                <div class="form-group">
+                    <label for="description">Ausführliche Beschreibung <span style="color:var(--dim);font-weight:400;">(Detailseite)</span></label>
+                    <textarea id="description" name="description" rows="6"
+                              placeholder="Vollständige Beschreibung des Workshop-Inhalts, Lernziele, Ablauf etc. Wird nur auf der Detailseite angezeigt."><?= e($formData['description']) ?></textarea>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -419,6 +432,17 @@ titleInput.addEventListener('input', () => {
 });
 slugInput.addEventListener('input', () => { slugInput.dataset.manual = '1'; });
 <?php endif; ?>
+
+// ── Short description character counter ─────────────────────────────────────
+const descShort = document.getElementById('description_short');
+const descShortCount = document.getElementById('desc_short_count');
+if (descShort && descShortCount) {
+    descShort.addEventListener('input', () => {
+        const len = descShort.value.length;
+        descShortCount.textContent = len + ' / 160 Zeichen';
+        descShortCount.style.color = len > 160 ? '#e74c3c' : 'var(--dim)';
+    });
+}
 
 // ── Update currency suffix live ──────────────────────────────────────────────
 document.getElementById('price_currency').addEventListener('change', function () {

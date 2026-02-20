@@ -46,6 +46,18 @@ $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_token    ON bookings(token);"
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_email    ON bookings(email);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_workshops_slug    ON workshops(slug);");
 
+// Individual participant details for group bookings
+$db->exec("
+CREATE TABLE IF NOT EXISTS booking_participants (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id  INTEGER NOT NULL,
+    name        TEXT    NOT NULL DEFAULT '',
+    email       TEXT    NOT NULL DEFAULT '',
+    FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+);
+");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_bp_booking ON booking_participants(booking_id);");
+
 // ── Migrations: add new columns to existing databases safely ────────────────
 function _col_exists(SQLite3 $db, string $table, string $col): bool {
     $res = $db->query("PRAGMA table_info(" . $db->escapeString($table) . ")");
@@ -56,6 +68,10 @@ function _col_exists(SQLite3 $db, string $table, string $col): bool {
 }
 
 $migrations = [
+    // booking mode: 'group' (all together) | 'individual' (separate names/emails per person)
+    ['bookings',  'booking_mode',       "TEXT NOT NULL DEFAULT 'group'"],
+    // short description for listing cards (long description stays in 'description')
+    ['workshops', 'description_short', "TEXT NOT NULL DEFAULT ''"],
     // type: 'auf_anfrage' (contact-us) | 'open' (fixed scheduled event)
     ['workshops', 'workshop_type',    "TEXT NOT NULL DEFAULT 'auf_anfrage'"],
     // fixed event date/time (ISO: 'YYYY-MM-DD HH:MM')

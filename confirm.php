@@ -40,6 +40,17 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                     // Send confirmation email to booker
                     send_booking_confirmed_email($booking['email'], $booking['name'], $workshopTitle);
 
+                    // Send confirmation to each individually listed participant
+                    $pstmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid');
+                    $pstmt->bindValue(':bid', $booking['id'], SQLITE3_INTEGER);
+                    $pres = $pstmt->execute();
+                    while ($p = $pres->fetchArray(SQLITE3_ASSOC)) {
+                        // Skip if same email as booker (they already got the booker email)
+                        if (strtolower($p['email']) !== strtolower($booking['email'])) {
+                            send_participant_confirmed_email($p['email'], $p['name'], $workshopTitle, $booking['name']);
+                        }
+                    }
+
                     // Notify admin
                     send_admin_notification($workshopTitle, $booking);
                 }
