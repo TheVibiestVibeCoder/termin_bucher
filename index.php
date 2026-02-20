@@ -62,22 +62,8 @@ $audienceLabels = [
         <span class="hero-eyebrow">Disinfo Consulting – Workshops</span>
         <h1 class="hero-h1">Kompetenz, die schützt.<br>Wissen, das wirkt.</h1>
         <p class="hero-p">
-            Praktische Workshops zur Desinformationsabwehr – maßgeschneidert für Unternehmen, NGOs und öffentliche Einrichtungen. Von Experten mit direkter Regierungserfahrung.
+            Praktische Workshops zur Abwehr von Informationsmanipulation – maßgeschneidert für Unternehmen, NGOs und öffentliche Einrichtungen. Von Experten mit echter operativer Erfahrung.
         </p>
-        <div class="hero-stats">
-            <div class="stat-item fade-in" style="transition-delay:0.6s">
-                <span class="stat-num">78 Mrd.</span>
-                <span class="stat-label">USD jährlicher Schaden</span>
-            </div>
-            <div class="stat-item fade-in" style="transition-delay:0.75s">
-                <span class="stat-num"><?= count($workshops) ?>+</span>
-                <span class="stat-label">Workshop-Formate</span>
-            </div>
-            <div class="stat-item fade-in" style="transition-delay:0.9s">
-                <span class="stat-num">EU-weit</span>
-                <span class="stat-label">Referenznetzwerk</span>
-            </div>
-        </div>
     </div>
 </section>
 
