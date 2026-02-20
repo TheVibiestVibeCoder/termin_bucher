@@ -50,7 +50,7 @@ $audienceLabels = [
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
-            <li><a href="https://disinfoconsulting.eu/kontakt/" class="nav-cta">Kontakt</a></li>
+            <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
 </nav>
@@ -239,7 +239,7 @@ $audienceLabels = [
             Kein Workshop passt exakt? Kontaktieren Sie uns für ein individuelles Konzept – wir entwickeln auch vollständig maßgeschneiderte Formate.
         </p>
         <div class="cta-btns fade-in" style="transition-delay:0.2s">
-            <a href="https://disinfoconsulting.eu/kontakt/" class="btn-primary">Kontakt aufnehmen</a>
+            <a href="kontakt.php" class="btn-primary">Kontakt aufnehmen</a>
         </div>
     </div>
 </section>

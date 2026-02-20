@@ -78,15 +78,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     }
 
     if (empty($errors)) {
-        $stmt = $db->prepare('SELECT id FROM bookings WHERE workshop_id = :wid AND email = :email AND confirmed = 1');
-        $stmt->bindValue(':wid', $workshop['id'], SQLITE3_INTEGER);
-        $stmt->bindValue(':email', $formData['email'], SQLITE3_TEXT);
-        if ($stmt->execute()->fetchArray()) {
-            $errors[] = 'Diese E-Mail-Adresse ist bereits für diesen Workshop angemeldet.';
-        }
-    }
-
-    if (empty($errors)) {
         $token = generate_token();
         $stmt = $db->prepare('
             INSERT INTO bookings (workshop_id, name, email, organization, phone, participants, message, token, booking_mode)
@@ -149,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
-            <li><a href="https://disinfoconsulting.eu/kontakt/" class="nav-cta">Kontakt</a></li>
+            <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
 </nav>
@@ -287,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 <?php if ($isFull): ?>
                     <h3>Ausgebucht</h3>
                     <p style="color:var(--muted);line-height:1.7;">Dieser Workshop ist leider voll ausgebucht. Kontaktieren Sie uns für Alternativtermine.</p>
-                    <a href="https://disinfoconsulting.eu/kontakt/" class="btn-submit" style="margin-top:1.5rem;display:block;text-align:center;text-decoration:none;">Kontakt aufnehmen</a>
+                    <a href="kontakt.php" class="btn-submit" style="margin-top:1.5rem;display:block;text-align:center;text-decoration:none;">Kontakt aufnehmen</a>
                 <?php else: ?>
                     <h3>Platz buchen</h3>
 
@@ -440,15 +431,29 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
 // ── Booking mode + individual participant fields ──────────────────────────────
 (function () {
-    const modeRadios   = document.querySelectorAll('input[name="booking_mode"]');
-    const countSelect  = document.getElementById('participants');
-    const wrap         = document.getElementById('participant-fields-wrap');
-    const inner        = document.getElementById('participant-fields-inner');
-    const nameInput    = document.getElementById('name');
-    const emailInput   = document.getElementById('email');
+    const modeRadios       = document.querySelectorAll('input[name="booking_mode"]');
+    const countSelect      = document.getElementById('participants');
+    const wrap             = document.getElementById('participant-fields-wrap');
+    const inner            = document.getElementById('participant-fields-inner');
+    const nameInput        = document.getElementById('name');
+    const emailInput       = document.getElementById('email');
+    const modeGroupWrap    = document.getElementById('mode_individual').closest('.form-group');
 
     function escAttr(s) {
         return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function updateModeVisibility() {
+        const count = parseInt(countSelect.value, 10) || 1;
+        if (count <= 1) {
+            // Hide booking mode toggle and force group mode
+            modeGroupWrap.style.display = 'none';
+            document.getElementById('mode_group').checked = true;
+            wrap.style.display = 'none';
+            inner.innerHTML = '';
+        } else {
+            modeGroupWrap.style.display = '';
+        }
     }
 
     function buildParticipantFields() {
@@ -482,7 +487,11 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     }
 
     modeRadios.forEach(r => r.addEventListener('change', buildParticipantFields));
-    countSelect.addEventListener('change', buildParticipantFields);
+    countSelect.addEventListener('change', function() {
+        updateModeVisibility();
+        buildParticipantFields();
+    });
+    updateModeVisibility();  // run on load
     buildParticipantFields(); // run on load (handles repopulation after errors)
 })();
 

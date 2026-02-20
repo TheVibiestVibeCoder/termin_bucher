@@ -14,10 +14,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 
     // Delete booking
     if (isset($_POST['delete_booking_id'])) {
+        $delId = (int) $_POST['delete_booking_id'];
+
+        // Fetch booking data before deletion for the cancellation email
+        $dstmt = $db->prepare('SELECT b.name, b.email, b.confirmed, w.title AS workshop_title FROM bookings b JOIN workshops w ON b.workshop_id = w.id WHERE b.id = :id');
+        $dstmt->bindValue(':id', $delId, SQLITE3_INTEGER);
+        $drow = $dstmt->execute()->fetchArray(SQLITE3_ASSOC);
+
         $stmt = $db->prepare('DELETE FROM bookings WHERE id = :id');
-        $stmt->bindValue(':id', (int) $_POST['delete_booking_id'], SQLITE3_INTEGER);
+        $stmt->bindValue(':id', $delId, SQLITE3_INTEGER);
         $stmt->execute();
-        flash('success', 'Buchung gelöscht.');
+
+        // Send cancellation email only if the booking was confirmed
+        if ($drow && $drow['confirmed']) {
+            send_booking_cancelled_email($drow['email'], $drow['name'], $drow['workshop_title']);
+        }
+
+        flash('success', 'Buchung gelöscht.' . ($drow && $drow['confirmed'] ? ' Stornierungsmail gesendet.' : ''));
         redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
     }
 
@@ -280,6 +293,8 @@ while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
                         <td style="white-space:nowrap;"><?= e(date('d.m.Y H:i', strtotime($b['created_at']))) ?></td>
                         <td>
                             <div class="admin-actions">
+                                <a href="booking-edit.php?id=<?= $b['id'] ?>" class="btn-admin" title="Bearbeiten">Bearbeiten</a>
+
                                 <?php if (!$b['confirmed']): ?>
                                 <form method="POST" style="display:inline;">
                                     <?= csrf_field() ?>

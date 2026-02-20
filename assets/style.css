@@ -515,7 +515,7 @@ nav {
 }
 
 /* Applied when booked count has crossed the minimum threshold */
-.seats-indicator.above-min .seats-bar-fill:not(.high):not(.medium) {
+.seats-indicator.above-min .seats-bar-fill {
     background: rgba(46,204,113,0.75) !important;
 }
 

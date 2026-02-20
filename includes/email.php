@@ -115,6 +115,24 @@ function send_participant_confirmed_email(string $to, string $participantName, s
 }
 
 /**
+ * Notify booker that their booking was cancelled by admin.
+ */
+function send_booking_cancelled_email(string $to, string $name, string $workshopTitle): bool {
+    $html = '
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0d0d0d; color: #ffffff; padding: 40px; border-radius: 8px;">
+        <h2 style="font-family: Georgia, serif; font-weight: normal; font-size: 24px; margin-bottom: 20px;">Buchung storniert</h2>
+        <p style="color: #a0a0a0; line-height: 1.7;">Hallo ' . e($name) . ',</p>
+        <p style="color: #a0a0a0; line-height: 1.7;">Ihre Buchung für den folgenden Workshop wurde leider storniert:</p>
+        <p style="font-size: 18px; font-weight: bold; margin: 20px 0; color: #ffffff;">' . e($workshopTitle) . '</p>
+        <p style="color: #a0a0a0; line-height: 1.7;">Falls dies ein Versehen war oder Sie Fragen haben, kontaktieren Sie uns bitte unter <a href="mailto:' . e(MAIL_FROM) . '" style="color: #ffffff;">' . e(MAIL_FROM) . '</a> – wir helfen Ihnen gerne weiter.</p>
+        <hr style="border: none; border-top: 1px solid #222; margin: 30px 0;">
+        <p style="color: #666; font-size: 12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>
+    </div>';
+
+    return send_email($to, 'Buchung storniert: ' . $workshopTitle, $html);
+}
+
+/**
  * Send a custom email from admin.
  */
 function send_custom_email(string $to, string $subject, string $messageText): bool {
