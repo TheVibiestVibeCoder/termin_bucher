@@ -91,7 +91,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
 
         <!-- ── Revenue section ── -->
         <h2 style="font-family:var(--font-h);font-size:1.5rem;font-weight:400;margin-bottom:1.25rem;">
-            Umsatz (Netto, geschätzt)
+            Umsatz (Netto)
         </h2>
 
         <?php if (empty($revenueByWorkshop)): ?>
