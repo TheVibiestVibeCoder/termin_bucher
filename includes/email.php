@@ -96,6 +96,25 @@ function send_admin_notification(string $workshopTitle, array $booking): bool {
 }
 
 /**
+ * Notify an individual participant that their spot is confirmed (booked by someone else).
+ */
+function send_participant_confirmed_email(string $to, string $participantName, string $workshopTitle, string $bookerName): bool {
+    $html = '
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0d0d0d; color: #ffffff; padding: 40px; border-radius: 8px;">
+        <h2 style="font-family: Georgia, serif; font-weight: normal; font-size: 24px; margin-bottom: 20px;">Teilnahme bestätigt!</h2>
+        <p style="color: #a0a0a0; line-height: 1.7;">Hallo ' . e($participantName) . ',</p>
+        <p style="color: #a0a0a0; line-height: 1.7;"><strong style="color:#ffffff;">' . e($bookerName) . '</strong> hat Sie für den folgenden Workshop angemeldet:</p>
+        <p style="font-size: 18px; font-weight: bold; margin: 20px 0; color: #ffffff;">' . e($workshopTitle) . '</p>
+        <p style="color: #a0a0a0; line-height: 1.7;">Ihre Teilnahme wurde erfolgreich bestätigt. Wir werden uns in Kürze mit weiteren Details melden.</p>
+        <p style="color: #a0a0a0; line-height: 1.7;">Bei Fragen erreichen Sie uns unter <a href="mailto:' . e(MAIL_FROM) . '" style="color: #ffffff;">' . e(MAIL_FROM) . '</a>.</p>
+        <hr style="border: none; border-top: 1px solid #222; margin: 30px 0;">
+        <p style="color: #666; font-size: 12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>
+    </div>';
+
+    return send_email($to, 'Ihre Teilnahme wurde bestätigt: ' . $workshopTitle, $html);
+}
+
+/**
  * Send a custom email from admin.
  */
 function send_custom_email(string $to, string $subject, string $messageText): bool {

@@ -504,21 +504,19 @@ nav {
 }
 
 /* ─── BELOW-MIN SWELLING ANIMATION ─── */
-@keyframes seatsSwell {
-    0%, 100% { height: 4px; }
-    50%       { height: 6px; }
-}
 @keyframes fillAmberPulse {
-    0%, 100% { background-color: rgba(245,166,35,0.35); }
-    50%       { background-color: rgba(245,166,35,0.65); }
+    0%, 100% { opacity: 0.35; }
+    50%       { opacity: 0.85; }
 }
 /* Applied when booked count is still below the minimum threshold */
-.seats-indicator.below-min .seats-bar {
-    animation: seatsSwell 4s ease-in-out infinite;
-}
 .seats-indicator.below-min .seats-bar-fill {
-    background-color: rgba(245,166,35,0.35) !important;
+    background: #f5a623 !important;
     animation: fillAmberPulse 4s ease-in-out infinite;
+}
+
+/* Applied when booked count has crossed the minimum threshold */
+.seats-indicator.above-min .seats-bar-fill:not(.high):not(.medium) {
+    background: rgba(46,204,113,0.75) !important;
 }
 
 .seats-text {
@@ -1085,6 +1083,57 @@ footer a:hover { color: #fff; }
     white-space: nowrap;
 }
 .min-p-badge svg { opacity: 0.8; }
+
+/* ─── BOOKING MODE TOGGLE ─── */
+.booking-mode-toggle {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.booking-mode-toggle input[type="radio"] { display: none; }
+.booking-mode-toggle label {
+    flex: 1;
+    padding: 9px 14px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--muted);
+    text-align: center;
+    transition: all 0.2s;
+    line-height: 1.3;
+}
+.booking-mode-toggle input[type="radio"]:checked + label {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    border-color: rgba(255,255,255,0.3);
+}
+
+/* Individual participant entry cards */
+.participant-fields-wrap {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.participant-entry {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+}
+.participant-entry-num {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--dim);
+    margin-bottom: 0.75rem;
+}
+.participant-entry .form-group { margin-bottom: 0.75rem; }
+.participant-entry .form-group:last-child { margin-bottom: 0; }
 
 /* ─── MOBILE CARD DESCRIPTION CLAMP ─── */
 @media (max-width: 600px) {

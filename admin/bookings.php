@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
     }
 
-    // Send custom email
+    // Send custom email to single booking
     if (isset($_POST['email_booking_id'])) {
         $bid     = (int) $_POST['email_booking_id'];
         $subject = trim($_POST['email_subject'] ?? '');
@@ -56,6 +56,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             }
         } else {
             flash('error', 'Betreff und Nachricht sind erforderlich.');
+        }
+        redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
+    }
+
+    // Bulk email to ALL participants of a workshop
+    if (isset($_POST['email_all_submit'])) {
+        $bulkWid     = (int) ($_POST['bulk_workshop_id'] ?? 0);
+        $bulkSubject = trim($_POST['bulk_subject'] ?? '');
+        $bulkMessage = trim($_POST['bulk_message'] ?? '');
+
+        if (!$bulkWid) {
+            flash('error', 'Kein Workshop ausgewählt.');
+        } elseif (!$bulkSubject || !$bulkMessage) {
+            flash('error', 'Betreff und Nachricht sind erforderlich.');
+        } else {
+            // Collect all unique email addresses: booker emails + participant emails
+            $emails = [];
+
+            // Booker emails (confirmed bookings)
+            $bstmt = $db->prepare('SELECT DISTINCT email FROM bookings WHERE workshop_id = :wid AND confirmed = 1');
+            $bstmt->bindValue(':wid', $bulkWid, SQLITE3_INTEGER);
+            $bres = $bstmt->execute();
+            while ($br = $bres->fetchArray(SQLITE3_ASSOC)) {
+                $emails[strtolower($br['email'])] = $br['email'];
+            }
+
+            // Individual participant emails
+            $pstmt = $db->prepare('
+                SELECT DISTINCT bp.email FROM booking_participants bp
+                JOIN bookings b ON bp.booking_id = b.id
+                WHERE b.workshop_id = :wid AND b.confirmed = 1
+            ');
+            $pstmt->bindValue(':wid', $bulkWid, SQLITE3_INTEGER);
+            $pres = $pstmt->execute();
+            while ($pr = $pres->fetchArray(SQLITE3_ASSOC)) {
+                $emails[strtolower($pr['email'])] = $pr['email'];
+            }
+
+            $sent = 0;
+            foreach ($emails as $email) {
+                send_custom_email($email, $bulkSubject, $bulkMessage);
+                $sent++;
+            }
+            flash('success', "E-Mail an {$sent} Empfänger gesendet.");
         }
         redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
     }
@@ -82,6 +126,16 @@ $result = $stmt->execute();
 $bookings = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $bookings[] = $row;
+}
+
+// Fetch individual participant details for all displayed bookings
+$participantsByBooking = [];
+if (!empty($bookings)) {
+    $bids = implode(',', array_map(fn($b) => (int)$b['id'], $bookings));
+    $pres = $db->query("SELECT booking_id, name, email FROM booking_participants WHERE booking_id IN ({$bids}) ORDER BY id ASC");
+    while ($pr = $pres->fetchArray(SQLITE3_ASSOC)) {
+        $participantsByBooking[(int)$pr['booking_id']][] = $pr;
+    }
 }
 
 // Workshops list for filter dropdown
@@ -147,6 +201,37 @@ while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
             </form>
         </div>
 
+        <?php if ($workshop): ?>
+        <!-- Bulk email to all participants of this workshop -->
+        <div style="margin-bottom:2rem;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;">
+            <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--dim);margin-bottom:1rem;">
+                E-Mail an alle bestätigten Teilnehmer senden
+            </div>
+            <form method="POST">
+                <?= csrf_field() ?>
+                <input type="hidden" name="email_all_submit" value="1">
+                <input type="hidden" name="bulk_workshop_id" value="<?= $workshop['id'] ?>">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.75rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="bulk_subject">Betreff</label>
+                        <input type="text" id="bulk_subject" name="bulk_subject" required placeholder="Betreff der E-Mail">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:0.75rem;">
+                    <label for="bulk_message">Nachricht</label>
+                    <textarea id="bulk_message" name="bulk_message" rows="4" required placeholder="Ihre Nachricht an alle Teilnehmer..."></textarea>
+                </div>
+                <button type="submit" class="btn-admin btn-success"
+                        onclick="return confirm('E-Mail an alle bestätigten Teilnehmer von &quot;<?= e(addslashes($workshop['title'])) ?>&quot; senden?')">
+                    An alle senden &rarr;
+                </button>
+                <span style="font-size:0.78rem;color:var(--dim);margin-left:0.75rem;">
+                    Geht an alle bestätigten Bucher + einzeln angegebene Teilnehmer (keine Duplikate).
+                </span>
+            </form>
+        </div>
+        <?php endif; ?>
+
         <?php if (empty($bookings)): ?>
             <p style="color:var(--muted);">Keine Buchungen gefunden.</p>
         <?php else: ?>
@@ -166,13 +251,25 @@ while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($bookings as $b): ?>
+                    <?php foreach ($bookings as $b):
+                        $bParts = $participantsByBooking[(int)$b['id']] ?? [];
+                        $isIndividual = ($b['booking_mode'] ?? 'group') === 'individual';
+                    ?>
                     <tr>
                         <td style="color:#fff;"><?= e($b['name']) ?></td>
                         <td><a href="mailto:<?= e($b['email']) ?>" style="color:var(--muted);"><?= e($b['email']) ?></a></td>
                         <td><?= e($b['organization']) ?></td>
                         <td><?= e($b['workshop_title']) ?></td>
-                        <td><?= (int) $b['participants'] ?></td>
+                        <td>
+                            <?= (int) $b['participants'] ?>
+                            <?php if ($isIndividual && !empty($bParts)): ?>
+                                <button type="button"
+                                        onclick="var r=this.closest('tr').nextElementSibling;r.style.display=r.style.display==='none'?'':'none';"
+                                        style="font-size:0.65rem;padding:1px 6px;margin-left:4px;background:rgba(255,255,255,0.07);border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;">
+                                    einzeln
+                                </button>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <?php if ($b['confirmed']): ?>
                                 <span class="status-badge status-confirmed">Bestätigt</span>
@@ -203,6 +300,23 @@ while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
                             </div>
                         </td>
                     </tr>
+                    <?php if ($isIndividual && !empty($bParts)): ?>
+                    <tr style="display:none;background:rgba(245,166,35,0.04);" class="parts-row">
+                        <td colspan="8" style="padding:0.75rem 1rem 0.75rem 2.5rem;">
+                            <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:0.5rem;">
+                                Einzeln angemeldete Teilnehmer
+                            </div>
+                            <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+                                <?php foreach ($bParts as $p): ?>
+                                <span style="font-size:0.8rem;padding:3px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:4px;color:var(--muted);">
+                                    <?= e($p['name']) ?>
+                                    <a href="mailto:<?= e($p['email']) ?>" style="color:var(--dim);margin-left:4px;"><?= e($p['email']) ?></a>
+                                </span>
+                                <?php endforeach; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
                     <?php endforeach; ?>
                 </tbody>
             </table>

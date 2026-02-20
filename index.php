@@ -42,7 +42,7 @@ $audienceLabels = [
 
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
-        <a href="https://disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting – Startseite">
+        <a href="https://workshops.disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting Workshops – Startseite">
             <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/02/Gemini_Generated_Image_vjal0gvjal0gvjal-scaled.png"
                  alt="Disinfo Consulting" height="30">
         </a>
@@ -50,10 +50,6 @@ $audienceLabels = [
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
-            <li><a href="https://disinfoconsulting.eu/leistungen/">Leistungen</a></li>
-            <li><a href="#workshops" class="active">Workshops</a></li>
-            <li><a href="https://disinfoconsulting.eu/whitepaper-anfordern/">Whitepaper</a></li>
-            <li><a href="https://disinfoconsulting.eu/das-team/">Das Team</a></li>
             <li><a href="https://disinfoconsulting.eu/kontakt/" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
@@ -113,6 +109,7 @@ $audienceLabels = [
                 $minP         = (int) ($w['min_participants'] ?? 0);
                 $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
                 $belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
+                $aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
                 $eventDate    = $w['event_date']     ?? '';
                 $eventDateEnd = $w['event_date_end'] ?? '';
                 $location     = $w['location']       ?? '';
@@ -204,7 +201,7 @@ $audienceLabels = [
                 <?php endif; ?>
 
                 <?php if ($capacity > 0): ?>
-                <div class="seats-indicator <?= $belowMin ? 'below-min' : '' ?>"
+                <div class="seats-indicator <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
                      style="margin-top:1rem;"
                      <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
                     <div class="seats-bar">

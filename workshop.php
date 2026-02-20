@@ -24,12 +24,15 @@ $currency     = $workshop['price_currency'] ?? 'EUR';
 $minP         = (int) ($workshop['min_participants'] ?? 0);
 $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
 $belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
+$aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
 $eventDate    = $workshop['event_date']     ?? '';
 $eventDateEnd = $workshop['event_date_end'] ?? '';
 $location     = $workshop['location']       ?? '';
 
-$errors   = [];
-$formData = ['name' => '', 'email' => '', 'organization' => '', 'phone' => '', 'participants' => 1, 'message' => ''];
+$errors           = [];
+$formData         = ['name' => '', 'email' => '', 'organization' => '', 'phone' => '', 'participants' => 1, 'message' => '', 'booking_mode' => 'group'];
+$participantNames  = [];
+$participantEmails = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if (!csrf_verify()) {
@@ -45,10 +48,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     $formData['phone']        = trim($_POST['phone'] ?? '');
     $formData['participants'] = max(1, (int) ($_POST['participants'] ?? 1));
     $formData['message']      = trim($_POST['message'] ?? '');
+    $formData['booking_mode'] = ($_POST['booking_mode'] ?? 'group') === 'individual' ? 'individual' : 'group';
+
+    if ($formData['booking_mode'] === 'individual') {
+        $participantNames  = array_map('trim', (array)($_POST['participant_name']  ?? []));
+        $participantEmails = array_map('trim', (array)($_POST['participant_email'] ?? []));
+    }
 
     if (strlen($formData['name']) < 2) $errors[] = 'Bitte geben Sie Ihren Namen ein.';
     if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
     if ($formData['participants'] < 1 || $formData['participants'] > 50) $errors[] = 'Ungültige Teilnehmerzahl.';
+
+    if ($formData['booking_mode'] === 'individual' && empty($errors)) {
+        $expected = $formData['participants'];
+        if (count($participantNames) !== $expected) {
+            $errors[] = 'Bitte füllen Sie die Daten für alle Teilnehmer aus.';
+        } else {
+            foreach ($participantNames as $i => $pn) {
+                if (strlen($pn) < 2) $errors[] = 'Teilnehmer ' . ($i+1) . ': Bitte geben Sie einen Namen ein.';
+                if (!filter_var($participantEmails[$i] ?? '', FILTER_VALIDATE_EMAIL)) {
+                    $errors[] = 'Teilnehmer ' . ($i+1) . ': Ungültige E-Mail-Adresse.';
+                }
+            }
+        }
+    }
 
     if ($capacity > 0 && $formData['participants'] > $spotsLeft) {
         $errors[] = "Leider sind nur noch {$spotsLeft} Plätze verfügbar.";
@@ -66,8 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if (empty($errors)) {
         $token = generate_token();
         $stmt = $db->prepare('
-            INSERT INTO bookings (workshop_id, name, email, organization, phone, participants, message, token)
-            VALUES (:wid, :name, :email, :org, :phone, :participants, :msg, :token)
+            INSERT INTO bookings (workshop_id, name, email, organization, phone, participants, message, token, booking_mode)
+            VALUES (:wid, :name, :email, :org, :phone, :participants, :msg, :token, :bmode)
         ');
         $stmt->bindValue(':wid',          $workshop['id'],           SQLITE3_INTEGER);
         $stmt->bindValue(':name',         $formData['name'],         SQLITE3_TEXT);
@@ -77,7 +100,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         $stmt->bindValue(':participants', $formData['participants'], SQLITE3_INTEGER);
         $stmt->bindValue(':msg',          $formData['message'],      SQLITE3_TEXT);
         $stmt->bindValue(':token',        $token,                    SQLITE3_TEXT);
+        $stmt->bindValue(':bmode',        $formData['booking_mode'], SQLITE3_TEXT);
         $stmt->execute();
+
+        $bookingId = $db->lastInsertRowID();
+
+        // Save individual participant details if in individual mode
+        if ($formData['booking_mode'] === 'individual') {
+            foreach ($participantNames as $i => $pName) {
+                $pstmt = $db->prepare('INSERT INTO booking_participants (booking_id, name, email) VALUES (:bid, :name, :email)');
+                $pstmt->bindValue(':bid',   $bookingId,                 SQLITE3_INTEGER);
+                $pstmt->bindValue(':name',  $pName,                     SQLITE3_TEXT);
+                $pstmt->bindValue(':email', $participantEmails[$i] ?? '', SQLITE3_TEXT);
+                $pstmt->execute();
+            }
+        }
 
         send_confirmation_email($formData['email'], $formData['name'], $workshop['title'], $token);
 
@@ -104,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
 
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
-        <a href="https://disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting – Startseite">
+        <a href="https://workshops.disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting Workshops – Startseite">
             <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/02/Gemini_Generated_Image_vjal0gvjal0gvjal-scaled.png"
                  alt="Disinfo Consulting" height="30">
         </a>
@@ -112,10 +149,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
-            <li><a href="https://disinfoconsulting.eu/leistungen/">Leistungen</a></li>
-            <li><a href="index.php" class="active">Workshops</a></li>
-            <li><a href="https://disinfoconsulting.eu/whitepaper-anfordern/">Whitepaper</a></li>
-            <li><a href="https://disinfoconsulting.eu/das-team/">Das Team</a></li>
             <li><a href="https://disinfoconsulting.eu/kontakt/" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
@@ -224,7 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 <?php endif; ?>
 
                 <?php if ($capacity > 0): ?>
-                <div class="seats-indicator <?= $belowMin ? 'below-min' : '' ?>"
+                <div class="seats-indicator <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
                      style="max-width:400px;margin-bottom:2rem;"
                      <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
                     <div class="seats-bar">
@@ -309,6 +342,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                                 <?php endfor; ?>
                             </select>
                         </div>
+
+                        <!-- Booking mode toggle -->
+                        <div class="form-group">
+                            <label>Buchungsart</label>
+                            <div class="booking-mode-toggle">
+                                <input type="radio" name="booking_mode" id="mode_group" value="group"
+                                       <?= $formData['booking_mode'] !== 'individual' ? 'checked' : '' ?>>
+                                <label for="mode_group">Alle zusammen buchen</label>
+                                <input type="radio" name="booking_mode" id="mode_individual" value="individual"
+                                       <?= $formData['booking_mode'] === 'individual' ? 'checked' : '' ?>>
+                                <label for="mode_individual">Einzeln buchen</label>
+                            </div>
+                            <span style="font-size:0.75rem;color:var(--dim);display:block;margin-top:0.35rem;">
+                                „Einzeln buchen" – Sie können Namen und E-Mail jeder Person angeben. Jede Person erhält eine Bestätigung.
+                            </span>
+                        </div>
+
+                        <!-- Individual participant fields (shown by JS) -->
+                        <div id="participant-fields-wrap" style="display:none;">
+                            <div class="participant-fields-wrap" id="participant-fields-inner">
+                                <!-- dynamically populated by JS -->
+                            </div>
+                        </div>
+
+                        <?php if ($formData['booking_mode'] === 'individual' && !empty($participantNames)): ?>
+                        <script>window.__prefillParticipants = <?= json_encode(array_map(null, $participantNames, $participantEmails)) ?>;</script>
+                        <?php endif; ?>
+
                         <div class="form-group">
                             <label for="message">Nachricht (optional)</label>
                             <textarea id="message" name="message" placeholder="Besondere Anforderungen, Fragen..."><?= e($formData['message']) ?></textarea>
@@ -376,6 +437,54 @@ const observer = new IntersectionObserver((entries) => {
     });
 }, { threshold: 0.08 });
 document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ── Booking mode + individual participant fields ──────────────────────────────
+(function () {
+    const modeRadios   = document.querySelectorAll('input[name="booking_mode"]');
+    const countSelect  = document.getElementById('participants');
+    const wrap         = document.getElementById('participant-fields-wrap');
+    const inner        = document.getElementById('participant-fields-inner');
+    const nameInput    = document.getElementById('name');
+    const emailInput   = document.getElementById('email');
+
+    function escAttr(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function buildParticipantFields() {
+        const isIndividual = document.getElementById('mode_individual').checked;
+        if (!isIndividual) { wrap.style.display = 'none'; inner.innerHTML = ''; return; }
+
+        const count   = parseInt(countSelect.value, 10) || 1;
+        const prefill = window.__prefillParticipants || [];
+        wrap.style.display = '';
+        inner.innerHTML    = '';
+
+        for (let i = 0; i < count; i++) {
+            const pName  = prefill[i] ? prefill[i][0] : (i === 0 ? nameInput.value  : '');
+            const pEmail = prefill[i] ? prefill[i][1] : (i === 0 ? emailInput.value : '');
+            const entry  = document.createElement('div');
+            entry.className = 'participant-entry';
+            entry.innerHTML = `
+                <div class="participant-entry-num">Teilnehmer ${i + 1}</div>
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" name="participant_name[]" value="${escAttr(pName)}"
+                           required placeholder="Vollständiger Name">
+                </div>
+                <div class="form-group">
+                    <label>E-Mail *</label>
+                    <input type="email" name="participant_email[]" value="${escAttr(pEmail)}"
+                           required placeholder="email@beispiel.de">
+                </div>`;
+            inner.appendChild(entry);
+        }
+    }
+
+    modeRadios.forEach(r => r.addEventListener('change', buildParticipantFields));
+    countSelect.addEventListener('change', buildParticipantFields);
+    buildParticipantFields(); // run on load (handles repopulation after errors)
+})();
 
 // Mobile description expand/collapse
 const descWrap   = document.getElementById('detailDescWrap');
