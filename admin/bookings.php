@@ -73,57 +73,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
     }
 
-    // Send Rechnung to ALL confirmed participants of a workshop
+    // Send per-booking Rechnungen for a workshop
     if (isset($_POST['rechnung_submit'])) {
         $rwid = (int) ($_POST['rechnung_workshop_id'] ?? 0);
         if (!$rwid) {
             flash('error', 'Kein Workshop ausgewählt.');
         } else {
-            // Collect all unique confirmed emails
-            $rEmails = [];
-            $re1 = $db->prepare('SELECT DISTINCT email FROM bookings WHERE workshop_id = :wid AND confirmed = 1');
-            $re1->bindValue(':wid', $rwid, SQLITE3_INTEGER);
-            $rr1 = $re1->execute();
-            while ($rrow = $rr1->fetchArray(SQLITE3_ASSOC)) {
-                $rEmails[strtolower($rrow['email'])] = $rrow['email'];
-            }
-            $re2 = $db->prepare('
-                SELECT DISTINCT bp.email FROM booking_participants bp
-                JOIN bookings b ON bp.booking_id = b.id
-                WHERE b.workshop_id = :wid AND b.confirmed = 1 AND bp.email != \'\'
-            ');
-            $re2->bindValue(':wid', $rwid, SQLITE3_INTEGER);
-            $rr2 = $re2->execute();
-            while ($rrow = $rr2->fetchArray(SQLITE3_ASSOC)) {
-                $rEmails[strtolower($rrow['email'])] = $rrow['email'];
+            $commonData = [
+                'rechnung_datum'       => trim($_POST['r_rechnung_datum']       ?? date('Y-m-d')),
+                'fuer_text'            => trim($_POST['r_fuer_text']            ?? ''),
+                'workshop_titel'       => trim($_POST['r_workshop_titel']       ?? ''),
+                'veranstaltungs_datum' => trim($_POST['r_veranstaltungs_datum'] ?? ''),
+                'pos1_label'           => trim($_POST['r_pos1_label']           ?? ''),
+                'pos1_betrag'          => trim($_POST['r_pos1_betrag']          ?? '0'),
+                'pos2_label'           => trim($_POST['r_pos2_label']           ?? ''),
+                'pos2_betrag'          => trim($_POST['r_pos2_betrag']          ?? ''),
+                'absender_name'        => trim($_POST['r_absender_name']        ?? ''),
+            ];
+
+            // r_booking_selected is an assoc array: index => "1" for checked cards
+            $selectedCards = $_POST['r_booking_selected'] ?? [];
+            $rsent = 0;
+
+            foreach (array_keys($selectedCards) as $i) {
+                $email = trim($_POST['r_booking_kontakt_email'][$i] ?? '');
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
+
+                $invoiceData = array_merge($commonData, [
+                    'empfaenger'    => trim($_POST['r_booking_empfaenger'][$i]   ?? ''),
+                    'adresse'       => trim($_POST['r_booking_adresse'][$i]      ?? ''),
+                    'plz_ort'       => trim($_POST['r_booking_plz_ort'][$i]      ?? ''),
+                    'anrede'        => trim($_POST['r_booking_anrede'][$i]       ?? 'Herrn'),
+                    'kontakt_name'  => trim($_POST['r_booking_kontakt_name'][$i] ?? ''),
+                    'kontakt_email' => $email,
+                    'rechnungs_nr'  => trim($_POST['r_booking_rechnungs_nr'][$i] ?? ''),
+                ]);
+
+                send_rechnung_email($email, $invoiceData);
+                $rsent++;
             }
 
-            if (empty($rEmails)) {
-                flash('error', 'Keine bestätigten Teilnehmer gefunden.');
+            if ($rsent === 0) {
+                flash('error', 'Keine Empfänger ausgewählt oder keine gültigen E-Mail-Adressen vorhanden.');
             } else {
-                $invoiceData = [
-                    'empfaenger'           => trim($_POST['r_empfaenger']       ?? ''),
-                    'adresse'              => trim($_POST['r_adresse']          ?? ''),
-                    'plz_ort'              => trim($_POST['r_plz_ort']          ?? ''),
-                    'anrede'               => trim($_POST['r_anrede']           ?? 'Herrn'),
-                    'kontakt_name'         => trim($_POST['r_kontakt_name']     ?? ''),
-                    'kontakt_email'        => trim($_POST['r_kontakt_email']    ?? ''),
-                    'rechnung_datum'       => trim($_POST['r_rechnung_datum']   ?? date('Y-m-d')),
-                    'rechnungs_nr'         => trim($_POST['r_rechnungs_nr']     ?? '0001/' . date('Y')),
-                    'fuer_text'            => trim($_POST['r_fuer_text']        ?? 'die Abhaltung des Workshops'),
-                    'workshop_titel'       => trim($_POST['r_workshop_titel']   ?? ''),
-                    'veranstaltungs_datum' => trim($_POST['r_veranstaltungs_datum'] ?? ''),
-                    'pos1_label'           => trim($_POST['r_pos1_label']       ?? ''),
-                    'pos1_betrag'          => trim($_POST['r_pos1_betrag']      ?? '0'),
-                    'pos2_label'           => trim($_POST['r_pos2_label']       ?? ''),
-                    'pos2_betrag'          => trim($_POST['r_pos2_betrag']      ?? ''),
-                    'absender_name'        => trim($_POST['r_absender_name']    ?? ''),
-                ];
-                $rsent = 0;
-                foreach ($rEmails as $remail) {
-                    send_rechnung_email($remail, $invoiceData);
-                    $rsent++;
-                }
                 flash('success', "Rechnung an {$rsent} Empfänger gesendet.");
             }
         }
@@ -215,19 +207,14 @@ while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
     $allWorkshops[] = $row;
 }
 
-// Default values for Rechnung modal pre-fill
-$rechnungDefaults = [
-    'empfaenger'   => '',
-    'kontakt_name' => '',
-];
+// Confirmed bookings for Rechnung modal (one card per booking)
+$confirmedBookingsForRechnung = [];
 if ($workshop) {
-    // Use first confirmed booking's org/name as default
-    $rfStmt = $db->prepare('SELECT name, organization FROM bookings WHERE workshop_id = :wid AND confirmed = 1 ORDER BY confirmed_at ASC LIMIT 1');
-    $rfStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
-    $rfRow = $rfStmt->execute()->fetchArray(SQLITE3_ASSOC);
-    if ($rfRow) {
-        $rechnungDefaults['empfaenger']   = $rfRow['organization'];
-        $rechnungDefaults['kontakt_name'] = $rfRow['name'];
+    $rcStmt = $db->prepare('SELECT id, name, email, organization FROM bookings WHERE workshop_id = :wid AND confirmed = 1 ORDER BY confirmed_at ASC, created_at ASC');
+    $rcStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    $rcResult = $rcStmt->execute();
+    while ($rcRow = $rcResult->fetchArray(SQLITE3_ASSOC)) {
+        $confirmedBookingsForRechnung[] = $rcRow;
     }
 }
 ?>
@@ -270,6 +257,20 @@ if ($workshop) {
             font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
             letter-spacing: 1.5px; color: var(--dim); margin: 1.25rem 0 0.6rem;
         }
+        .rechnung-card {
+            border: 1px solid var(--border); border-radius: var(--radius);
+            margin-bottom: 0.6rem; overflow: hidden;
+        }
+        .rechnung-card-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.65rem 1rem; background: rgba(255,255,255,0.04);
+            cursor: pointer; gap: 0.75rem; user-select: none;
+        }
+        .rechnung-card-header label { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; min-width: 0; flex: 1; }
+        .rechnung-card-summary { font-size: 0.83rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .rechnung-card-toggle { font-size: 0.65rem; color: var(--dim); flex-shrink: 0; }
+        .rechnung-card-body { padding: 1rem; border-top: 1px solid var(--border); transition: opacity 0.15s; }
+        .rechnung-card-body.rc-hidden { display: none; }
     </style>
 </head>
 <body>
@@ -466,132 +467,200 @@ if ($workshop) {
 </div>
 
 <?php if ($workshop):
-    // Pre-compute formatted event date for the modal default
-    $evtDateDefault = '';
-    if (!empty($workshop['event_date'])) {
-        $evtDateDefault = format_event_date($workshop['event_date'], $workshop['event_date_end'] ?? '');
-    }
-    $pos1LabelDefault = !empty($workshop['tag_label']) ? $workshop['tag_label'] : $workshop['title'];
-    $pos1BetragDefault = !empty($workshop['price_netto']) ? number_format((float)$workshop['price_netto'], 2, ',', '.') : '';
+    $evtDateDefault   = !empty($workshop['event_date'])
+        ? format_event_date($workshop['event_date'], $workshop['event_date_end'] ?? '')
+        : '';
+    $pos1LabelDefault  = !empty($workshop['tag_label']) ? $workshop['tag_label'] : $workshop['title'];
+    $pos1BetragDefault = !empty($workshop['price_netto'])
+        ? number_format((float)$workshop['price_netto'], 2, ',', '.')
+        : '';
+    $selStyle = 'width:100%;padding:8px 14px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:var(--radius);color:#fff;font-family:var(--font-b);font-size:0.9rem;';
 ?>
 <!-- Rechnung Modal -->
 <div class="email-modal-overlay" id="rechnungModal">
-    <div class="rechnung-modal">
-        <h3>Rechnung erstellen &amp; senden</h3>
-        <p style="color:var(--dim);font-size:0.8rem;margin-bottom:1.25rem;">
-            Die Rechnung wird als E-Mail an alle bestätigten Teilnehmer von
-            <strong style="color:var(--muted);"><?= e($workshop['title']) ?></strong> gesendet.
-        </p>
-        <form method="POST">
-            <?= csrf_field() ?>
-            <input type="hidden" name="rechnung_submit" value="1">
-            <input type="hidden" name="rechnung_workshop_id" value="<?= $workshop['id'] ?>">
-
-            <div class="rechnung-section-label">Empfänger</div>
-            <div class="rechnung-grid-2" style="margin-bottom:0.75rem;">
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Firma / Organisation</label>
-                    <input type="text" name="r_empfaenger" value="<?= e($rechnungDefaults['empfaenger']) ?>" placeholder="Musterfirma GmbH">
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Adresse</label>
-                    <input type="text" name="r_adresse" placeholder="Musterstraße 12">
-                </div>
-            </div>
-            <div class="rechnung-grid-2" style="margin-bottom:0.75rem;">
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>PLZ &amp; Ort</label>
-                    <input type="text" name="r_plz_ort" placeholder="1010 Wien">
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Anrede</label>
-                    <select name="r_anrede" style="width:100%;padding:8px 14px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:var(--radius);color:#fff;font-family:var(--font-b);font-size:0.9rem;">
-                        <option value="Herrn">Herrn</option>
-                        <option value="Frau">Frau</option>
-                    </select>
-                </div>
-            </div>
-            <div class="rechnung-grid-2" style="margin-bottom:0.75rem;">
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>z. Hd. Name</label>
-                    <input type="text" name="r_kontakt_name" value="<?= e($rechnungDefaults['kontakt_name']) ?>" placeholder="Max Mustermann">
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>E-Mail (auf Rechnung)</label>
-                    <input type="email" name="r_kontakt_email" placeholder="kontakt@firma.at">
-                </div>
-            </div>
-
-            <div class="rechnung-section-label">Rechnungsdaten</div>
-            <div class="rechnung-grid-2" style="margin-bottom:0.75rem;">
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Rechnungsdatum</label>
-                    <input type="date" name="r_rechnung_datum" value="<?= date('Y-m-d') ?>">
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Rechnungs-Nr.</label>
-                    <input type="text" name="r_rechnungs_nr" value="0001/<?= date('Y') ?>" placeholder="0001/<?= date('Y') ?>">
-                </div>
-            </div>
-            <div class="form-group" style="margin-bottom:0.75rem;">
-                <label>Für (Leistungsbeschreibung)</label>
-                <input type="text" name="r_fuer_text" value="die Abhaltung des Workshops" placeholder="z.B. die Abhaltung des zweistündigen Workshops">
-            </div>
-            <div class="rechnung-grid-2" style="margin-bottom:0.75rem;">
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Workshop-Titel</label>
-                    <input type="text" name="r_workshop_titel" value="<?= e($workshop['title']) ?>">
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Veranstaltungsdatum</label>
-                    <input type="text" name="r_veranstaltungs_datum" value="<?= e($evtDateDefault) ?>" placeholder="z.B. 15. März 2025, 09:00 Uhr">
-                </div>
-            </div>
-
-            <div class="rechnung-section-label">Positionen (netto)</div>
-            <div class="rechnung-grid-2" style="margin-bottom:0.5rem;">
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Position 1 Beschreibung</label>
-                    <input type="text" name="r_pos1_label" value="<?= e($pos1LabelDefault) ?>" required>
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Betrag (EUR, netto)</label>
-                    <input type="text" name="r_pos1_betrag" value="<?= e($pos1BetragDefault) ?>" placeholder="1.200,00" required>
-                </div>
-            </div>
-            <div class="rechnung-grid-2" style="margin-bottom:0.75rem;">
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Position 2 Beschreibung <span style="color:var(--dim);font-size:0.8em;">(optional)</span></label>
-                    <input type="text" name="r_pos2_label" placeholder="z.B. Reisekosten">
-                </div>
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Betrag (EUR, netto) <span style="color:var(--dim);font-size:0.8em;">(optional)</span></label>
-                    <input type="text" name="r_pos2_betrag" placeholder="200,00">
-                </div>
-            </div>
-            <p style="font-size:0.78rem;color:var(--dim);margin:0 0 0.75rem;">
-                Zwischensumme, 20&nbsp;% USt. und SUMME werden automatisch berechnet.
-            </p>
-
-            <div class="rechnung-section-label">Absender</div>
-            <div class="form-group" style="margin-bottom:1.25rem;">
-                <label>Name (Unterschrift)</label>
-                <input type="text" name="r_absender_name" placeholder="Mag.a Maria Muster">
-            </div>
-
-            <div style="display:flex;gap:0.75rem;">
-                <button type="submit" class="btn-submit" style="flex:1;"
-                        onclick="return confirm('Rechnung an alle bestätigten Teilnehmer senden?')">
-                    Rechnung senden &rarr;
-                </button>
-                <button type="button" class="btn-admin" onclick="closeRechnungModal()">Abbrechen</button>
-            </div>
-        </form>
+  <div class="rechnung-modal">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:0.25rem;">
+        <h3 style="margin-bottom:0;">Rechnungen erstellen &amp; senden</h3>
+        <button type="button" onclick="closeRechnungModal()" style="background:none;border:none;color:var(--dim);font-size:1.3rem;cursor:pointer;line-height:1;">&times;</button>
     </div>
+    <p style="color:var(--dim);font-size:0.8rem;margin-bottom:1.25rem;">
+        <strong style="color:var(--muted);"><?= e($workshop['title']) ?></strong>
+        &mdash; pro Buchung wird eine individuelle Rechnung verschickt.
+    </p>
+
+    <form method="POST">
+        <?= csrf_field() ?>
+        <input type="hidden" name="rechnung_submit" value="1">
+        <input type="hidden" name="rechnung_workshop_id" value="<?= $workshop['id'] ?>">
+
+        <!-- ── Gemeinsame Felder ───────────────────────────────────────── -->
+        <div class="rechnung-section-label" style="margin-top:0;">Gemeinsame Rechnungsdaten</div>
+        <div class="rechnung-grid-2" style="margin-bottom:0.6rem;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Rechnungsdatum</label>
+                <input type="date" id="r_rechnung_datum" name="r_rechnung_datum"
+                       value="<?= date('Y-m-d') ?>" oninput="rcUpdateNrs()">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Startnummer <span style="color:var(--dim);font-size:0.78em;">(+1 je Empfänger)</span></label>
+                <input type="number" id="r_start_nr" name="r_start_nr" value="1" min="1" oninput="rcUpdateNrs()">
+            </div>
+        </div>
+        <div class="form-group" style="margin-bottom:0.6rem;">
+            <label>Für (Leistungsbeschreibung)</label>
+            <input type="text" name="r_fuer_text" value="die Abhaltung des Workshops"
+                   placeholder="z.B. die Abhaltung des zweistündigen Workshops">
+        </div>
+        <div class="rechnung-grid-2" style="margin-bottom:0.6rem;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Workshop-Titel</label>
+                <input type="text" name="r_workshop_titel" value="<?= e($workshop['title']) ?>">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Veranstaltungsdatum</label>
+                <input type="text" name="r_veranstaltungs_datum" value="<?= e($evtDateDefault) ?>"
+                       placeholder="z.B. 15. März 2025, 09:00 Uhr">
+            </div>
+        </div>
+
+        <div class="rechnung-section-label">Positionen (netto)</div>
+        <div class="rechnung-grid-2" style="margin-bottom:0.4rem;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Position 1</label>
+                <input type="text" name="r_pos1_label" value="<?= e($pos1LabelDefault) ?>" required>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label>EUR (netto)</label>
+                <input type="text" name="r_pos1_betrag" value="<?= e($pos1BetragDefault) ?>"
+                       placeholder="1.200,00" required>
+            </div>
+        </div>
+        <div class="rechnung-grid-2" style="margin-bottom:0.2rem;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label>Position 2 <span style="color:var(--dim);font-size:0.78em;">(optional)</span></label>
+                <input type="text" name="r_pos2_label" placeholder="z.B. Reisekosten">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label>EUR (netto) <span style="color:var(--dim);font-size:0.78em;">(optional)</span></label>
+                <input type="text" name="r_pos2_betrag" placeholder="200,00">
+            </div>
+        </div>
+        <p style="font-size:0.73rem;color:var(--dim);margin:0.25rem 0 0.6rem;">
+            Zwischensumme, 20&nbsp;% USt. und SUMME werden automatisch berechnet.
+        </p>
+
+        <div class="rechnung-section-label">Absender</div>
+        <div class="form-group" style="margin-bottom:0.5rem;">
+            <label>Name (Unterschrift)</label>
+            <input type="text" name="r_absender_name" placeholder="Mag.a Maria Muster">
+        </div>
+
+        <!-- ── Pro-Buchung-Karten ──────────────────────────────────────── -->
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    border-top:1px solid var(--border);padding-top:1.1rem;margin-top:0.6rem;">
+            <div class="rechnung-section-label" style="margin:0;">
+                Empfänger
+                <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0;">
+                    (<?= count($confirmedBookingsForRechnung) ?> bestätigt)
+                </span>
+            </div>
+            <div style="display:flex;gap:0.4rem;">
+                <button type="button" onclick="rcSelectAll(true)"
+                        style="font-size:0.72rem;padding:3px 10px;background:rgba(255,255,255,0.07);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;">
+                    Alle
+                </button>
+                <button type="button" onclick="rcSelectAll(false)"
+                        style="font-size:0.72rem;padding:3px 10px;background:rgba(255,255,255,0.07);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;">
+                    Keine
+                </button>
+            </div>
+        </div>
+
+        <?php if (empty($confirmedBookingsForRechnung)): ?>
+        <p style="color:var(--dim);font-size:0.85rem;padding:0.75rem 0;">
+            Keine bestätigten Buchungen für diesen Workshop.
+        </p>
+        <?php endif; ?>
+
+        <?php foreach ($confirmedBookingsForRechnung as $i => $cb): ?>
+        <div class="rechnung-card" id="rc-card-<?= $i ?>">
+            <!-- Card header (click = toggle body) -->
+            <div class="rechnung-card-header" onclick="rcToggle(<?= $i ?>)">
+                <label onclick="event.stopPropagation();" style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;min-width:0;flex:1;">
+                    <input type="checkbox" name="r_booking_selected[<?= $i ?>]" value="1" checked
+                           class="rc-checkbox"
+                           onchange="rcDimCard(<?= $i ?>, this.checked)">
+                    <span class="rechnung-card-summary">
+                        <strong><?= e($cb['organization'] ?: $cb['name']) ?></strong>
+                        <?php if ($cb['organization'] && $cb['organization'] !== $cb['name']): ?>
+                            <span style="color:var(--dim);"> – <?= e($cb['name']) ?></span>
+                        <?php endif; ?>
+                        <span style="color:var(--dim);"> · <?= e($cb['email']) ?></span>
+                    </span>
+                </label>
+                <span class="rechnung-card-toggle" id="rc-tog-<?= $i ?>">▲</span>
+            </div>
+            <!-- Card body (collapsible) -->
+            <div class="rechnung-card-body" id="rc-body-<?= $i ?>">
+                <div class="rechnung-grid-2" style="margin-bottom:0.5rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>Firma / Organisation</label>
+                        <input type="text" name="r_booking_empfaenger[<?= $i ?>]"
+                               value="<?= e($cb['organization']) ?>" placeholder="Firma GmbH">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>Adresse</label>
+                        <input type="text" name="r_booking_adresse[<?= $i ?>]" placeholder="Musterstraße 12">
+                    </div>
+                </div>
+                <div class="rechnung-grid-2" style="margin-bottom:0.5rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>PLZ &amp; Ort</label>
+                        <input type="text" name="r_booking_plz_ort[<?= $i ?>]" placeholder="1010 Wien">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>Anrede</label>
+                        <select name="r_booking_anrede[<?= $i ?>]" style="<?= $selStyle ?>">
+                            <option value="Herrn">Herrn</option>
+                            <option value="Frau">Frau</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rechnung-grid-2" style="margin-bottom:0.5rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>z. Hd. Name</label>
+                        <input type="text" name="r_booking_kontakt_name[<?= $i ?>]"
+                               value="<?= e($cb['name']) ?>">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>E-Mail <span style="color:var(--dim);font-size:0.78em;">(Versand &amp; auf Rechnung)</span></label>
+                        <input type="email" name="r_booking_kontakt_email[<?= $i ?>]"
+                               value="<?= e($cb['email']) ?>">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Rechnungs-Nr. <span style="color:var(--dim);font-size:0.78em;">(individuell anpassbar)</span></label>
+                    <input type="text" class="rc-nr" name="r_booking_rechnungs_nr[<?= $i ?>]"
+                           id="rc-nr-<?= $i ?>" placeholder="0001/<?= date('Y') ?>"
+                           oninput="this.dataset.custom='1'">
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+
+        <div style="display:flex;gap:0.75rem;margin-top:1.25rem;">
+            <button type="submit" class="btn-submit" style="flex:1;">
+                Rechnungen senden &rarr;
+            </button>
+            <button type="button" class="btn-admin" onclick="closeRechnungModal()">Abbrechen</button>
+        </div>
+    </form>
+  </div>
 </div>
 <?php endif; ?>
 
 <script>
+// ── Email modal ──────────────────────────────────────────────────────────────
 function openEmailModal(id, name, email) {
     document.getElementById('emailBookingId').value = id;
     document.getElementById('emailRecipient').textContent = 'An: ' + name + ' (' + email + ')';
@@ -603,17 +672,62 @@ function closeEmailModal() {
 document.getElementById('emailModal').addEventListener('click', function(e) {
     if (e.target === this) closeEmailModal();
 });
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') { closeEmailModal(); closeRechnungModal(); }
-});
+
+// ── Rechnung modal ───────────────────────────────────────────────────────────
 function openRechnungModal() {
     document.getElementById('rechnungModal').classList.add('open');
+    rcUpdateNrs();           // initialise invoice numbers on open
 }
 function closeRechnungModal() {
     document.getElementById('rechnungModal').classList.remove('open');
 }
-document.getElementById('rechnungModal').addEventListener('click', function(e) {
-    if (e.target === this) closeRechnungModal();
+var rechnungModal = document.getElementById('rechnungModal');
+if (rechnungModal) {
+    rechnungModal.addEventListener('click', function(e) {
+        if (e.target === this) closeRechnungModal();
+    });
+}
+
+// Auto-number: sets each card's invoice number from start nr + date year
+// unless the field has been manually edited (data-custom attribute set)
+function rcUpdateNrs() {
+    var startEl = document.getElementById('r_start_nr');
+    var dateEl  = document.getElementById('r_rechnung_datum');
+    if (!startEl) return;
+    var start = parseInt(startEl.value) || 1;
+    var year  = dateEl && dateEl.value ? dateEl.value.substring(0, 4) : new Date().getFullYear();
+    document.querySelectorAll('.rc-nr').forEach(function(el, i) {
+        if (!el.dataset.custom) {
+            el.value = String(start + i).padStart(4, '0') + '/' + year;
+        }
+    });
+}
+
+// Toggle card body open/closed
+function rcToggle(i) {
+    var body = document.getElementById('rc-body-' + i);
+    var tog  = document.getElementById('rc-tog-' + i);
+    if (!body) return;
+    body.classList.toggle('rc-hidden');
+    if (tog) tog.textContent = body.classList.contains('rc-hidden') ? '▼' : '▲';
+}
+
+// Dim card when deselected
+function rcDimCard(i, checked) {
+    var body = document.getElementById('rc-body-' + i);
+    if (body) body.style.opacity = checked ? '1' : '0.4';
+}
+
+// Select / deselect all cards
+function rcSelectAll(state) {
+    document.querySelectorAll('.rc-checkbox').forEach(function(cb, i) {
+        cb.checked = state;
+        rcDimCard(i, state);
+    });
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closeEmailModal(); closeRechnungModal(); }
 });
 </script>
 
