@@ -72,7 +72,7 @@ if (is_admin()) {
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">Light Mode</button>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">☾</button>
 
 <div class="login-page">
     <div class="login-box">

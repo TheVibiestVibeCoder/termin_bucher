@@ -218,7 +218,7 @@ function to_datetime_local(string $val): string {
     </style>
 </head>
 <body>
-<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">Light Mode</button>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">☾</button>
 <div class="admin-layout">
 
     <?php include __DIR__ . '/sidebar.php'; ?>

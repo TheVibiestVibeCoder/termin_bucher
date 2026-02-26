@@ -193,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
-            <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">Light Mode</button></li>
+            <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">☾</button></li>
             <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
@@ -441,7 +441,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
 
                         <?php if ($price > 0): ?>
                         <div id="price-summary" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius);padding:0.875rem 1rem;margin-bottom:1.25rem;font-size:0.88rem;color:var(--muted);">
-                            Gesamtpreis (Netto): <strong id="price-total" style="color:#fff;font-size:1rem;"><?= e(format_price($price, $currency)) ?></strong>
+                            Gesamtpreis (Netto): <strong id="price-total" style="color:var(--text);font-size:1rem;"><?= e(format_price($price, $currency)) ?></strong>
                         </div>
                         <?php endif; ?>
 

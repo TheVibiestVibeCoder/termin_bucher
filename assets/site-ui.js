@@ -15,8 +15,11 @@
         const toggle = document.querySelector('#themeToggle');
         if (toggle) {
             const light = theme === 'light';
-            toggle.textContent = light ? 'Dark Mode' : 'Light Mode';
+            const nextLabel = light ? 'Zum Dark Mode wechseln' : 'Zum Light Mode wechseln';
+            toggle.textContent = light ? '☀' : '☾';
             toggle.setAttribute('aria-pressed', light ? 'true' : 'false');
+            toggle.setAttribute('aria-label', nextLabel);
+            toggle.setAttribute('title', nextLabel);
         }
     };
 

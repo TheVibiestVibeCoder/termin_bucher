@@ -115,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">Light Mode</button>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">☾</button>
 <div class="admin-layout">
 
     <?php include __DIR__ . '/sidebar.php'; ?>
