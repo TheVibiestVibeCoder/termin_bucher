@@ -1,57 +1,58 @@
 (() => {
     const root = document.documentElement;
     const body = document.body;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    const getCurrentTheme = () => root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const getCurrentTheme = () => (root.getAttribute("data-theme") === "light" ? "light" : "dark");
+
     const applyTheme = (theme) => {
-        root.setAttribute('data-theme', theme);
+        root.setAttribute("data-theme", theme);
         try {
-            localStorage.setItem('site-theme', theme);
+            localStorage.setItem("site-theme", theme);
         } catch (e) {
             // ignore storage errors
         }
 
-        const toggle = document.querySelector('#themeToggle');
+        const toggle = document.querySelector("#themeToggle");
         if (toggle) {
-            const light = theme === 'light';
-            const nextLabel = light ? 'Zum Dark Mode wechseln' : 'Zum Light Mode wechseln';
-            toggle.textContent = light ? '☀' : '☾';
-            toggle.setAttribute('aria-pressed', light ? 'true' : 'false');
-            toggle.setAttribute('aria-label', nextLabel);
-            toggle.setAttribute('title', nextLabel);
+            const light = theme === "light";
+            const nextLabel = light ? "Zum Dark Mode wechseln" : "Zum Light Mode wechseln";
+            toggle.textContent = light ? "\u2600" : "\u263E";
+            toggle.setAttribute("aria-pressed", light ? "true" : "false");
+            toggle.setAttribute("aria-label", nextLabel);
+            toggle.setAttribute("title", nextLabel);
         }
     };
 
-    const toggle = document.querySelector('#themeToggle');
+    const toggle = document.querySelector("#themeToggle");
     if (toggle) {
         applyTheme(getCurrentTheme());
-        toggle.addEventListener('click', () => {
-            applyTheme(getCurrentTheme() === 'light' ? 'dark' : 'light');
+        toggle.addEventListener("click", () => {
+            applyTheme(getCurrentTheme() === "light" ? "dark" : "light");
         });
     }
 
-    if (!body.classList.contains('page-loaded')) {
-        requestAnimationFrame(() => body.classList.add('page-loaded'));
+    if (!body.classList.contains("page-loaded")) {
+        requestAnimationFrame(() => body.classList.add("page-loaded"));
     }
 
     if (reduceMotion) {
         return;
     }
 
-    document.addEventListener('click', (event) => {
-        const anchor = event.target instanceof Element ? event.target.closest('a') : null;
+    document.addEventListener("click", (event) => {
+        const anchor = event.target instanceof Element ? event.target.closest("a") : null;
         if (!anchor) return;
         if (event.defaultPrevented) return;
-        if (anchor.target === '_blank' || anchor.hasAttribute('download')) return;
+        if (anchor.target === "_blank" || anchor.hasAttribute("download")) return;
 
-        const href = anchor.getAttribute('href') ?? '';
+        const href = anchor.getAttribute("href") ?? "";
         if (
-            href === '' ||
-            href.startsWith('#') ||
-            href.startsWith('mailto:') ||
-            href.startsWith('tel:') ||
-            href.startsWith('javascript:')
+            href === "" ||
+            href.startsWith("#") ||
+            href.startsWith("mailto:") ||
+            href.startsWith("tel:") ||
+            href.startsWith("javascript:")
         ) {
             return;
         }
@@ -66,9 +67,9 @@
         if (url.origin !== window.location.origin) return;
 
         event.preventDefault();
-        body.classList.add('page-transition-out');
+        body.classList.add("page-transition-out");
         window.setTimeout(() => {
             window.location.href = anchor.href;
-        }, 360);
+        }, 320);
     });
 })();

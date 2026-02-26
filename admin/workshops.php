@@ -55,7 +55,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">☾</button>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 <div class="admin-layout">
 
     <?php include __DIR__ . '/sidebar.php'; ?>

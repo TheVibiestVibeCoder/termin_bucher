@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
-            <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">☾</button></li>
+            <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">&#9790;</button></li>
             <li><a href="kontakt.php" class="nav-cta active">Kontakt</a></li>
         </ul>
     </div>

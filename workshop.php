@@ -193,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
-            <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">☾</button></li>
+            <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">&#9790;</button></li>
             <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
@@ -356,9 +356,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                     <h3>Platz buchen</h3>
 
                     <?php if ($price > 0): ?>
-                    <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius);padding:0.875rem 1rem;margin-bottom:1.5rem;">
+                    <div style="background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:var(--radius);padding:0.875rem 1rem;margin-bottom:1.5rem;">
                         <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:0.25rem;">Preis pro Person</div>
-                        <div style="font-size:1.1rem;font-weight:600;color:#fff;"><?= e(format_price($price, $currency)) ?> <span style="font-size:0.75rem;font-weight:400;color:var(--muted);">netto zzgl. MwSt.</span></div>
+                        <div style="font-size:1.1rem;font-weight:600;color:var(--text);"><?= e(format_price($price, $currency)) ?> <span style="font-size:0.75rem;font-weight:400;color:var(--muted);">netto zzgl. MwSt.</span></div>
                     </div>
                     <?php endif; ?>
 

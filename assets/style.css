@@ -52,12 +52,12 @@
 html { scroll-behavior: smooth; }
 html.js body {
     opacity: 0;
-    transform: translateY(14px) scale(0.995);
+    transform: translateY(6px);
 }
 html.js body.page-loaded {
     opacity: 1;
     transform: none;
-    transition: opacity 0.55s cubic-bezier(0.2,0.8,0.2,1), transform 0.85s cubic-bezier(0.2,0.8,0.2,1);
+    transition: opacity 0.28s ease, transform 0.38s cubic-bezier(0.2,0.8,0.2,1);
 }
 
 body {
@@ -69,41 +69,10 @@ body {
     overflow-x: hidden;
     transition: background-color 0.45s ease, color 0.45s ease;
 }
-body::before {
-    content: '';
-    position: fixed;
-    inset: -30% -60%;
-    pointer-events: none;
-    z-index: 9997;
-    opacity: 0;
-    transform: translateX(-120%) skewX(-16deg);
-    background: linear-gradient(
-        118deg,
-        transparent 20%,
-        rgba(255,255,255,0.04) 42%,
-        rgba(255,255,255,0.16) 50%,
-        rgba(255,255,255,0.04) 58%,
-        transparent 80%
-    );
-}
 body.page-transition-out {
     opacity: 0.24;
     transform: translateY(-16px) scale(1.01);
     transition: opacity 0.35s ease, transform 0.55s cubic-bezier(0.2,0.8,0.2,1);
-}
-body.page-transition-out::before {
-    animation: pageSweep 0.7s cubic-bezier(0.16,0.82,0.26,1) forwards;
-}
-@keyframes pageSweep {
-    0% {
-        opacity: 0;
-        transform: translateX(-120%) skewX(-16deg);
-    }
-    22% { opacity: 0.9; }
-    100% {
-        opacity: 0;
-        transform: translateX(120%) skewX(-16deg);
-    }
 }
 
 html[data-theme="light"] {
@@ -154,8 +123,6 @@ html[data-theme="light"] {
         transform: none !important;
         transition: none !important;
     }
-    body::before { display: none !important; }
-    body.page-transition-out::before { animation: none !important; }
 }
 
 /* ─── SKIP LINK ─── */
@@ -262,17 +229,50 @@ nav {
 
 @media (max-width: 768px) {
     .nav-links {
-        display: none; position: absolute; top: 100%; left: 0; width: 100%;
-        flex-direction: column; gap: 0;
+        position: absolute; top: 100%; left: 0; width: 100%;
+        flex-direction: column; align-items: stretch; gap: 0;
         background: var(--nav-mobile-bg);
-        border-bottom: 1px solid var(--border);
-        padding: 1rem 0;
+        border-bottom: 1px solid transparent;
+        padding: 0 0.85rem;
+        opacity: 0;
+        transform: translateY(-10px);
+        max-height: 0;
+        overflow: hidden;
+        pointer-events: none;
+        transition:
+            max-height 0.38s cubic-bezier(0.22,0.61,0.36,1),
+            opacity 0.25s ease,
+            transform 0.28s ease,
+            padding 0.28s ease,
+            border-color 0.28s ease;
     }
-    .nav-links.open { display: flex; }
-    .nav-links li { padding: 0.2rem 5%; }
-    .nav-links a { padding: 0.75rem 5%; font-size: 1rem; }
+    .nav-links.open {
+        max-height: 220px;
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+        padding: 0.65rem 0.85rem 0.9rem;
+        border-bottom-color: var(--border);
+    }
+    .nav-links li {
+        padding: 0;
+        width: 100%;
+        justify-content: flex-end;
+    }
+    .nav-links a {
+        padding: 0.7rem 0.2rem;
+        font-size: 1rem;
+    }
+    .nav-links .theme-toggle {
+        margin: 0 0 0 auto;
+    }
     .nav-burger { display: block; }
-    .nav-cta { display: none; }
+    .nav-links .nav-cta {
+        display: inline-flex;
+        width: 100%;
+        justify-content: center;
+        margin-top: 0.4rem;
+    }
 }
 
 /* ─── HERO ─── */

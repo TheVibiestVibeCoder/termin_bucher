@@ -147,7 +147,7 @@ $msg = $messages[$status];
     <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">☾</button>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 
 <div class="confirm-page">
     <div class="confirm-box">
