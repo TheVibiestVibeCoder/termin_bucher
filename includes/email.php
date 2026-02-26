@@ -4,13 +4,76 @@
  * Uses proper headers for deliverability.
  */
 
+function sanitize_mail_header_value(string $value): string {
+    $value = str_replace(["\r", "\n"], ' ', $value);
+    $value = preg_replace('/\s+/', ' ', $value);
+    return trim((string) $value);
+}
+
+function sanitize_email_address(string $email): string {
+    return trim(str_replace(["\r", "\n"], '', $email));
+}
+
+function build_site_url(string $path = ''): string {
+    $base = SITE_URL;
+    if ($base === '') {
+        $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+        $httpsServer    = strtolower((string) ($_SERVER['HTTPS'] ?? ''));
+        $isHttps        = ($httpsServer !== '' && $httpsServer !== 'off') || $forwardedProto === 'https';
+        $scheme         = $isHttps ? 'https' : 'http';
+        $host           = sanitize_mail_header_value((string) ($_SERVER['HTTP_HOST'] ?? ''));
+        if ($host !== '') {
+            $base = $scheme . '://' . $host;
+        }
+    }
+
+    if ($path === '') {
+        return $base;
+    }
+    if ($base === '') {
+        return $path;
+    }
+
+    return rtrim($base, '/') . '/' . ltrim($path, '/');
+}
+
 function send_email(string $to, string $subject, string $htmlBody): bool {
-    $from     = MAIL_FROM;
-    $fromName = MAIL_FROM_NAME;
+    $to = sanitize_email_address($to);
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
 
-    $boundary = md5(uniqid(time()));
+    $from = sanitize_email_address(MAIL_FROM);
+    if (!filter_var($from, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
 
-    $headers  = "From: {$fromName} <{$from}>\r\n";
+    $fromName = sanitize_mail_header_value(MAIL_FROM_NAME);
+    if ($fromName === '') {
+        $fromName = 'Workshop Team';
+    }
+
+    $subject = sanitize_mail_header_value($subject);
+    if ($subject === '') {
+        return false;
+    }
+
+    $subjectHeader = $subject;
+    $fromNameHeader = $fromName;
+    if (function_exists('mb_encode_mimeheader')) {
+        $encodedSubject = mb_encode_mimeheader($subject, 'UTF-8', 'B');
+        $encodedFrom    = mb_encode_mimeheader($fromName, 'UTF-8', 'B');
+        if (is_string($encodedSubject) && $encodedSubject !== '') {
+            $subjectHeader = $encodedSubject;
+        }
+        if (is_string($encodedFrom) && $encodedFrom !== '') {
+            $fromNameHeader = $encodedFrom;
+        }
+    }
+
+    $boundary = bin2hex(random_bytes(16));
+
+    $headers  = "From: {$fromNameHeader} <{$from}>\r\n";
     $headers .= "Reply-To: {$from}\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
@@ -30,14 +93,14 @@ function send_email(string $to, string $subject, string $htmlBody): bool {
     $body .= $htmlBody . "\r\n\r\n";
     $body .= "--{$boundary}--\r\n";
 
-    return mail($to, $subject, $body, $headers);
+    return mail($to, $subjectHeader, $body, $headers);
 }
 
 /**
  * Send booking confirmation request (double opt-in).
  */
 function send_confirmation_email(string $to, string $name, string $workshopTitle, string $token): bool {
-    $confirmUrl = SITE_URL . '/confirm.php?token=' . urlencode($token);
+    $confirmUrl = build_site_url('/confirm.php?token=' . urlencode($token));
 
     $html = '
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0d0d0d; color: #ffffff; padding: 40px; border-radius: 8px;">

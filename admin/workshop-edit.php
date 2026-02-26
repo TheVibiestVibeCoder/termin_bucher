@@ -45,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
 
     $formData['title']              = trim($_POST['title'] ?? '');
     $formData['slug']               = trim($_POST['slug'] ?? '') ?: slugify($formData['title']);
+    $formData['slug']               = trim((string) preg_replace('/[^a-z0-9-]+/', '-', strtolower($formData['slug'])), '-');
     $formData['description_short']  = trim($_POST['description_short'] ?? '');
     $formData['description']        = trim($_POST['description'] ?? '');
     $formData['tag_label']        = trim($_POST['tag_label'] ?? '');
@@ -56,19 +57,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
     $formData['sort_order']       = (int) ($_POST['sort_order'] ?? 0);
     $formData['active']           = isset($_POST['active']) ? 1 : 0;
     $formData['workshop_type']    = ($_POST['workshop_type'] ?? '') === 'open' ? 'open' : 'auf_anfrage';
-    $formData['event_date']       = trim($_POST['event_date'] ?? '');
-    $formData['event_date_end']   = trim($_POST['event_date_end'] ?? '');
+    $formData['event_date']       = str_replace('T', ' ', trim($_POST['event_date'] ?? ''));
+    $formData['event_date_end']   = str_replace('T', ' ', trim($_POST['event_date_end'] ?? ''));
     $formData['location']         = trim($_POST['location'] ?? '');
     $formData['min_participants'] = max(0, (int) ($_POST['min_participants'] ?? 0));
     $rawPrice                     = trim($_POST['price_netto'] ?? '');
     $formData['price_netto']      = $rawPrice === '' ? 0 : max(0, (float) str_replace(',', '.', $rawPrice));
     $formData['price_currency']   = trim($_POST['price_currency'] ?? 'EUR') ?: 'EUR';
+    if (!in_array($formData['price_currency'], ['EUR', 'CHF', 'USD'], true)) {
+        $formData['price_currency'] = 'EUR';
+    }
 
     if (strlen($formData['title']) < 2) $errors[] = 'Titel ist erforderlich.';
     if (strlen($formData['slug']) < 2)  $errors[] = 'Slug ist erforderlich.';
 
     if ($formData['workshop_type'] === 'open' && empty($formData['event_date'])) {
         $errors[] = 'Für terminierte Workshops muss ein Startdatum gesetzt werden.';
+    }
+
+    if ($formData['capacity'] > 0 && $formData['min_participants'] > $formData['capacity']) {
+        $errors[] = 'Mindest-Teilnehmende darf die Kapazitaet nicht uebersteigen.';
+    }
+    if (!empty($formData['event_date']) && !empty($formData['event_date_end'])) {
+        $startTs = strtotime($formData['event_date']);
+        $endTs   = strtotime($formData['event_date_end']);
+        if ($startTs !== false && $endTs !== false && $endTs < $startTs) {
+            $errors[] = 'Enddatum muss nach dem Startdatum liegen.';
+        }
     }
 
     // Check unique slug

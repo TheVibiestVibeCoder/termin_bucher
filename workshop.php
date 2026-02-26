@@ -33,6 +33,13 @@ $errors           = [];
 $formData         = ['name' => '', 'email' => '', 'organization' => '', 'phone' => '', 'participants' => 1, 'message' => '', 'booking_mode' => 'group'];
 $participantNames  = [];
 $participantEmails = [];
+$maxLen = [
+    'name'         => 120,
+    'email'        => 254,
+    'organization' => 180,
+    'phone'        => 60,
+    'message'      => 3000,
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if (!csrf_verify()) {
@@ -59,14 +66,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
     if ($formData['participants'] < 1 || $formData['participants'] > 50) $errors[] = 'Ungültige Teilnehmerzahl.';
 
+    if (mb_strlen($formData['name']) > $maxLen['name']) $errors[] = 'Name ist zu lang.';
+    if (mb_strlen($formData['email']) > $maxLen['email']) $errors[] = 'E-Mail-Adresse ist zu lang.';
+    if (mb_strlen($formData['organization']) > $maxLen['organization']) $errors[] = 'Organisation ist zu lang.';
+    if (mb_strlen($formData['phone']) > $maxLen['phone']) $errors[] = 'Telefonnummer ist zu lang.';
+    if (mb_strlen($formData['message']) > $maxLen['message']) $errors[] = 'Nachricht ist zu lang.';
+
     if ($formData['booking_mode'] === 'individual' && empty($errors)) {
         $expected = $formData['participants'];
-        if (count($participantNames) !== $expected) {
+        if (count($participantNames) !== $expected || count($participantEmails) !== $expected) {
             $errors[] = 'Bitte füllen Sie die Daten für alle Teilnehmer aus.';
         } else {
             foreach ($participantNames as $i => $pn) {
                 if (strlen($pn) < 2) $errors[] = 'Teilnehmer ' . ($i+1) . ': Bitte geben Sie einen Namen ein.';
-                if (!filter_var($participantEmails[$i] ?? '', FILTER_VALIDATE_EMAIL)) {
+                $participantEmail = $participantEmails[$i] ?? '';
+                if (mb_strlen($pn) > $maxLen['name']) $errors[] = 'Teilnehmer ' . ($i+1) . ': Name ist zu lang.';
+                if (mb_strlen($participantEmail) > $maxLen['email']) $errors[] = 'Teilnehmer ' . ($i+1) . ': E-Mail-Adresse ist zu lang.';
+                if (!filter_var($participantEmail, FILTER_VALIDATE_EMAIL)) {
                     $errors[] = 'Teilnehmer ' . ($i+1) . ': Ungültige E-Mail-Adresse.';
                 }
             }
@@ -92,9 +108,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         $stmt->bindValue(':msg',          $formData['message'],      SQLITE3_TEXT);
         $stmt->bindValue(':token',        $token,                    SQLITE3_TEXT);
         $stmt->bindValue(':bmode',        $formData['booking_mode'], SQLITE3_TEXT);
-        $stmt->execute();
-
-        $bookingId = $db->lastInsertRowID();
+        $insertResult = $stmt->execute();
+        if ($insertResult === false) {
+            $errors[] = 'Technischer Fehler beim Speichern. Bitte versuchen Sie es erneut.';
+        } else {
+            $bookingId = $db->lastInsertRowID();
 
         // Save individual participant details if in individual mode
         if ($formData['booking_mode'] === 'individual') {
@@ -107,10 +125,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             }
         }
 
-        send_confirmation_email($formData['email'], $formData['name'], $workshop['title'], $token);
+            if (!send_confirmation_email($formData['email'], $formData['name'], $workshop['title'], $token)) {
+                $rollbackStmt = $db->prepare('DELETE FROM bookings WHERE id = :id');
+                $rollbackStmt->bindValue(':id', $bookingId, SQLITE3_INTEGER);
+                $rollbackStmt->execute();
+                $errors[] = 'Die Bestaetigungs-E-Mail konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
+            } else {
 
         flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschließen.');
-        redirect('workshop.php?slug=' . urlencode($slug));
+                redirect('workshop.php?slug=' . urlencode($slug));
+            }
+        }
     }
 }
 ?>
@@ -358,7 +383,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                         </div>
 
                         <?php if ($formData['booking_mode'] === 'individual' && !empty($participantNames)): ?>
-                        <script>window.__prefillParticipants = <?= json_encode(array_map(null, $participantNames, $participantEmails)) ?>;</script>
+                        <script>window.__prefillParticipants = <?= json_for_html(array_map(null, $participantNames, $participantEmails)) ?>;</script>
                         <?php endif; ?>
 
                         <div class="form-group">

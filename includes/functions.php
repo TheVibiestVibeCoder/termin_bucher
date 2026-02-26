@@ -3,6 +3,30 @@
  * Shared helper functions.
  */
 
+function admin_password_configured(): bool {
+    $hash = trim((string) ($_ENV['ADMIN_PASSWORD_HASH'] ?? ''));
+    if ($hash !== '') {
+        $info = password_get_info($hash);
+        if (!empty($info['algo'])) {
+            return true;
+        }
+    }
+
+    return ADMIN_PASSWORD !== '';
+}
+
+function verify_admin_password(string $password): bool {
+    $hash = trim((string) ($_ENV['ADMIN_PASSWORD_HASH'] ?? ''));
+    if ($hash !== '') {
+        $info = password_get_info($hash);
+        if (!empty($info['algo'])) {
+            return password_verify($password, $hash);
+        }
+    }
+
+    return ADMIN_PASSWORD !== '' && hash_equals(ADMIN_PASSWORD, $password);
+}
+
 // ── CSRF ────────────────────────────────────────────────────────────────────
 function csrf_token(): string {
     if (empty($_SESSION['csrf_token'])) {
@@ -27,9 +51,14 @@ function e(string $str): string {
 
 // ── Slug ────────────────────────────────────────────────────────────────────
 function slugify(string $text): string {
-    $text = transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $text);
+    if (function_exists('transliterator_transliterate')) {
+        $text = transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $text);
+    } else {
+        $converted = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+        $text = $converted !== false ? strtolower($converted) : strtolower($text);
+    }
     $text = preg_replace('/[^a-z0-9]+/', '-', $text);
-    return trim($text, '-');
+    return trim((string) $text, '-');
 }
 
 // ── Flash messages ──────────────────────────────────────────────────────────
@@ -106,6 +135,15 @@ function rate_limit(string $key, int $maxPerMinute = 5): bool {
 function redirect(string $url): never {
     header('Location: ' . $url);
     exit;
+}
+
+function json_for_html(mixed $value): string {
+    $json = json_encode(
+        $value,
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE
+    );
+
+    return $json === false ? 'null' : $json;
 }
 
 // ── Price formatting ─────────────────────────────────────────────────────────

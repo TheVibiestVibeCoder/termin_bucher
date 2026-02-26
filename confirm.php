@@ -7,55 +7,77 @@ $status = 'invalid';
 $workshopTitle = '';
 
 if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
-    $stmt = $db->prepare('SELECT b.*, w.title AS workshop_title, w.slug AS workshop_slug FROM bookings b JOIN workshops w ON b.workshop_id = w.id WHERE b.token = :token');
-    $stmt->bindValue(':token', $token, SQLITE3_TEXT);
-    $booking = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    $confirmedBooking = null;
+    $inTransaction = false;
 
-    if ($booking) {
-        $workshopTitle = $booking['workshop_title'];
+    try {
+        $db->exec('BEGIN IMMEDIATE');
+        $inTransaction = true;
 
-        if ($booking['confirmed']) {
-            $status = 'already';
+        $stmt = $db->prepare('
+            SELECT b.*, w.title AS workshop_title, w.slug AS workshop_slug, w.capacity AS workshop_capacity
+            FROM bookings b
+            JOIN workshops w ON b.workshop_id = w.id
+            WHERE b.token = :token
+        ');
+        $stmt->bindValue(':token', $token, SQLITE3_TEXT);
+        $booking = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+        if (!$booking) {
+            $status = 'invalid';
         } else {
-            // Check if token is older than 48h
-            $created = strtotime($booking['created_at']);
-            if (time() - $created > 48 * 3600) {
-                $status = 'expired';
+            $workshopTitle = $booking['workshop_title'];
+
+            if ((int) $booking['confirmed'] === 1) {
+                $status = 'already';
             } else {
-                // Check capacity
-                $workshop = get_workshop_by_id($db, $booking['workshop_id']);
-                $booked = count_confirmed_bookings($db, $booking['workshop_id']);
-                $capacity = (int) $workshop['capacity'];
-
-                if ($capacity > 0 && ($booked + $booking['participants']) > $capacity) {
-                    $status = 'full';
+                $created = strtotime((string) $booking['created_at']);
+                if ($created === false || time() - $created > 48 * 3600) {
+                    $status = 'expired';
                 } else {
-                    // Confirm the booking
-                    $upd = $db->prepare("UPDATE bookings SET confirmed = 1, confirmed_at = datetime('now') WHERE id = :id");
-                    $upd->bindValue(':id', $booking['id'], SQLITE3_INTEGER);
-                    $upd->execute();
+                    $booked = count_confirmed_bookings($db, (int) $booking['workshop_id']);
+                    $capacity = (int) $booking['workshop_capacity'];
 
-                    $status = 'confirmed';
+                    if ($capacity > 0 && ($booked + (int) $booking['participants']) > $capacity) {
+                        $status = 'full';
+                    } else {
+                        $upd = $db->prepare("UPDATE bookings SET confirmed = 1, confirmed_at = datetime('now') WHERE id = :id AND confirmed = 0");
+                        $upd->bindValue(':id', (int) $booking['id'], SQLITE3_INTEGER);
+                        $updateResult = $upd->execute();
 
-                    // Send confirmation email to booker
-                    send_booking_confirmed_email($booking['email'], $booking['name'], $workshopTitle);
-
-                    // Send confirmation to each individually listed participant
-                    $pstmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid');
-                    $pstmt->bindValue(':bid', $booking['id'], SQLITE3_INTEGER);
-                    $pres = $pstmt->execute();
-                    while ($p = $pres->fetchArray(SQLITE3_ASSOC)) {
-                        // Skip if same email as booker (they already got the booker email)
-                        if (strtolower($p['email']) !== strtolower($booking['email'])) {
-                            send_participant_confirmed_email($p['email'], $p['name'], $workshopTitle, $booking['name']);
+                        if ($updateResult === false || $db->changes() !== 1) {
+                            $status = 'already';
+                        } else {
+                            $status = 'confirmed';
+                            $confirmedBooking = $booking;
                         }
                     }
-
-                    // Notify admin
-                    send_admin_notification($workshopTitle, $booking);
                 }
             }
         }
+
+        $db->exec('COMMIT');
+        $inTransaction = false;
+    } catch (Throwable $e) {
+        if ($inTransaction) {
+            $db->exec('ROLLBACK');
+        }
+        $status = 'invalid';
+    }
+
+    if ($status === 'confirmed' && is_array($confirmedBooking)) {
+        send_booking_confirmed_email($confirmedBooking['email'], $confirmedBooking['name'], $workshopTitle);
+
+        $pstmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid');
+        $pstmt->bindValue(':bid', (int) $confirmedBooking['id'], SQLITE3_INTEGER);
+        $pres = $pstmt->execute();
+        while ($p = $pres->fetchArray(SQLITE3_ASSOC)) {
+            if (strtolower((string) $p['email']) !== strtolower((string) $confirmedBooking['email'])) {
+                send_participant_confirmed_email($p['email'], $p['name'], $workshopTitle, $confirmedBooking['name']);
+            }
+        }
+
+        send_admin_notification($workshopTitle, $confirmedBooking);
     }
 }
 

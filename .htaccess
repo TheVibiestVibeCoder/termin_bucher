@@ -1,13 +1,14 @@
-# ── Security headers ──
+# Security headers
 <IfModule mod_headers.c>
-    Header set X-Content-Type-Options "nosniff"
-    Header set X-Frame-Options "SAMEORIGIN"
-    Header set X-XSS-Protection "1; mode=block"
-    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "0"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
 </IfModule>
 
-# ── Block access to sensitive files ──
-<FilesMatch "\.(env|db|db-journal|sqlite|log)$">
+# Block access to sensitive files
+<FilesMatch "\.(env|db|db-journal|sqlite|log|sql|bak|old|ini)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
@@ -17,12 +18,15 @@
     </IfModule>
 </FilesMatch>
 
-# ── Block access to includes directory ──
+# Block access to internal directories and dotfiles
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteRule (^|/)\.(?!well-known/) - [F,L]
     RewriteRule ^includes/ - [F,L]
     RewriteRule ^data/ - [F,L]
+    RewriteRule ^install\.php$ - [F,L]
+    RewriteRule ^mockup\.html$ - [F,L]
 </IfModule>
 
-# ── Disable directory listing ──
+# Disable directory listing
 Options -Indexes

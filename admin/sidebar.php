@@ -33,7 +33,11 @@ $currentPage = basename($_SERVER['SCRIPT_NAME'], '.php');
             </a>
         </li>
         <li>
-            <a href="index.php?logout=1" style="font-size:0.8rem;color:#e74c3c;">
+            <form method="POST" action="index.php" style="display:none;">
+                <?= csrf_field() ?>
+                <input type="hidden" name="logout" value="1">
+            </form>
+            <a href="#" style="font-size:0.8rem;color:#e74c3c;" onclick="this.previousElementSibling.submit(); return false;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Abmelden
             </a>
