@@ -122,7 +122,7 @@ html[data-theme="light"] {
     :root { view-transition-name: root; }
     ::view-transition-old(root),
     ::view-transition-new(root) {
-        animation-duration: 360ms;
+        animation-duration: 680ms;
         animation-timing-function: cubic-bezier(0.22,0.61,0.36,1);
     }
     ::view-transition-old(root) {
