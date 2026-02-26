@@ -8,9 +8,15 @@ $workshop = null;
 if ($workshopId) {
     $workshop = get_workshop_by_id($db, $workshopId);
 }
+$returnUrl = 'bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : '');
 
 // ── Handle actions ──────────────────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
+    flash('error', 'Ungueltige Sitzung.');
+    redirect($returnUrl);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Delete booking
     if (isset($_POST['delete_booking_id'])) {
@@ -31,26 +37,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         }
 
         flash('success', 'Buchung gelöscht.' . ($drow && $drow['confirmed'] ? ' Stornierungsmail gesendet.' : ''));
-        redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
+        redirect($returnUrl);
     }
 
     // Manually confirm booking
     if (isset($_POST['confirm_booking_id'])) {
         $bid = (int) $_POST['confirm_booking_id'];
-        $stmt = $db->prepare("UPDATE bookings SET confirmed = 1, confirmed_at = datetime('now') WHERE id = :id");
-        $stmt->bindValue(':id', $bid, SQLITE3_INTEGER);
-        $stmt->execute();
+        $sendConfirmationEmail = null;
+        $inTransaction = false;
 
-        // Send confirmation email
-        $bstmt = $db->prepare('SELECT b.*, w.title AS workshop_title FROM bookings b JOIN workshops w ON b.workshop_id = w.id WHERE b.id = :id');
-        $bstmt->bindValue(':id', $bid, SQLITE3_INTEGER);
-        $brow = $bstmt->execute()->fetchArray(SQLITE3_ASSOC);
-        if ($brow) {
-            send_booking_confirmed_email($brow['email'], $brow['name'], $brow['workshop_title']);
+        try {
+            $db->exec('BEGIN IMMEDIATE');
+            $inTransaction = true;
+
+            $bstmt = $db->prepare('
+                SELECT b.*, w.title AS workshop_title, w.capacity AS workshop_capacity
+                FROM bookings b
+                JOIN workshops w ON b.workshop_id = w.id
+                WHERE b.id = :id
+            ');
+            $bstmt->bindValue(':id', $bid, SQLITE3_INTEGER);
+            $brow = $bstmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+            if (!$brow) {
+                flash('error', 'Buchung nicht gefunden.');
+            } elseif ((int) $brow['confirmed'] === 1) {
+                flash('success', 'Buchung ist bereits bestaetigt.');
+            } else {
+                $capacity = (int) $brow['workshop_capacity'];
+                $booked = count_confirmed_bookings($db, (int) $brow['workshop_id']);
+
+                if ($capacity > 0 && ($booked + (int) $brow['participants']) > $capacity) {
+                    flash('error', 'Buchung kann nicht bestaetigt werden: Kapazitaet erreicht.');
+                } else {
+                    $stmt = $db->prepare("UPDATE bookings SET confirmed = 1, confirmed_at = datetime('now') WHERE id = :id AND confirmed = 0");
+                    $stmt->bindValue(':id', $bid, SQLITE3_INTEGER);
+                    $updateResult = $stmt->execute();
+
+                    if ($updateResult !== false && $db->changes() === 1) {
+                        $sendConfirmationEmail = $brow;
+                        flash('success', 'Buchung manuell bestaetigt.');
+                    } else {
+                        flash('error', 'Buchung konnte nicht bestaetigt werden.');
+                    }
+                }
+            }
+
+            $db->exec('COMMIT');
+            $inTransaction = false;
+        } catch (Throwable $e) {
+            if ($inTransaction) {
+                $db->exec('ROLLBACK');
+            }
+            flash('error', 'Technischer Fehler bei der Bestaetigung.');
         }
 
-        flash('success', 'Buchung manuell bestätigt und E-Mail gesendet.');
-        redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
+        if (is_array($sendConfirmationEmail)) {
+            if (!send_booking_confirmed_email($sendConfirmationEmail['email'], $sendConfirmationEmail['name'], $sendConfirmationEmail['workshop_title'])) {
+                flash('error', 'Bestaetigungs-E-Mail konnte nicht gesendet werden.');
+            }
+        }
+
+        redirect($returnUrl);
     }
 
     // Send custom email to single booking
@@ -64,13 +112,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             $bstmt->bindValue(':id', $bid, SQLITE3_INTEGER);
             $brow = $bstmt->execute()->fetchArray(SQLITE3_ASSOC);
             if ($brow) {
-                send_custom_email($brow['email'], $subject, $message);
-                flash('success', "E-Mail an {$brow['email']} gesendet.");
+                if (send_custom_email($brow['email'], $subject, $message)) {
+                    flash('success', "E-Mail an {$brow['email']} gesendet.");
+                } else {
+                    flash('error', 'E-Mail konnte nicht gesendet werden.');
+                }
             }
         } else {
             flash('error', 'Betreff und Nachricht sind erforderlich.');
         }
-        redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
+        redirect($returnUrl);
     }
 
     // Send per-booking Rechnungen for a workshop
@@ -96,6 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             $rsent = 0;
 
             foreach (array_keys($selectedCards) as $i) {
+                $i = (int) $i;
                 $email = trim($_POST['r_booking_kontakt_email'][$i] ?? '');
                 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
 
@@ -109,8 +161,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                     'rechnungs_nr'  => trim($_POST['r_booking_rechnungs_nr'][$i] ?? ''),
                 ]);
 
-                send_rechnung_email($email, $invoiceData);
-                $rsent++;
+                if (send_rechnung_email($email, $invoiceData)) {
+                    $rsent++;
+                }
             }
 
             if ($rsent === 0) {
@@ -119,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 flash('success', "Rechnung an {$rsent} Empfänger gesendet.");
             }
         }
-        redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
+        redirect($returnUrl);
     }
 
     // Bulk email to ALL participants of a workshop
@@ -158,12 +211,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 
             $sent = 0;
             foreach ($emails as $email) {
-                send_custom_email($email, $bulkSubject, $bulkMessage);
-                $sent++;
+                if (filter_var($email, FILTER_VALIDATE_EMAIL) && send_custom_email($email, $bulkSubject, $bulkMessage)) {
+                    $sent++;
+                }
             }
             flash('success', "E-Mail an {$sent} Empfänger gesendet.");
         }
-        redirect('bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : ''));
+        redirect($returnUrl);
     }
 }
 
@@ -337,7 +391,7 @@ if ($workshop) {
                     <textarea id="bulk_message" name="bulk_message" rows="4" required placeholder="Ihre Nachricht an alle Teilnehmer..."></textarea>
                 </div>
                 <button type="submit" class="btn-admin btn-success"
-                        onclick="return confirm('E-Mail an alle bestätigten Teilnehmer von &quot;<?= e(addslashes($workshop['title'])) ?>&quot; senden?')">
+                        onclick='return confirm(<?= json_for_html("E-Mail an alle bestaetigten Teilnehmer von \\\"{$workshop['title']}\\\" senden?") ?>)'>
                     An alle senden &rarr;
                 </button>
                 <span style="font-size:0.78rem;color:var(--dim);margin-left:0.75rem;">
@@ -406,7 +460,7 @@ if ($workshop) {
                                 <?php endif; ?>
 
                                 <button type="button" class="btn-admin"
-                                        onclick="openEmailModal(<?= $b['id'] ?>, '<?= e(addslashes($b['name'])) ?>', '<?= e(addslashes($b['email'])) ?>')"
+                                        onclick='openEmailModal(<?= (int) $b['id'] ?>, <?= json_for_html((string) $b['name']) ?>, <?= json_for_html((string) $b['email']) ?>)'
                                         title="E-Mail senden">E-Mail</button>
 
                                 <form method="POST" style="display:inline;" onsubmit="return confirm('Buchung wirklich löschen?')">
@@ -733,3 +787,4 @@ document.addEventListener('keydown', function(e) {
 
 </body>
 </html>
+

@@ -16,8 +16,11 @@ if (!$booking) {
     flash('error', 'Buchung nicht gefunden.');
     redirect('bookings.php');
 }
-
 $errors = [];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
+    $errors[] = 'Ungueltige Sitzung.';
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $name         = trim($_POST['name']         ?? '');
@@ -32,11 +35,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
     if ($participants < 1 || $participants > 500) $errors[] = 'Ungültige Teilnehmerzahl.';
 
+    if (mb_strlen($name) > 120) $errors[] = 'Name ist zu lang.';
+    if (mb_strlen($email) > 254) $errors[] = 'E-Mail-Adresse ist zu lang.';
+    if (mb_strlen($organization) > 180) $errors[] = 'Organisation ist zu lang.';
+    if (mb_strlen($phone) > 60) $errors[] = 'Telefonnummer ist zu lang.';
+    if (mb_strlen($message) > 3000) $errors[] = 'Nachricht ist zu lang.';
+
+    if ($confirmed) {
+        $capStmt = $db->prepare('SELECT capacity FROM workshops WHERE id = :wid');
+        $capStmt->bindValue(':wid', (int) $booking['workshop_id'], SQLITE3_INTEGER);
+        $capRow = $capStmt->execute()->fetchArray(SQLITE3_ASSOC);
+        $capacity = (int) ($capRow['capacity'] ?? 0);
+
+        if ($capacity > 0) {
+            $sumStmt = $db->prepare('SELECT COALESCE(SUM(participants), 0) AS confirmed_sum FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND id != :id');
+            $sumStmt->bindValue(':wid', (int) $booking['workshop_id'], SQLITE3_INTEGER);
+            $sumStmt->bindValue(':id', $id, SQLITE3_INTEGER);
+            $sumRow = $sumStmt->execute()->fetchArray(SQLITE3_ASSOC);
+            $confirmedSum = (int) ($sumRow['confirmed_sum'] ?? 0);
+
+            if (($confirmedSum + $participants) > $capacity) {
+                $errors[] = 'Kapazitaet ueberschritten. Buchung kann so nicht bestaetigt werden.';
+            }
+        }
+    }
+
     if (empty($errors)) {
         $upd = $db->prepare('
             UPDATE bookings
             SET name = :name, email = :email, organization = :org, phone = :phone,
-                participants = :participants, message = :msg, confirmed = :confirmed
+                participants = :participants, message = :msg, confirmed = :confirmed,
+                confirmed_at = CASE WHEN :confirmed = 1 THEN COALESCE(confirmed_at, datetime("now")) ELSE NULL END
             WHERE id = :id
         ');
         $upd->bindValue(':name',         $name,         SQLITE3_TEXT);

@@ -5,6 +5,7 @@ require __DIR__ . '/includes/email.php';
 $errors   = [];
 $success  = false;
 $formData = ['name' => '', 'email' => '', 'subject' => '', 'message' => ''];
+$maxLen   = ['name' => 120, 'email' => 254, 'subject' => 180, 'message' => 4000];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
     if (!csrf_verify()) {
@@ -31,6 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
     if (strlen($formData['subject']) < 3) $errors[] = 'Bitte geben Sie einen Betreff ein.';
     if (strlen($formData['message']) < 10) $errors[] = 'Bitte geben Sie eine Nachricht ein (mindestens 10 Zeichen).';
 
+    if (mb_strlen($formData['name']) > $maxLen['name']) $errors[] = 'Name ist zu lang.';
+    if (mb_strlen($formData['email']) > $maxLen['email']) $errors[] = 'E-Mail-Adresse ist zu lang.';
+    if (mb_strlen($formData['subject']) > $maxLen['subject']) $errors[] = 'Betreff ist zu lang.';
+    if (mb_strlen($formData['message']) > $maxLen['message']) $errors[] = 'Nachricht ist zu lang.';
+
     if (empty($errors)) {
         // Notify admin
         $adminHtml = '
@@ -42,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
             <p><strong>Nachricht:</strong></p>
             <div style="background:#f5f5f5;padding:12px;border-radius:4px;white-space:pre-wrap;">' . e($formData['message']) . '</div>
         </div>';
-        send_email(MAIL_FROM, 'Kontaktanfrage: ' . $formData['subject'], $adminHtml);
+        $adminSent = send_email(MAIL_FROM, 'Kontaktanfrage: ' . $formData['subject'], $adminHtml);
 
         // Auto-reply to sender
         $replyHtml = '
@@ -54,10 +60,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
             <hr style="border: none; border-top: 1px solid #222; margin: 30px 0;">
             <p style="color: #666; font-size: 12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>
         </div>';
-        send_email($formData['email'], 'Ihre Anfrage: ' . $formData['subject'], $replyHtml);
+        $replySent = send_email($formData['email'], 'Ihre Anfrage: ' . $formData['subject'], $replyHtml);
 
-        flash('success', 'Vielen Dank! Ihre Nachricht wurde gesendet. Wir melden uns so bald wie möglich.');
-        redirect('kontakt.php');
+        if (!$adminSent || !$replySent) {
+            $errors[] = 'Ihre Nachricht konnte aktuell nicht zugestellt werden. Bitte versuchen Sie es erneut.';
+        } else {
+            flash('success', 'Vielen Dank! Ihre Nachricht wurde gesendet. Wir melden uns so bald wie möglich.');
+            redirect('kontakt.php');
+        }
     }
 }
 ?>
@@ -182,3 +192,4 @@ burger.addEventListener('click', () => {
 
 </body>
 </html>
+
