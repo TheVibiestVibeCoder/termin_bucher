@@ -51,7 +51,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $inTransaction = true;
 
             $bstmt = $db->prepare('
-                SELECT b.*, w.title AS workshop_title, w.capacity AS workshop_capacity
+                SELECT
+                    b.*,
+                    w.title AS workshop_title,
+                    w.capacity AS workshop_capacity,
+                    w.format,
+                    w.tag_label,
+                    w.workshop_type,
+                    w.event_date,
+                    w.event_date_end,
+                    w.location,
+                    w.price_netto,
+                    w.price_currency
                 FROM bookings b
                 JOIN workshops w ON b.workshop_id = w.id
                 WHERE b.id = :id
@@ -93,7 +104,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (is_array($sendConfirmationEmail)) {
-            if (!send_booking_confirmed_email($sendConfirmationEmail['email'], $sendConfirmationEmail['name'], $sendConfirmationEmail['workshop_title'])) {
+            $emailParticipants = [];
+            $pstmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid ORDER BY id ASC');
+            $pstmt->bindValue(':bid', (int) $sendConfirmationEmail['id'], SQLITE3_INTEGER);
+            $pres = $pstmt->execute();
+            while ($p = $pres->fetchArray(SQLITE3_ASSOC)) {
+                $emailParticipants[] = $p;
+            }
+
+            if (!send_booking_confirmed_email(
+                $sendConfirmationEmail['email'],
+                $sendConfirmationEmail['name'],
+                $sendConfirmationEmail['workshop_title'],
+                $sendConfirmationEmail,
+                $sendConfirmationEmail,
+                $emailParticipants
+            )) {
                 flash('error', 'Bestaetigungs-E-Mail konnte nicht gesendet werden.');
             }
         }
@@ -277,6 +303,17 @@ if ($workshop) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+    document.documentElement.classList.add('js');
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem('site-theme');
+            if (storedTheme === 'light' || storedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+        } catch (e) {}
+    })();
+    </script>
     <title>Buchungen – Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -290,14 +327,14 @@ if ($workshop) {
         }
         .email-modal-overlay.open { display: flex; }
         .email-modal {
-            background: #0d0d0d; border: 1px solid var(--border);
+            background: var(--bg-alt); border: 1px solid var(--border);
             border-radius: 12px; padding: 2rem; width: 100%; max-width: 500px;
         }
         .email-modal h3 {
             font-family: var(--font-h); font-size: 1.3rem; font-weight: 400; margin-bottom: 1rem;
         }
         .rechnung-modal {
-            background: #0d0d0d; border: 1px solid var(--border);
+            background: var(--bg-alt); border: 1px solid var(--border);
             border-radius: 12px; padding: 2rem; width: 100%; max-width: 680px;
             max-height: 90vh; overflow-y: auto;
         }
@@ -317,7 +354,7 @@ if ($workshop) {
         }
         .rechnung-card-header {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 0.65rem 1rem; background: rgba(255,255,255,0.04);
+            padding: 0.65rem 1rem; background: var(--surface-soft);
             cursor: pointer; gap: 0.75rem; user-select: none;
         }
         .rechnung-card-header label { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; min-width: 0; flex: 1; }
@@ -328,6 +365,7 @@ if ($workshop) {
     </style>
 </head>
 <body>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 <div class="admin-layout">
 
     <?php include __DIR__ . '/sidebar.php'; ?>
@@ -347,7 +385,7 @@ if ($workshop) {
         <!-- Filter -->
         <div style="margin-bottom:1.5rem;">
             <form method="GET" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
-                <select name="workshop_id" style="padding:8px 14px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:var(--radius);color:#fff;font-family:var(--font-b);font-size:0.85rem;">
+                <select name="workshop_id" style="padding:8px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--font-b);font-size:0.85rem;">
                     <option value="0">Alle Workshops</option>
                     <?php foreach ($allWorkshops as $ws): ?>
                         <option value="<?= $ws['id'] ?>" <?= $workshopId == $ws['id'] ? 'selected' : '' ?>><?= e($ws['title']) ?></option>
@@ -359,7 +397,7 @@ if ($workshop) {
 
         <?php if ($workshop): ?>
         <!-- Rechnung senden -->
-        <div style="margin-bottom:1.25rem;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;">
+        <div style="margin-bottom:1.25rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;">
             <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--dim);">
                 Rechnung senden
             </div>
@@ -367,14 +405,14 @@ if ($workshop) {
                 Rechnung senden &rarr;
             </button>
             <span style="font-size:0.78rem;color:var(--dim);">
-                Generiert eine Rechnung und sendet sie an alle bestätigten Teilnehmer dieses Workshops.
+                Generiert eine Rechnung und sendet sie an alle bestätigten Teilnehmer:innen dieses Workshops.
             </span>
         </div>
 
         <!-- Bulk email to all participants of this workshop -->
-        <div style="margin-bottom:2rem;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;">
+        <div style="margin-bottom:2rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;">
             <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--dim);margin-bottom:1rem;">
-                E-Mail an alle bestätigten Teilnehmer senden
+                E-Mail an alle bestätigten Teilnehmer:innen senden
             </div>
             <form method="POST">
                 <?= csrf_field() ?>
@@ -388,14 +426,14 @@ if ($workshop) {
                 </div>
                 <div class="form-group" style="margin-bottom:0.75rem;">
                     <label for="bulk_message">Nachricht</label>
-                    <textarea id="bulk_message" name="bulk_message" rows="4" required placeholder="Ihre Nachricht an alle Teilnehmer..."></textarea>
+                    <textarea id="bulk_message" name="bulk_message" rows="4" required placeholder="Ihre Nachricht an alle Teilnehmer:innen..."></textarea>
                 </div>
                 <button type="submit" class="btn-admin btn-success"
-                        onclick='return confirm(<?= json_for_html("E-Mail an alle bestaetigten Teilnehmer von \\\"{$workshop['title']}\\\" senden?") ?>)'>
+                        onclick='return confirm(<?= json_for_html("E-Mail an alle bestaetigten Teilnehmer:innen von \\\"{$workshop['title']}\\\" senden?") ?>)'>
                     An alle senden &rarr;
                 </button>
                 <span style="font-size:0.78rem;color:var(--dim);margin-left:0.75rem;">
-                    Geht an alle bestätigten Bucher + einzeln angegebene Teilnehmer (keine Duplikate).
+                    Geht an alle bestätigten Buchenden + einzeln angegebene Teilnehmer:innen (keine Duplikate).
                 </span>
             </form>
         </div>
@@ -425,7 +463,7 @@ if ($workshop) {
                         $isIndividual = ($b['booking_mode'] ?? 'group') === 'individual';
                     ?>
                     <tr>
-                        <td style="color:#fff;"><?= e($b['name']) ?></td>
+                        <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><a href="mailto:<?= e($b['email']) ?>" style="color:var(--muted);"><?= e($b['email']) ?></a></td>
                         <td><?= e($b['organization']) ?></td>
                         <td><?= e($b['workshop_title']) ?></td>
@@ -434,7 +472,7 @@ if ($workshop) {
                             <?php if ($isIndividual && !empty($bParts)): ?>
                                 <button type="button"
                                         onclick="var r=this.closest('tr').nextElementSibling;r.style.display=r.style.display==='none'?'':'none';"
-                                        style="font-size:0.65rem;padding:1px 6px;margin-left:4px;background:rgba(255,255,255,0.07);border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;">
+                                        style="font-size:0.65rem;padding:1px 6px;margin-left:4px;background:var(--surface-soft);border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;">
                                     einzeln
                                 </button>
                             <?php endif; ?>
@@ -475,11 +513,11 @@ if ($workshop) {
                     <tr style="display:none;background:rgba(245,166,35,0.04);" class="parts-row">
                         <td colspan="8" style="padding:0.75rem 1rem 0.75rem 2.5rem;">
                             <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:0.5rem;">
-                                Einzeln angemeldete Teilnehmer
+                                Einzeln angemeldete Teilnehmer:innen
                             </div>
                             <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
                                 <?php foreach ($bParts as $p): ?>
-                                <span style="font-size:0.8rem;padding:3px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:4px;color:var(--muted);">
+                                <span style="font-size:0.8rem;padding:3px 10px;background:var(--surface-soft);border:1px solid var(--border);border-radius:4px;color:var(--muted);">
                                     <?= e($p['name']) ?>
                                     <a href="mailto:<?= e($p['email']) ?>" style="color:var(--dim);margin-left:4px;"><?= e($p['email']) ?></a>
                                 </span>
@@ -528,7 +566,7 @@ if ($workshop) {
     $pos1BetragDefault = !empty($workshop['price_netto'])
         ? number_format((float)$workshop['price_netto'], 2, ',', '.')
         : '';
-    $selStyle = 'width:100%;padding:8px 14px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:var(--radius);color:#fff;font-family:var(--font-b);font-size:0.9rem;';
+    $selStyle = 'width:100%;padding:8px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--font-b);font-size:0.9rem;';
 ?>
 <!-- Rechnung Modal -->
 <div class="email-modal-overlay" id="rechnungModal">
@@ -620,11 +658,11 @@ if ($workshop) {
             </div>
             <div style="display:flex;gap:0.4rem;">
                 <button type="button" onclick="rcSelectAll(true)"
-                        style="font-size:0.72rem;padding:3px 10px;background:rgba(255,255,255,0.07);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;">
+                        style="font-size:0.72rem;padding:3px 10px;background:var(--surface-soft);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;">
                     Alle
                 </button>
                 <button type="button" onclick="rcSelectAll(false)"
-                        style="font-size:0.72rem;padding:3px 10px;background:rgba(255,255,255,0.07);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;">
+                        style="font-size:0.72rem;padding:3px 10px;background:var(--surface-soft);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;">
                     Keine
                 </button>
             </div>
@@ -784,6 +822,8 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') { closeEmailModal(); closeRechnungModal(); }
 });
 </script>
+
+<script src="../assets/site-ui.js"></script>
 
 </body>
 </html>

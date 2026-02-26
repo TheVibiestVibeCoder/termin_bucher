@@ -37,6 +37,17 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+    document.documentElement.classList.add('js');
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem('site-theme');
+            if (storedTheme === 'light' || storedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+        } catch (e) {}
+    })();
+    </script>
     <title>Workshops verwalten – Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,6 +55,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 <div class="admin-layout">
 
     <?php include __DIR__ . '/sidebar.php'; ?>
@@ -57,7 +69,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         <?= render_flash() ?>
 
         <?php if (empty($workshops)): ?>
-            <p style="color:var(--muted);">Noch keine Workshops vorhanden. <a href="workshop-edit.php" style="color:#fff;">Jetzt erstellen</a></p>
+            <p style="color:var(--muted);">Noch keine Workshops vorhanden. <a href="workshop-edit.php" style="color:var(--text);">Jetzt erstellen</a></p>
         <?php else: ?>
             <table class="admin-table">
                 <thead>
@@ -74,10 +86,10 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                 <tbody>
                     <?php foreach ($workshops as $w): ?>
                     <tr>
-                        <td style="color:#fff;">
+                        <td style="color:var(--text);">
                             <?= e($w['title']) ?>
                             <?php if ($w['featured']): ?>
-                                <span style="font-size:0.65rem;background:#fff;color:#000;padding:2px 6px;border-radius:3px;margin-left:0.5rem;">Featured</span>
+                                <span style="font-size:0.65rem;background:var(--featured-pill-bg);color:var(--featured-pill-text);padding:2px 6px;border-radius:3px;margin-left:0.5rem;">Featured</span>
                             <?php endif; ?>
                         </td>
                         <td><?= e($w['tag_label']) ?></td>
@@ -114,5 +126,6 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         <?php endif; ?>
     </div>
 </div>
+<script src="../assets/site-ui.js"></script>
 </body>
 </html>

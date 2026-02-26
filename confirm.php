@@ -15,7 +15,19 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
         $inTransaction = true;
 
         $stmt = $db->prepare('
-            SELECT b.*, w.title AS workshop_title, w.slug AS workshop_slug, w.capacity AS workshop_capacity
+            SELECT
+                b.*,
+                w.title AS workshop_title,
+                w.slug AS workshop_slug,
+                w.capacity AS workshop_capacity,
+                w.format,
+                w.tag_label,
+                w.workshop_type,
+                w.event_date,
+                w.event_date_end,
+                w.location,
+                w.price_netto,
+                w.price_currency
             FROM bookings b
             JOIN workshops w ON b.workshop_id = w.id
             WHERE b.token = :token
@@ -66,18 +78,39 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
     }
 
     if ($status === 'confirmed' && is_array($confirmedBooking)) {
-        send_booking_confirmed_email($confirmedBooking['email'], $confirmedBooking['name'], $workshopTitle);
+        $participants = [];
 
         $pstmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid');
         $pstmt->bindValue(':bid', (int) $confirmedBooking['id'], SQLITE3_INTEGER);
         $pres = $pstmt->execute();
         while ($p = $pres->fetchArray(SQLITE3_ASSOC)) {
+            $participants[] = $p;
             if (strtolower((string) $p['email']) !== strtolower((string) $confirmedBooking['email'])) {
-                send_participant_confirmed_email($p['email'], $p['name'], $workshopTitle, $confirmedBooking['name']);
+                $participantBookingView = [
+                    'participants' => (int) $confirmedBooking['participants'],
+                    'booking_mode' => (string) ($confirmedBooking['booking_mode'] ?? 'group'),
+                ];
+                send_participant_confirmed_email(
+                    $p['email'],
+                    $p['name'],
+                    $workshopTitle,
+                    $confirmedBooking['name'],
+                    $participantBookingView,
+                    $confirmedBooking
+                );
             }
         }
 
-        send_admin_notification($workshopTitle, $confirmedBooking);
+        send_booking_confirmed_email(
+            $confirmedBooking['email'],
+            $confirmedBooking['name'],
+            $workshopTitle,
+            $confirmedBooking,
+            $confirmedBooking,
+            $participants
+        );
+
+        send_admin_notification($workshopTitle, $confirmedBooking, $confirmedBooking, $participants);
     }
 }
 
@@ -97,12 +130,24 @@ $msg = $messages[$status];
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($msg[0]) ?> – <?= e(SITE_NAME) ?></title>
+    <script>
+    document.documentElement.classList.add('js');
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem('site-theme');
+            if (storedTheme === 'light' || storedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+        } catch (e) {}
+    })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 
 <div class="confirm-page">
     <div class="confirm-box">
@@ -129,6 +174,8 @@ $msg = $messages[$status];
         <a href="index.php" class="btn-primary" style="display:inline-block;text-decoration:none;margin-top:0.5rem;">&larr; Zurück zu den Workshops</a>
     </div>
 </div>
+
+<script src="assets/site-ui.js"></script>
 
 </body>
 </html>

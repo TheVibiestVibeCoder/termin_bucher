@@ -78,6 +78,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kontakt – <?= e(SITE_NAME) ?></title>
     <meta name="description" content="Kontaktieren Sie uns für individuelle Workshop-Anfragen oder allgemeine Fragen.">
+    <script>
+    document.documentElement.classList.add('js');
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem('site-theme');
+            if (storedTheme === 'light' || storedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+        } catch (e) {}
+    })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -97,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
+            <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">&#9790;</button></li>
             <li><a href="kontakt.php" class="nav-cta active">Kontakt</a></li>
         </ul>
     </div>
@@ -158,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
                     <div class="form-group">
                         <label for="message">Nachricht *</label>
                         <textarea id="message" name="message" rows="6" required
-                                  placeholder="Beschreiben Sie Ihr Anliegen, Ihre Organisation und die Anzahl möglicher Teilnehmer..."><?= e($formData['message']) ?></textarea>
+                                  placeholder="Beschreiben Sie Ihr Anliegen, Ihre Organisation und die Anzahl möglicher Teilnehmer:innen..."><?= e($formData['message']) ?></textarea>
                     </div>
 
                     <button type="submit" class="btn-submit">Nachricht senden &rarr;</button>
@@ -189,6 +201,8 @@ burger.addEventListener('click', () => {
     burger.setAttribute('aria-expanded', open);
 });
 </script>
+
+<script src="assets/site-ui.js"></script>
 
 </body>
 </html>
