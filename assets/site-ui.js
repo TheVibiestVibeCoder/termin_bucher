@@ -2,34 +2,74 @@
     const root = document.documentElement;
     const body = document.body;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const mobileQuery = window.matchMedia("(max-width: 768px)");
 
     const getCurrentTheme = () => (root.getAttribute("data-theme") === "light" ? "light" : "dark");
 
-    const applyTheme = (theme) => {
+    const getToggleLabel = (theme, mobile) => {
+        if (mobile) {
+            return theme === "light" ? "Dark Modus" : "Light Modus";
+        }
+        return theme === "light" ? "\u2600" : "\u263E";
+    };
+
+    const getToggleHint = (theme) => (theme === "light" ? "Zum Dark Mode wechseln" : "Zum Light Mode wechseln");
+
+    const updateToggle = (theme) => {
+        const toggle = document.querySelector("#themeToggle");
+        if (!toggle) return;
+        toggle.textContent = getToggleLabel(theme, mobileQuery.matches);
+        toggle.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
+        const hint = getToggleHint(theme);
+        toggle.setAttribute("aria-label", hint);
+        toggle.setAttribute("title", hint);
+    };
+
+    const persistTheme = (theme) => {
         root.setAttribute("data-theme", theme);
         try {
             localStorage.setItem("site-theme", theme);
         } catch (e) {
             // ignore storage errors
         }
+        updateToggle(theme);
+    };
 
-        const toggle = document.querySelector("#themeToggle");
-        if (toggle) {
-            const light = theme === "light";
-            const nextLabel = light ? "Zum Dark Mode wechseln" : "Zum Light Mode wechseln";
-            toggle.textContent = light ? "\u2600" : "\u263E";
-            toggle.setAttribute("aria-pressed", light ? "true" : "false");
-            toggle.setAttribute("aria-label", nextLabel);
-            toggle.setAttribute("title", nextLabel);
+    const applyTheme = (theme, animate = false, originX = null, originY = null) => {
+        if (
+            animate &&
+            !reduceMotion &&
+            typeof document.startViewTransition === "function"
+        ) {
+            if (originX !== null && originY !== null) {
+                root.style.setProperty("--theme-origin-x", `${originX}px`);
+                root.style.setProperty("--theme-origin-y", `${originY}px`);
+            }
+            document.startViewTransition(() => {
+                persistTheme(theme);
+            });
+            return;
         }
+        persistTheme(theme);
     };
 
     const toggle = document.querySelector("#themeToggle");
     if (toggle) {
-        applyTheme(getCurrentTheme());
+        updateToggle(getCurrentTheme());
         toggle.addEventListener("click", () => {
-            applyTheme(getCurrentTheme() === "light" ? "dark" : "light");
+            const nextTheme = getCurrentTheme() === "light" ? "dark" : "light";
+            const rect = toggle.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            applyTheme(nextTheme, true, x, y);
         });
+
+        const onMobileChange = () => updateToggle(getCurrentTheme());
+        if (typeof mobileQuery.addEventListener === "function") {
+            mobileQuery.addEventListener("change", onMobileChange);
+        } else if (typeof mobileQuery.addListener === "function") {
+            mobileQuery.addListener(onMobileChange);
+        }
     }
 
     if (!body.classList.contains("page-loaded")) {
@@ -70,6 +110,6 @@
         body.classList.add("page-transition-out");
         window.setTimeout(() => {
             window.location.href = anchor.href;
-        }, 320);
+        }, 260);
     });
 })();

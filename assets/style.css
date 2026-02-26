@@ -47,17 +47,19 @@
     --panel-bg: rgba(255,255,255,0.04);
     --panel-border: rgba(255,255,255,0.1);
     --panel-border-strong: rgba(255,255,255,0.22);
+    --theme-origin-x: 50vw;
+    --theme-origin-y: 50vh;
 }
 
 html { scroll-behavior: smooth; }
 html.js body {
-    opacity: 0;
-    transform: translateY(6px);
+    opacity: 1;
+    transform: none;
 }
 html.js body.page-loaded {
     opacity: 1;
     transform: none;
-    transition: opacity 0.28s ease, transform 0.38s cubic-bezier(0.2,0.8,0.2,1);
+    transition: none;
 }
 
 body {
@@ -70,9 +72,10 @@ body {
     transition: background-color 0.45s ease, color 0.45s ease;
 }
 body.page-transition-out {
-    opacity: 0.24;
-    transform: translateY(-16px) scale(1.01);
-    transition: opacity 0.35s ease, transform 0.55s cubic-bezier(0.2,0.8,0.2,1);
+    opacity: 0.9;
+    transform: translateY(-8px) scale(1.002);
+    transition: opacity 0.24s ease, transform 0.32s cubic-bezier(0.2,0.8,0.2,1);
+    will-change: transform, opacity;
 }
 
 html[data-theme="light"] {
@@ -114,6 +117,36 @@ html[data-theme="light"] {
     --panel-bg: rgba(255,255,255,0.64);
     --panel-border: rgba(36,28,20,0.16);
     --panel-border-strong: rgba(36,28,20,0.28);
+}
+@supports (view-transition-name: root) {
+    :root { view-transition-name: root; }
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation-duration: 360ms;
+        animation-timing-function: cubic-bezier(0.22,0.61,0.36,1);
+    }
+    ::view-transition-old(root) {
+        animation-name: themeFadeOut;
+    }
+    ::view-transition-new(root) {
+        animation-name: themeRevealIn;
+    }
+    @keyframes themeFadeOut {
+        to {
+            opacity: 0;
+            transform: scale(1.015);
+        }
+    }
+    @keyframes themeRevealIn {
+        from {
+            clip-path: circle(0 at var(--theme-origin-x) var(--theme-origin-y));
+            filter: saturate(1.06);
+        }
+        to {
+            clip-path: circle(160vmax at var(--theme-origin-x) var(--theme-origin-y));
+            filter: saturate(1);
+        }
+    }
 }
 @media (prefers-reduced-motion: reduce) {
     html.js body,
@@ -257,14 +290,18 @@ nav {
     .nav-links li {
         padding: 0;
         width: 100%;
-        justify-content: flex-end;
+        justify-content: stretch;
     }
     .nav-links a {
         padding: 0.7rem 0.2rem;
         font-size: 1rem;
     }
     .nav-links .theme-toggle {
-        margin: 0 0 0 auto;
+        width: 100%;
+        height: 36px;
+        border-radius: var(--radius);
+        font-size: 0.92rem;
+        padding: 8px 20px;
     }
     .nav-burger { display: block; }
     .nav-links .nav-cta {
