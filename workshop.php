@@ -25,6 +25,7 @@ $minP         = (int) ($workshop['min_participants'] ?? 0);
 $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
 $belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
 $aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
+$isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
 $eventDate    = $workshop['event_date']     ?? '';
 $eventDateEnd = $workshop['event_date_end'] ?? '';
 $location     = $workshop['location']       ?? '';
@@ -64,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
 
     if (strlen($formData['name']) < 2) $errors[] = 'Bitte geben Sie Ihren Namen ein.';
     if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
-    if ($formData['participants'] < 1 || $formData['participants'] > 50) $errors[] = 'Ungültige Teilnehmerzahl.';
+    if ($formData['participants'] < 1 || $formData['participants'] > 50) $errors[] = 'Ungültige Anzahl Teilnehmer:innen.';
 
     if (mb_strlen($formData['name']) > $maxLen['name']) $errors[] = 'Name ist zu lang.';
     if (mb_strlen($formData['email']) > $maxLen['email']) $errors[] = 'E-Mail-Adresse ist zu lang.';
@@ -75,15 +76,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if ($formData['booking_mode'] === 'individual' && empty($errors)) {
         $expected = $formData['participants'];
         if (count($participantNames) !== $expected || count($participantEmails) !== $expected) {
-            $errors[] = 'Bitte füllen Sie die Daten für alle Teilnehmer aus.';
+            $errors[] = 'Bitte füllen Sie die Daten für alle Teilnehmer:innen aus.';
         } else {
             foreach ($participantNames as $i => $pn) {
-                if (strlen($pn) < 2) $errors[] = 'Teilnehmer ' . ($i+1) . ': Bitte geben Sie einen Namen ein.';
+                if (strlen($pn) < 2) $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Bitte geben Sie einen Namen ein.';
                 $participantEmail = $participantEmails[$i] ?? '';
-                if (mb_strlen($pn) > $maxLen['name']) $errors[] = 'Teilnehmer ' . ($i+1) . ': Name ist zu lang.';
-                if (mb_strlen($participantEmail) > $maxLen['email']) $errors[] = 'Teilnehmer ' . ($i+1) . ': E-Mail-Adresse ist zu lang.';
+                if (mb_strlen($pn) > $maxLen['name']) $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Name ist zu lang.';
+                if (mb_strlen($participantEmail) > $maxLen['email']) $errors[] = 'Teilnehmer:in ' . ($i+1) . ': E-Mail-Adresse ist zu lang.';
                 if (!filter_var($participantEmail, FILTER_VALIDATE_EMAIL)) {
-                    $errors[] = 'Teilnehmer ' . ($i+1) . ': Ungültige E-Mail-Adresse.';
+                    $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Ungültige E-Mail-Adresse.';
                 }
             }
         }
@@ -114,18 +115,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         } else {
             $bookingId = $db->lastInsertRowID();
 
+        $bookingParticipantsForEmail = [];
+
         // Save individual participant details if in individual mode
         if ($formData['booking_mode'] === 'individual') {
             foreach ($participantNames as $i => $pName) {
+                $participantEmail = $participantEmails[$i] ?? '';
                 $pstmt = $db->prepare('INSERT INTO booking_participants (booking_id, name, email) VALUES (:bid, :name, :email)');
                 $pstmt->bindValue(':bid',   $bookingId,                 SQLITE3_INTEGER);
                 $pstmt->bindValue(':name',  $pName,                     SQLITE3_TEXT);
-                $pstmt->bindValue(':email', $participantEmails[$i] ?? '', SQLITE3_TEXT);
+                $pstmt->bindValue(':email', $participantEmail, SQLITE3_TEXT);
                 $pstmt->execute();
+
+                $bookingParticipantsForEmail[] = [
+                    'name'  => $pName,
+                    'email' => $participantEmail,
+                ];
             }
         }
 
-            if (!send_confirmation_email($formData['email'], $formData['name'], $workshop['title'], $token)) {
+            if (!send_confirmation_email(
+                $formData['email'],
+                $formData['name'],
+                $workshop['title'],
+                $token,
+                $formData,
+                $workshop,
+                $bookingParticipantsForEmail
+            )) {
                 $rollbackStmt = $db->prepare('DELETE FROM bookings WHERE id = :id');
                 $rollbackStmt->bindValue(':id', $bookingId, SQLITE3_INTEGER);
                 $rollbackStmt->execute();
@@ -184,13 +201,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             <!-- Left: Info -->
             <div class="detail-info">
                 <!-- Type badge + format tag -->
-                <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:1.25rem;">
+                <div class="badge-row badge-row-detail">
                     <?php if ($isOpen): ?>
-                        <span class="type-badge type-badge-open"><span class="badge-dot"></span>Fester Termin</span>
+                        <?php if ($isGuaranteed): ?>
+                            <span class="type-badge type-badge-confirmed"><span class="badge-dot"></span>Findet statt</span>
+                        <?php elseif ($minP > 0): ?>
+                            <span class="type-badge type-badge-open-pending"><span class="badge-dot"></span>Mindestanzahl offen</span>
+                        <?php else: ?>
+                            <span class="type-badge type-badge-open"><span class="badge-dot"></span>Anmeldung offen</span>
+                        <?php endif; ?>
                     <?php else: ?>
                         <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
                     <?php endif; ?>
-                    <div class="detail-tag" style="margin-bottom:0;"><span class="card-tag-dot"></span> <?= e($workshop['tag_label']) ?></div>
+                    <div class="detail-tag"><span class="card-tag-dot"></span> <?= e($workshop['tag_label']) ?></div>
                     <?php if ($workshop['featured']): ?>
                         <span style="display:inline-block;font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#000;background:#fff;padding:4px 10px;border-radius:4px;">Empfohlen</span>
                     <?php endif; ?>
@@ -238,6 +261,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                         <div class="label">Termin</div>
                         <div class="value">Auf Anfrage</div>
                     </div>
+                    <?php else: ?>
+                    <div class="detail-meta-item">
+                        <div class="label">Terminart</div>
+                        <div class="value">Fester Termin</div>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($isOpen && $minP > 0): ?>
+                    <div class="detail-meta-item">
+                        <div class="label">Status</div>
+                        <div class="value"><?= $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen' ?></div>
+                    </div>
                     <?php endif; ?>
                     <div class="detail-meta-item">
                         <div class="label">Format</div>
@@ -268,7 +302,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 <?php if ($minP > 0): ?>
                 <div class="min-participants-note" style="margin-bottom:1.5rem;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Dieser Workshop findet nur statt, wenn mindestens <?= $minP ?> Personen buchen.
+                    <?= $isGuaranteed
+                        ? 'Mindestanzahl erreicht: Dieser Workshop findet statt.'
+                        : ('Dieser Workshop findet statt, sobald mindestens ' . $minP . ' Teilnehmer:innen gebucht sind.') ?>
                 </div>
                 <?php endif; ?>
 
@@ -351,7 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                                    value="<?= e($formData['phone']) ?>">
                         </div>
                         <div class="form-group">
-                            <label for="participants">Anzahl Teilnehmer</label>
+                            <label for="participants">Anzahl Teilnehmer:innen</label>
                             <select id="participants" name="participants">
                                 <?php for ($i = 1; $i <= min(20, $spotsLeft ?? 20); $i++): ?>
                                     <option value="<?= $i ?>" <?= $formData['participants'] == $i ? 'selected' : '' ?>><?= $i ?></option>
@@ -496,7 +532,7 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
             const entry  = document.createElement('div');
             entry.className = 'participant-entry';
             entry.innerHTML = `
-                <div class="participant-entry-num">Teilnehmer ${i + 1}</div>
+                <div class="participant-entry-num">Teilnehmer:in ${i + 1}</div>
                 <div class="form-group">
                     <label>Name *</label>
                     <input type="text" name="participant_name[]" value="${escAttr(pName)}"

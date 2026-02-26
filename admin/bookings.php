@@ -51,7 +51,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $inTransaction = true;
 
             $bstmt = $db->prepare('
-                SELECT b.*, w.title AS workshop_title, w.capacity AS workshop_capacity
+                SELECT
+                    b.*,
+                    w.title AS workshop_title,
+                    w.capacity AS workshop_capacity,
+                    w.format,
+                    w.tag_label,
+                    w.workshop_type,
+                    w.event_date,
+                    w.event_date_end,
+                    w.location,
+                    w.price_netto,
+                    w.price_currency
                 FROM bookings b
                 JOIN workshops w ON b.workshop_id = w.id
                 WHERE b.id = :id
@@ -93,7 +104,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (is_array($sendConfirmationEmail)) {
-            if (!send_booking_confirmed_email($sendConfirmationEmail['email'], $sendConfirmationEmail['name'], $sendConfirmationEmail['workshop_title'])) {
+            $emailParticipants = [];
+            $pstmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid ORDER BY id ASC');
+            $pstmt->bindValue(':bid', (int) $sendConfirmationEmail['id'], SQLITE3_INTEGER);
+            $pres = $pstmt->execute();
+            while ($p = $pres->fetchArray(SQLITE3_ASSOC)) {
+                $emailParticipants[] = $p;
+            }
+
+            if (!send_booking_confirmed_email(
+                $sendConfirmationEmail['email'],
+                $sendConfirmationEmail['name'],
+                $sendConfirmationEmail['workshop_title'],
+                $sendConfirmationEmail,
+                $sendConfirmationEmail,
+                $emailParticipants
+            )) {
                 flash('error', 'Bestaetigungs-E-Mail konnte nicht gesendet werden.');
             }
         }
@@ -367,14 +393,14 @@ if ($workshop) {
                 Rechnung senden &rarr;
             </button>
             <span style="font-size:0.78rem;color:var(--dim);">
-                Generiert eine Rechnung und sendet sie an alle bestätigten Teilnehmer dieses Workshops.
+                Generiert eine Rechnung und sendet sie an alle bestätigten Teilnehmer:innen dieses Workshops.
             </span>
         </div>
 
         <!-- Bulk email to all participants of this workshop -->
         <div style="margin-bottom:2rem;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;">
             <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--dim);margin-bottom:1rem;">
-                E-Mail an alle bestätigten Teilnehmer senden
+                E-Mail an alle bestätigten Teilnehmer:innen senden
             </div>
             <form method="POST">
                 <?= csrf_field() ?>
@@ -388,14 +414,14 @@ if ($workshop) {
                 </div>
                 <div class="form-group" style="margin-bottom:0.75rem;">
                     <label for="bulk_message">Nachricht</label>
-                    <textarea id="bulk_message" name="bulk_message" rows="4" required placeholder="Ihre Nachricht an alle Teilnehmer..."></textarea>
+                    <textarea id="bulk_message" name="bulk_message" rows="4" required placeholder="Ihre Nachricht an alle Teilnehmer:innen..."></textarea>
                 </div>
                 <button type="submit" class="btn-admin btn-success"
-                        onclick='return confirm(<?= json_for_html("E-Mail an alle bestaetigten Teilnehmer von \\\"{$workshop['title']}\\\" senden?") ?>)'>
+                        onclick='return confirm(<?= json_for_html("E-Mail an alle bestaetigten Teilnehmer:innen von \\\"{$workshop['title']}\\\" senden?") ?>)'>
                     An alle senden &rarr;
                 </button>
                 <span style="font-size:0.78rem;color:var(--dim);margin-left:0.75rem;">
-                    Geht an alle bestätigten Bucher + einzeln angegebene Teilnehmer (keine Duplikate).
+                    Geht an alle bestätigten Buchenden + einzeln angegebene Teilnehmer:innen (keine Duplikate).
                 </span>
             </form>
         </div>
@@ -475,7 +501,7 @@ if ($workshop) {
                     <tr style="display:none;background:rgba(245,166,35,0.04);" class="parts-row">
                         <td colspan="8" style="padding:0.75rem 1rem 0.75rem 2.5rem;">
                             <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:0.5rem;">
-                                Einzeln angemeldete Teilnehmer
+                                Einzeln angemeldete Teilnehmer:innen
                             </div>
                             <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
                                 <?php foreach ($bParts as $p): ?>

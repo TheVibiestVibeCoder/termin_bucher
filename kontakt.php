@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
                     <div class="form-group">
                         <label for="message">Nachricht *</label>
                         <textarea id="message" name="message" rows="6" required
-                                  placeholder="Beschreiben Sie Ihr Anliegen, Ihre Organisation und die Anzahl möglicher Teilnehmer..."><?= e($formData['message']) ?></textarea>
+                                  placeholder="Beschreiben Sie Ihr Anliegen, Ihre Organisation und die Anzahl möglicher Teilnehmer:innen..."><?= e($formData['message']) ?></textarea>
                     </div>
 
                     <button type="submit" class="btn-submit">Nachricht senden &rarr;</button>

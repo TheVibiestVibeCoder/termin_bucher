@@ -96,6 +96,7 @@ $audienceLabels = [
                 $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
                 $belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
                 $aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
+                $isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
                 $eventDate    = $w['event_date']     ?? '';
                 $eventDateEnd = $w['event_date_end'] ?? '';
                 $location     = $w['location']       ?? '';
@@ -107,13 +108,19 @@ $audienceLabels = [
                     <div class="featured-badge">Empfohlen</div>
                 <?php endif; ?>
 
-                <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem;">
+                <div class="badge-row badge-row-card">
                     <?php if ($isOpen): ?>
-                        <span class="type-badge type-badge-open"><span class="badge-dot"></span>Fester Termin</span>
+                        <?php if ($isGuaranteed): ?>
+                            <span class="type-badge type-badge-confirmed"><span class="badge-dot"></span>Findet statt</span>
+                        <?php elseif ($minP > 0): ?>
+                            <span class="type-badge type-badge-open-pending"><span class="badge-dot"></span>Mindestanzahl offen</span>
+                        <?php else: ?>
+                            <span class="type-badge type-badge-open"><span class="badge-dot"></span>Anmeldung offen</span>
+                        <?php endif; ?>
                     <?php else: ?>
                         <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
                     <?php endif; ?>
-                    <div class="card-tag" style="margin-bottom:0;"><span class="card-tag-dot"></span><?= e($w['tag_label']) ?></div>
+                    <div class="card-tag"><span class="card-tag-dot"></span><?= e($w['tag_label']) ?></div>
                 </div>
 
                 <h3 class="card-h3"><?= e($w['title']) ?></h3>
@@ -167,6 +174,12 @@ $audienceLabels = [
                 <?php endif; ?>
 
                 <div class="card-meta">
+                    <?php if ($isOpen): ?>
+                    <span class="meta-pill">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
+                        Fester Termin
+                    </span>
+                    <?php endif; ?>
                     <?php if ($capacity > 0): ?>
                     <span class="meta-pill">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
@@ -179,10 +192,14 @@ $audienceLabels = [
                     </span>
                 </div>
 
-                <?php if ($minP > 0 && !$isOpen): ?>
+                <?php if ($minP > 0): ?>
                 <div class="min-participants-note">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Mindestens <?= $minP ?> Teilnehmende erforderlich
+                    <?php if ($isOpen): ?>
+                        <?= $isGuaranteed ? 'Mindestanzahl erreicht: findet statt.' : 'Findet statt ab ' . $minP . ' Teilnehmer:innen.' ?>
+                    <?php else: ?>
+                        Mindestens <?= $minP ?> Teilnehmende erforderlich
+                    <?php endif; ?>
                 </div>
                 <?php endif; ?>
 

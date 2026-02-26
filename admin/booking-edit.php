@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 
     if (strlen($name) < 2) $errors[] = 'Bitte geben Sie einen Namen ein.';
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
-    if ($participants < 1 || $participants > 500) $errors[] = 'Ungültige Teilnehmerzahl.';
+    if ($participants < 1 || $participants > 500) $errors[] = 'Ungültige Anzahl Teilnehmer:innen.';
 
     if (mb_strlen($name) > 120) $errors[] = 'Name ist zu lang.';
     if (mb_strlen($email) > 254) $errors[] = 'E-Mail-Adresse ist zu lang.';
@@ -164,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                        value="<?= e($booking['phone']) ?>">
             </div>
             <div class="form-group">
-                <label for="participants">Anzahl Teilnehmer *</label>
+                <label for="participants">Anzahl Teilnehmer:innen *</label>
                 <input type="number" id="participants" name="participants" min="1" max="500" required
                        value="<?= (int) $booking['participants'] ?>">
             </div>

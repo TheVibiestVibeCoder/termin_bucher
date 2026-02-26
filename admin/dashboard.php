@@ -12,6 +12,7 @@ $totalParticipants = (int) $db->querySingle('SELECT COALESCE(SUM(participants), 
 // Group by currency so we can display mixed currencies correctly
 $revenueResult = $db->query('
     SELECT
+        w.id AS workshop_id,
         w.title,
         w.price_netto,
         w.price_currency,
@@ -35,7 +36,7 @@ while ($row = $revenueResult->fetchArray(SQLITE3_ASSOC)) {
 
 // ── Recent bookings ──────────────────────────────────────────────────────────
 $recentResult = $db->query('
-    SELECT b.*, w.title AS workshop_title, w.price_netto, w.price_currency
+    SELECT b.*, w.id AS workshop_id, w.title AS workshop_title, w.price_netto, w.price_currency
     FROM bookings b
     JOIN workshops w ON b.workshop_id = w.id
     ORDER BY b.created_at DESC
@@ -84,7 +85,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                 <div class="stat-card-num"><?= $pendingBookings ?></div>
             </div>
             <div class="stat-card">
-                <div class="stat-card-label">Teilnehmer gesamt</div>
+                <div class="stat-card-label">Teilnehmer:innen gesamt</div>
                 <div class="stat-card-num"><?= $totalParticipants ?></div>
             </div>
         </div>
@@ -121,14 +122,18 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                         <th>Workshop</th>
                         <th>Preis / Person</th>
                         <th>Best. Buchungen</th>
-                        <th>Teilnehmer</th>
+                        <th>Teilnehmer:innen</th>
                         <th>Umsatz (Netto)</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($revenueByWorkshop as $r): ?>
                     <tr>
-                        <td style="color:#fff;"><?= e($r['title']) ?></td>
+                        <td style="color:#fff;">
+                            <a href="bookings.php?workshop_id=<?= (int) $r['workshop_id'] ?>" style="color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.2);">
+                                <?= e($r['title']) ?>
+                            </a>
+                        </td>
                         <td><?= e(format_price((float)$r['price_netto'], $r['price_currency'])) ?></td>
                         <td><?= (int) $r['confirmed_bookings'] ?></td>
                         <td><?= (int) $r['confirmed_participants'] ?></td>
@@ -171,7 +176,11 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                     <tr>
                         <td style="color:#fff;"><?= e($b['name']) ?></td>
                         <td><?= e($b['email']) ?></td>
-                        <td><?= e($b['workshop_title']) ?></td>
+                        <td>
+                            <a href="bookings.php?workshop_id=<?= (int) $b['workshop_id'] ?>" style="color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.2);">
+                                <?= e($b['workshop_title']) ?>
+                            </a>
+                        </td>
                         <td><?= (int) $b['participants'] ?></td>
                         <td>
                             <?php if ($bRev > 0): ?>

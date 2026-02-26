@@ -321,7 +321,7 @@ function to_datetime_local(string $val): string {
 
             <!-- ── Capacity & Participants ── -->
             <div class="section-box">
-                <div class="section-box-title">Kapazität &amp; Teilnehmer</div>
+                <div class="section-box-title">Kapazität &amp; Teilnehmer:innen</div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="capacity">Max. Kapazität (0 = unbegrenzt)</label>
