@@ -30,6 +30,17 @@ $audienceLabels = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e(SITE_NAME) ?></title>
+    <script>
+    document.documentElement.classList.add('js');
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem('site-theme');
+            if (storedTheme === 'light' || storedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+        } catch (e) {}
+    })();
+    </script>
     <meta name="description" content="Praktische Workshops zu Desinformation, FIMI-Abwehr und Medienkompetenz – für Unternehmen, NGOs und öffentliche Einrichtungen.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,6 +61,7 @@ $audienceLabels = [
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
+            <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">Light Mode</button></li>
             <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
@@ -284,6 +296,7 @@ filterBtns.forEach(btn => {
     });
 });
 </script>
+<script src="assets/site-ui.js"></script>
 
 </body>
 </html>

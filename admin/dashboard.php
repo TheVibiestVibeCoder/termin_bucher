@@ -52,6 +52,17 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+    document.documentElement.classList.add('js');
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem('site-theme');
+            if (storedTheme === 'light' || storedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+        } catch (e) {}
+    })();
+    </script>
     <title>Dashboard – Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -59,6 +70,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">Light Mode</button>
 <div class="admin-layout">
 
     <?php include __DIR__ . '/sidebar.php'; ?>
@@ -104,7 +116,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
             <!-- Total revenue tiles per currency -->
             <div class="stats-row" style="margin-bottom:1.5rem;">
                 <?php foreach ($totalRevenueByCurrency as $cur => $total): ?>
-                <div class="stat-card" style="border-color:rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);">
+                <div class="stat-card" style="border-color:var(--border-h);background:var(--surface-soft);">
                     <div class="stat-card-label">Gesamtumsatz (<?= e($cur) ?>) · Netto</div>
                     <div class="stat-card-num" style="font-size:1.6rem;">
                         <?= e(format_price($total, $cur)) ?>
@@ -129,15 +141,15 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                 <tbody>
                     <?php foreach ($revenueByWorkshop as $r): ?>
                     <tr>
-                        <td style="color:#fff;">
-                            <a href="bookings.php?workshop_id=<?= (int) $r['workshop_id'] ?>" style="color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.2);">
+                        <td style="color:var(--text);">
+                            <a href="bookings.php?workshop_id=<?= (int) $r['workshop_id'] ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
                                 <?= e($r['title']) ?>
                             </a>
                         </td>
                         <td><?= e(format_price((float)$r['price_netto'], $r['price_currency'])) ?></td>
                         <td><?= (int) $r['confirmed_bookings'] ?></td>
                         <td><?= (int) $r['confirmed_participants'] ?></td>
-                        <td style="color:#fff;font-weight:500;">
+                        <td style="color:var(--text);font-weight:500;">
                             <?= $r['confirmed_participants'] > 0
                                 ? e(format_price($r['revenue'], $r['price_currency']))
                                 : '<span style="color:var(--dim);">–</span>' ?>
@@ -174,10 +186,10 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                         $bRev   = $bPrice * (int) $b['participants'];
                     ?>
                     <tr>
-                        <td style="color:#fff;"><?= e($b['name']) ?></td>
+                        <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><?= e($b['email']) ?></td>
                         <td>
-                            <a href="bookings.php?workshop_id=<?= (int) $b['workshop_id'] ?>" style="color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.2);">
+                            <a href="bookings.php?workshop_id=<?= (int) $b['workshop_id'] ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
                                 <?= e($b['workshop_title']) ?>
                             </a>
                         </td>
@@ -205,5 +217,6 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
         <?php endif; ?>
     </div>
 </div>
+<script src="../assets/site-ui.js"></script>
 </body>
 </html>

@@ -97,13 +97,33 @@ function send_email(string $to, string $subject, string $htmlBody): bool {
 }
 
 /**
+ * Wrap booking emails in a mobile-safe shell.
+ */
+function render_booking_email_shell(string $innerHtml): string {
+    return '
+    <div style="margin:0;padding:0;background:#060606;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;background:#060606;">
+            <tr>
+                <td align="center" style="padding:14px 10px;">
+                    <div style="font-family:Arial,sans-serif;max-width:640px;width:100%;margin:0 auto;background:#0d0d0d;color:#ffffff;padding:24px 16px;border-radius:10px;line-height:1.6;overflow-wrap:anywhere;word-wrap:break-word;word-break:break-word;">
+                        ' . $innerHtml . '
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>';
+}
+
+/**
  * Build one details row for email tables.
  */
 function email_details_row(string $label, string $valueHtml): string {
     return '
         <tr>
-            <td style="padding: 8px 0; color: #a0a0a0; width: 44%; vertical-align: top;">' . $label . '</td>
-            <td style="padding: 8px 0; color: #ffffff; vertical-align: top;">' . $valueHtml . '</td>
+            <td style="padding:10px 0;border-bottom:1px solid #1d1d1d;vertical-align:top;">
+                <div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#818181;margin-bottom:5px;">' . $label . '</div>
+                <div style="font-size:14px;line-height:1.6;color:#ffffff;overflow-wrap:anywhere;word-wrap:break-word;word-break:break-word;">' . $valueHtml . '</div>
+            </td>
         </tr>';
 }
 
@@ -190,11 +210,11 @@ function render_booking_details_block(array $booking = [], array $workshop = [])
     }
 
     return '
-        <div style="margin: 24px 0; padding: 16px 18px; border: 1px solid #222; border-radius: 8px; background: rgba(255,255,255,0.02);">
-            <div style="font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: #777; margin-bottom: 8px;">
+        <div style="margin:22px 0;padding:15px 14px;border:1px solid #222;border-radius:8px;background:rgba(255,255,255,0.02);">
+            <div style="font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#777;margin-bottom:8px;">
                 Buchungsdetails
             </div>
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.45;">
+            <table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.5;">
                 ' . implode('', $rows) . '
             </table>
         </div>';
@@ -217,7 +237,7 @@ function render_booking_participants_block(array $participants): string {
             $label .= ' <span style="color:#a0a0a0;">(' . e($mail) . ')</span>';
         }
 
-        $items[] = '<li style="margin: 0 0 6px 18px; color:#d8d8d8;">' . $label . '</li>';
+        $items[] = '<li style="margin:0 0 7px 16px;color:#d8d8d8;overflow-wrap:anywhere;word-wrap:break-word;word-break:break-word;">' . $label . '</li>';
     }
 
     if (empty($items)) {
@@ -225,13 +245,27 @@ function render_booking_participants_block(array $participants): string {
     }
 
     return '
-        <div style="margin: 0 0 24px; padding: 14px 18px; border: 1px solid #222; border-radius: 8px; background: rgba(255,255,255,0.02);">
-            <div style="font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: #777; margin-bottom: 8px;">
+        <div style="margin:0 0 22px;padding:14px 14px;border:1px solid #222;border-radius:8px;background:rgba(255,255,255,0.02);">
+            <div style="font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#777;margin-bottom:8px;">
                 Angemeldete Teilnehmer:innen
             </div>
-            <ul style="margin: 0; padding: 0;">
+            <ul style="margin:0;padding:0;">
                 ' . implode('', $items) . '
             </ul>
+        </div>';
+}
+
+/**
+ * Cancellation policy block used in booking confirmation mails.
+ */
+function render_cancellation_policy_block(): string {
+    return '
+        <div style="margin:0 0 22px;padding:14px 16px;border:1px solid rgba(245,166,35,0.45);border-radius:8px;background:rgba(245,166,35,0.08);">
+            <div style="font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#d6b180;margin-bottom:6px;">Stornobedingungen</div>
+            <p style="margin:0;font-size:14px;line-height:1.6;color:#f0dfc4;">
+                Absagen bis 14 Kalendertage vor Veranstaltungsbeginn sind kostenfrei.
+                Bei späteren Absagen stellen wir 80&nbsp;% des vereinbarten Gesamtpreises in Rechnung.
+            </p>
         </div>';
 }
 
@@ -253,26 +287,30 @@ function send_confirmation_email(
     }
     $detailsBlock      = render_booking_details_block($booking, $workshop);
     $participantsBlock = render_booking_participants_block($participants);
+    $cancellationBlock = render_cancellation_policy_block();
 
-    $html = '
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0d0d0d; color: #ffffff; padding: 40px; border-radius: 8px;">
-        <h2 style="font-family: Georgia, serif; font-weight: normal; font-size: 24px; margin-bottom: 20px;">Buchung bestätigen</h2>
-        <p style="color: #a0a0a0; line-height: 1.7;">Hallo ' . e($name) . ',</p>
-        <p style="color: #a0a0a0; line-height: 1.7;">vielen Dank für Ihre Anmeldung zum Workshop:</p>
-        <p style="font-size: 18px; font-weight: bold; margin: 20px 0; color: #ffffff;">' . e($workshopTitle) . '</p>
-        <p style="color: #a0a0a0; line-height: 1.7;">Hier finden Sie alle Details zu Ihrer Anfrage:</p>
+    $content = '
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestätigen</h2>
+        <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
+        <p style="color:#a0a0a0;line-height:1.7;">vielen Dank für Ihre Anmeldung zum Workshop:</p>
+        <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Hier finden Sie alle Details zu Ihrer Anfrage:</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
-        <p style="color: #a0a0a0; line-height: 1.7;">Bitte bestätigen Sie Ihre Buchung, indem Sie auf den folgenden Link klicken:</p>
-        <p style="margin: 30px 0;">
-            <a href="' . e($confirmUrl) . '" style="display: inline-block; padding: 14px 32px; background: #ffffff; color: #000000; text-decoration: none; border-radius: 6px; font-weight: bold;">Buchung bestätigen &rarr;</a>
-        </p>
-        <p style="color: #666; font-size: 13px; line-height: 1.5;">Dieser Link ist 48 Stunden gültig. Falls Sie diese Anmeldung nicht durchgeführt haben, können Sie diese E-Mail ignorieren.</p>
-        <hr style="border: none; border-top: 1px solid #222; margin: 30px 0;">
-        <p style="color: #666; font-size: 12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>
-    </div>';
+        ' . $cancellationBlock . '
+        <p style="color:#a0a0a0;line-height:1.7;">Bitte bestätigen Sie Ihre Buchung, indem Sie auf den folgenden Link klicken:</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:28px 0 24px;">
+            <tr>
+                <td align="left">
+                    <a href="' . e($confirmUrl) . '" style="display:inline-block;max-width:100%;box-sizing:border-box;padding:14px 20px;background:#ffffff;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;line-height:1.35;word-break:break-word;">Buchung bestätigen &rarr;</a>
+                </td>
+            </tr>
+        </table>
+        <p style="color:#666;font-size:13px;line-height:1.5;">Dieser Link ist 48 Stunden gültig. Falls Sie diese Anmeldung nicht durchgeführt haben, können Sie diese E-Mail ignorieren.</p>
+        <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
+        <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Buchung bestätigen: ' . $workshopTitle, $html);
+    return send_email($to, 'Buchung bestätigen: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -291,21 +329,21 @@ function send_booking_confirmed_email(
     }
     $detailsBlock      = render_booking_details_block($booking, $workshop);
     $participantsBlock = render_booking_participants_block($participants);
+    $cancellationBlock = render_cancellation_policy_block();
 
-    $html = '
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0d0d0d; color: #ffffff; padding: 40px; border-radius: 8px;">
-        <h2 style="font-family: Georgia, serif; font-weight: normal; font-size: 24px; margin-bottom: 20px;">Buchung bestätigt!</h2>
-        <p style="color: #a0a0a0; line-height: 1.7;">Hallo ' . e($name) . ',</p>
-        <p style="color: #a0a0a0; line-height: 1.7;">Ihre Buchung für den folgenden Workshop wurde erfolgreich bestätigt:</p>
-        <p style="font-size: 18px; font-weight: bold; margin: 20px 0; color: #ffffff;">' . e($workshopTitle) . '</p>
+    $content = '
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestätigt!</h2>
+        <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung für den folgenden Workshop wurde erfolgreich bestätigt:</p>
+        <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
-        <p style="color: #a0a0a0; line-height: 1.7;">Bei Fragen erreichen Sie uns unter <a href="mailto:' . e(MAIL_FROM) . '" style="color: #ffffff;">' . e(MAIL_FROM) . '</a>.</p>
-        <hr style="border: none; border-top: 1px solid #222; margin: 30px 0;">
-        <p style="color: #666; font-size: 12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>
-    </div>';
+        ' . $cancellationBlock . '
+        <p style="color:#a0a0a0;line-height:1.7;">Bei Fragen erreichen Sie uns unter <a href="mailto:' . e(MAIL_FROM) . '" style="color:#ffffff;">' . e(MAIL_FROM) . '</a>.</p>
+        <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
+        <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Bestätigt: ' . $workshopTitle, $html);
+    return send_email($to, 'Bestätigt: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -323,15 +361,14 @@ function send_admin_notification(
     $detailsBlock      = render_booking_details_block($booking, $workshop);
     $participantsBlock = render_booking_participants_block($participants);
 
-    $html = '
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2>Neue Buchung bestätigt</h2>
-        <p><strong>Workshop:</strong> ' . e($workshopTitle) . '</p>
+    $content = '
+        <h2 style="margin:0 0 14px;color:#ffffff;">Neue Buchung bestätigt</h2>
+        <p style="margin:0 0 10px;color:#c8c8c8;"><strong style="color:#ffffff;">Workshop:</strong> ' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
-    </div>';
+        <p style="margin:14px 0 0;color:#8c8c8c;font-size:12px;">Automatische Admin-Benachrichtigung</p>';
 
-    return send_email(MAIL_FROM, 'Neue Buchung: ' . $workshopTitle, $html);
+    return send_email(MAIL_FROM, 'Neue Buchung: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -349,39 +386,37 @@ function send_participant_confirmed_email(
         $workshop['title'] = $workshopTitle;
     }
     $detailsBlock = render_booking_details_block($booking, $workshop);
+    $cancellationBlock = render_cancellation_policy_block();
 
-    $html = '
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0d0d0d; color: #ffffff; padding: 40px; border-radius: 8px;">
-        <h2 style="font-family: Georgia, serif; font-weight: normal; font-size: 24px; margin-bottom: 20px;">Teilnahme bestätigt!</h2>
-        <p style="color: #a0a0a0; line-height: 1.7;">Hallo ' . e($participantName) . ',</p>
-        <p style="color: #a0a0a0; line-height: 1.7;"><strong style="color:#ffffff;">' . e($bookerName) . '</strong> hat Sie für den folgenden Workshop angemeldet:</p>
-        <p style="font-size: 18px; font-weight: bold; margin: 20px 0; color: #ffffff;">' . e($workshopTitle) . '</p>
+    $content = '
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Teilnahme bestätigt!</h2>
+        <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($participantName) . ',</p>
+        <p style="color:#a0a0a0;line-height:1.7;"><strong style="color:#ffffff;">' . e($bookerName) . '</strong> hat Sie für den folgenden Workshop angemeldet:</p>
+        <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
-        <p style="color: #a0a0a0; line-height: 1.7;">Ihre Teilnahme wurde erfolgreich bestätigt.</p>
-        <p style="color: #a0a0a0; line-height: 1.7;">Bei Fragen erreichen Sie uns unter <a href="mailto:' . e(MAIL_FROM) . '" style="color: #ffffff;">' . e(MAIL_FROM) . '</a>.</p>
-        <hr style="border: none; border-top: 1px solid #222; margin: 30px 0;">
-        <p style="color: #666; font-size: 12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>
-    </div>';
+        ' . $cancellationBlock . '
+        <p style="color:#a0a0a0;line-height:1.7;">Ihre Teilnahme wurde erfolgreich bestätigt.</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Bei Fragen erreichen Sie uns unter <a href="mailto:' . e(MAIL_FROM) . '" style="color:#ffffff;">' . e(MAIL_FROM) . '</a>.</p>
+        <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
+        <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Ihre Teilnahme wurde bestätigt: ' . $workshopTitle, $html);
+    return send_email($to, 'Ihre Teilnahme wurde bestätigt: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
  * Notify booker that their booking was cancelled by admin.
  */
 function send_booking_cancelled_email(string $to, string $name, string $workshopTitle): bool {
-    $html = '
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0d0d0d; color: #ffffff; padding: 40px; border-radius: 8px;">
-        <h2 style="font-family: Georgia, serif; font-weight: normal; font-size: 24px; margin-bottom: 20px;">Buchung storniert</h2>
-        <p style="color: #a0a0a0; line-height: 1.7;">Hallo ' . e($name) . ',</p>
-        <p style="color: #a0a0a0; line-height: 1.7;">Ihre Buchung für den folgenden Workshop wurde leider storniert:</p>
-        <p style="font-size: 18px; font-weight: bold; margin: 20px 0; color: #ffffff;">' . e($workshopTitle) . '</p>
-        <p style="color: #a0a0a0; line-height: 1.7;">Falls dies ein Versehen war oder Sie Fragen haben, kontaktieren Sie uns bitte unter <a href="mailto:' . e(MAIL_FROM) . '" style="color: #ffffff;">' . e(MAIL_FROM) . '</a> - wir helfen Ihnen gerne weiter.</p>
-        <hr style="border: none; border-top: 1px solid #222; margin: 30px 0;">
-        <p style="color: #666; font-size: 12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>
-    </div>';
+    $content = '
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;margin-bottom:20px;">Buchung storniert</h2>
+        <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung für den folgenden Workshop wurde leider storniert:</p>
+        <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Falls dies ein Versehen war oder Sie Fragen haben, kontaktieren Sie uns bitte unter <a href="mailto:' . e(MAIL_FROM) . '" style="color:#ffffff;">' . e(MAIL_FROM) . '</a> - wir helfen Ihnen gerne weiter.</p>
+        <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
+        <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Buchung storniert: ' . $workshopTitle, $html);
+    return send_email($to, 'Buchung storniert: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -484,12 +519,10 @@ function send_rechnung_email(string $to, array $d): bool {
  * Send a custom email from admin.
  */
 function send_custom_email(string $to, string $subject, string $messageText): bool {
-    $html = '
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0d0d0d; color: #ffffff; padding: 40px; border-radius: 8px;">
-        <div style="color: #a0a0a0; line-height: 1.7;">' . nl2br(e($messageText)) . '</div>
-        <hr style="border: none; border-top: 1px solid #222; margin: 30px 0;">
-        <p style="color: #666; font-size: 12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>
-    </div>';
+    $content = '
+        <div style="color:#d0d0d0;line-height:1.7;">' . nl2br(e($messageText)) . '</div>
+        <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
+        <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, $subject, $html);
+    return send_email($to, $subject, render_booking_email_shell($content));
 }

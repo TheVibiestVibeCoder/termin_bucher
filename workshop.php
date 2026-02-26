@@ -163,6 +163,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($workshop['title']) ?> – <?= e(SITE_NAME) ?></title>
     <meta name="description" content="<?= e(mb_substr(($workshop['description_short'] ?? '') ?: $workshop['description'], 0, 160)) ?>">
+    <script>
+    document.documentElement.classList.add('js');
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem('site-theme');
+            if (storedTheme === 'light' || storedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+        } catch (e) {}
+    })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -182,6 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
+            <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">Light Mode</button></li>
             <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
@@ -490,7 +502,7 @@ const observer = new IntersectionObserver((entries) => {
 }, { threshold: 0.08 });
 document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
-// ── Booking mode + individual participant fields ──────────────────────────────
+// Booking mode + individual participant fields
 (function () {
     const modeRadios       = document.querySelectorAll('input[name="booking_mode"]');
     const countSelect      = document.getElementById('participants');
@@ -569,6 +581,8 @@ if (descToggle && descWrap) {
     });
 }
 </script>
+
+<script src="assets/site-ui.js"></script>
 
 </body>
 </html>

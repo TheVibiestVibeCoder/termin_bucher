@@ -162,6 +162,17 @@ function to_datetime_local(string $val): string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+    document.documentElement.classList.add('js');
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem('site-theme');
+            if (storedTheme === 'light' || storedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+        } catch (e) {}
+    })();
+    </script>
     <title><?= $isEdit ? 'Workshop bearbeiten' : 'Neuer Workshop' ?> – Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -181,10 +192,10 @@ function to_datetime_local(string $val): string {
             background: transparent;
         }
         .type-toggle input[type="radio"]:checked + label {
-            background: #fff; color: #000;
+            background: var(--btn-hover-bg); color: var(--btn-hover-text);
         }
         .section-box {
-            background: rgba(255,255,255,0.025);
+            background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             padding: 1.5rem; margin-bottom: 1.5rem;
@@ -207,6 +218,7 @@ function to_datetime_local(string $val): string {
     </style>
 </head>
 <body>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">Light Mode</button>
 <div class="admin-layout">
 
     <?php include __DIR__ . '/sidebar.php'; ?>
@@ -464,6 +476,8 @@ document.getElementById('price_currency').addEventListener('change', function ()
     document.querySelector('.price-suffix').textContent = this.value;
 });
 </script>
+
+<script src="../assets/site-ui.js"></script>
 
 </body>
 </html>

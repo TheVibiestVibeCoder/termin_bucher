@@ -97,6 +97,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+    document.documentElement.classList.add('js');
+    (function () {
+        try {
+            var storedTheme = localStorage.getItem('site-theme');
+            if (storedTheme === 'light' || storedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            }
+        } catch (e) {}
+    })();
+    </script>
     <title>Buchung bearbeiten – Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -104,6 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
+<button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">Light Mode</button>
 <div class="admin-layout">
 
     <?php include __DIR__ . '/sidebar.php'; ?>
@@ -124,18 +136,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         <?php endif; ?>
 
         <!-- Meta info -->
-        <div style="margin-bottom:1.5rem;padding:1rem 1.25rem;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:var(--radius);font-size:0.85rem;color:var(--muted);">
+        <div style="margin-bottom:1.5rem;padding:1rem 1.25rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:0.85rem;color:var(--muted);">
             <div style="margin-bottom:0.25rem;">
-                <strong style="color:#fff;">Workshop:</strong> <?= e($booking['workshop_title']) ?>
+                <strong style="color:var(--text);">Workshop:</strong> <?= e($booking['workshop_title']) ?>
             </div>
             <div style="margin-bottom:0.25rem;">
-                <strong style="color:#fff;">Buchungs-ID:</strong> #<?= $booking['id'] ?>
+                <strong style="color:var(--text);">Buchungs-ID:</strong> #<?= $booking['id'] ?>
                 &nbsp;&middot;&nbsp;
-                <strong style="color:#fff;">Erstellt:</strong> <?= e(date('d.m.Y H:i', strtotime($booking['created_at']))) ?>
+                <strong style="color:var(--text);">Erstellt:</strong> <?= e(date('d.m.Y H:i', strtotime($booking['created_at']))) ?>
             </div>
             <?php if ($booking['confirmed'] && $booking['confirmed_at']): ?>
             <div>
-                <strong style="color:#fff;">Bestätigt:</strong> <?= e(date('d.m.Y H:i', strtotime($booking['confirmed_at']))) ?>
+                <strong style="color:var(--text);">Bestätigt:</strong> <?= e(date('d.m.Y H:i', strtotime($booking['confirmed_at']))) ?>
             </div>
             <?php endif; ?>
         </div>
@@ -187,5 +199,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         </form>
     </div>
 </div>
+<script src="../assets/site-ui.js"></script>
 </body>
 </html>
