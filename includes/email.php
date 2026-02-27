@@ -601,105 +601,512 @@ function pdf_escape_win_ansi_text(string $text): string {
 function wrap_pdf_text_line(string $line, int $width = 96): array {
     $line = trim((string) preg_replace('/\s+/', ' ', $line));
     if ($line === '') {
-        return [''];
+        return [];
     }
 
-    $wrapped = wordwrap($line, $width, "\n", true);
-    return explode("\n", $wrapped);
-}
-
-function build_rechnung_pdf(array $d, array $lineItems, float $zwischensumme, float $ust, float $summe, string $datumFormatted): string {
+    $words = preg_split('/\s+/', $line) ?: [];
     $lines = [];
-    $lines[] = 'RECHNUNG';
-    $lines[] = 'Nr: ' . (string) ($d['rechnungs_nr'] ?? '-');
-    $lines[] = 'Datum: ' . $datumFormatted;
-    $lines[] = '';
-    $lines[] = 'Empfaenger:';
+    $current = '';
 
-    foreach ([(string) ($d['empfaenger'] ?? ''), (string) ($d['adresse'] ?? ''), (string) ($d['plz_ort'] ?? '')] as $recipientLine) {
-        if (trim($recipientLine) !== '') {
-            $lines[] = $recipientLine;
-        }
-    }
-
-    $contactLine = trim((string) ($d['anrede'] ?? '') . ' ' . (string) ($d['kontakt_name'] ?? ''));
-    if ($contactLine !== '') {
-        $lines[] = 'z. Hd. ' . $contactLine;
-    }
-    if (trim((string) ($d['kontakt_email'] ?? '')) !== '') {
-        $lines[] = 'E-Mail: ' . (string) $d['kontakt_email'];
-    }
-
-    $lines[] = '';
-    $lines[] = 'Leistung:';
-    $leistungLine = trim((string) ($d['fuer_text'] ?? ''));
-    if ($leistungLine !== '') {
-        foreach (wrap_pdf_text_line('fuer ' . $leistungLine, 90) as $wrappedLine) {
-            $lines[] = $wrappedLine;
-        }
-    }
-    if (trim((string) ($d['workshop_titel'] ?? '')) !== '') {
-        $lines[] = 'Workshop: ' . (string) $d['workshop_titel'];
-    }
-    if (trim((string) ($d['veranstaltungs_datum'] ?? '')) !== '') {
-        $lines[] = 'Veranstaltungsdatum: ' . (string) $d['veranstaltungs_datum'];
-    }
-
-    $lines[] = '';
-    $lines[] = 'Positionen (netto):';
-    foreach ($lineItems as $item) {
-        $label = trim((string) ($item['label'] ?? 'Position'));
-        $amount = (float) ($item['amount'] ?? 0);
-        $amountText = format_rechnung_amount_text($amount);
-        $line = str_pad($label, 72, ' ', STR_PAD_RIGHT) . str_pad($amountText, 20, ' ', STR_PAD_LEFT);
-        foreach (wrap_pdf_text_line($line, 96) as $wrappedLine) {
-            $lines[] = $wrappedLine;
-        }
-    }
-
-    $lines[] = str_repeat('-', 96);
-    $lines[] = str_pad('Zwischensumme', 72, ' ', STR_PAD_RIGHT) . str_pad(format_rechnung_amount_text($zwischensumme), 20, ' ', STR_PAD_LEFT);
-    $lines[] = str_pad('20% USt.', 72, ' ', STR_PAD_RIGHT) . str_pad(format_rechnung_amount_text($ust), 20, ' ', STR_PAD_LEFT);
-    $lines[] = str_pad('SUMME', 72, ' ', STR_PAD_RIGHT) . str_pad(format_rechnung_amount_text($summe), 20, ' ', STR_PAD_LEFT);
-
-    $lines[] = '';
-    $lines[] = 'Bitte ueberweisen Sie den Betrag binnen 14 Tagen ab Rechnungsdatum.';
-    $lines[] = 'Disinfo Combat GmbH';
-    $lines[] = 'IBAN: AT39 2011 1844 5223 9900';
-    $lines[] = 'BIC: GIBAATWWXXX';
-
-    $lines[] = '';
-    $lines[] = 'Mit freundlichen Gruessen';
-    $lines[] = (string) ($d['absender_name'] ?? '');
-
-    $maxLines = 52;
-    if (count($lines) > $maxLines) {
-        $lines = array_slice($lines, 0, $maxLines - 1);
-        $lines[] = '...';
-    }
-
-    $streamLines = ['BT', '/F1 11 Tf', '50 800 Td'];
-    $first = true;
-    foreach ($lines as $line) {
-        $escaped = pdf_escape_win_ansi_text($line);
-        if ($first) {
-            $streamLines[] = '(' . $escaped . ') Tj';
-            $first = false;
+    foreach ($words as $word) {
+        $word = trim((string) $word);
+        if ($word === '') {
             continue;
         }
 
-        $streamLines[] = '0 -14 Td';
-        $streamLines[] = '(' . $escaped . ') Tj';
+        $candidate = $current === '' ? $word : ($current . ' ' . $word);
+        if (strlen($candidate) <= $width) {
+            $current = $candidate;
+            continue;
+        }
+
+        if ($current !== '') {
+            $lines[] = $current;
+            $current = '';
+        }
+
+        if (strlen($word) <= $width) {
+            $current = $word;
+            continue;
+        }
+
+        $chunks = str_split($word, $width);
+        foreach ($chunks as $chunkIndex => $chunk) {
+            if ($chunkIndex === count($chunks) - 1) {
+                $current = $chunk;
+            } else {
+                $lines[] = $chunk;
+            }
+        }
     }
-    $streamLines[] = 'ET';
-    $stream = implode("\n", $streamLines) . "\n";
+
+    if ($current !== '') {
+        $lines[] = $current;
+    }
+
+    return $lines;
+}
+
+function pdf_num(float $value): string {
+    $formatted = number_format($value, 3, '.', '');
+    $formatted = rtrim(rtrim($formatted, '0'), '.');
+    if ($formatted === '' || $formatted === '-0') {
+        return '0';
+    }
+
+    return $formatted;
+}
+
+function pdf_rgb_hex(string $hex): array {
+    $hex = ltrim(trim($hex), '#');
+    if (strlen($hex) === 3) {
+        $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+    }
+    if (strlen($hex) !== 6) {
+        return [0.0, 0.0, 0.0];
+    }
+
+    return [
+        hexdec(substr($hex, 0, 2)) / 255,
+        hexdec(substr($hex, 2, 2)) / 255,
+        hexdec(substr($hex, 4, 2)) / 255,
+    ];
+}
+
+function pdf_text_width_estimate(string $text, float $fontSize, string $font = 'F1'): float {
+    $measure = $text;
+    if (function_exists('iconv')) {
+        $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text);
+        if (is_string($converted) && $converted !== '') {
+            $measure = $converted;
+        }
+    }
+
+    $len = max(1, strlen($measure));
+    $factor = 0.52;
+    if ($font === 'F2') {
+        $factor = 0.55;
+    } elseif ($font === 'F3') {
+        $factor = 0.50;
+    }
+
+    return $len * $fontSize * $factor;
+}
+
+function pdf_add_rect(
+    array &$stream,
+    float $pageHeight,
+    float $x,
+    float $top,
+    float $w,
+    float $h,
+    ?array $fillRgb = null,
+    ?array $strokeRgb = null,
+    float $lineWidth = 1.0
+): void {
+    $y = $pageHeight - $top - $h;
+
+    if (is_array($fillRgb) && count($fillRgb) === 3) {
+        $stream[] = pdf_num($fillRgb[0]) . ' ' . pdf_num($fillRgb[1]) . ' ' . pdf_num($fillRgb[2]) . ' rg';
+    }
+    if (is_array($strokeRgb) && count($strokeRgb) === 3) {
+        $stream[] = pdf_num($strokeRgb[0]) . ' ' . pdf_num($strokeRgb[1]) . ' ' . pdf_num($strokeRgb[2]) . ' RG';
+        $stream[] = pdf_num($lineWidth) . ' w';
+    }
+
+    $op = 'S';
+    if (is_array($fillRgb) && is_array($strokeRgb)) {
+        $op = 'B';
+    } elseif (is_array($fillRgb)) {
+        $op = 'f';
+    }
+
+    $stream[] = pdf_num($x) . ' ' . pdf_num($y) . ' ' . pdf_num($w) . ' ' . pdf_num($h) . ' re ' . $op;
+}
+
+function pdf_add_line(
+    array &$stream,
+    float $pageHeight,
+    float $x1,
+    float $top1,
+    float $x2,
+    float $top2,
+    array $strokeRgb,
+    float $lineWidth = 1.0
+): void {
+    $y1 = $pageHeight - $top1;
+    $y2 = $pageHeight - $top2;
+
+    $stream[] = pdf_num($strokeRgb[0]) . ' ' . pdf_num($strokeRgb[1]) . ' ' . pdf_num($strokeRgb[2]) . ' RG';
+    $stream[] = pdf_num($lineWidth) . ' w';
+    $stream[] = pdf_num($x1) . ' ' . pdf_num($y1) . ' m ' . pdf_num($x2) . ' ' . pdf_num($y2) . ' l S';
+}
+
+function pdf_add_text(
+    array &$stream,
+    float $pageHeight,
+    float $x,
+    float $baselineTop,
+    string $text,
+    string $font = 'F1',
+    float $fontSize = 11.0,
+    ?array $colorRgb = null
+): void {
+    $text = trim((string) $text);
+    if ($text === '') {
+        return;
+    }
+
+    $y = $pageHeight - $baselineTop;
+    $escaped = pdf_escape_win_ansi_text($text);
+
+    if (is_array($colorRgb) && count($colorRgb) === 3) {
+        $stream[] = pdf_num($colorRgb[0]) . ' ' . pdf_num($colorRgb[1]) . ' ' . pdf_num($colorRgb[2]) . ' rg';
+    }
+
+    $stream[] = 'BT';
+    $stream[] = '/' . $font . ' ' . pdf_num($fontSize) . ' Tf';
+    $stream[] = '1 0 0 1 ' . pdf_num($x) . ' ' . pdf_num($y) . ' Tm';
+    $stream[] = '(' . $escaped . ') Tj';
+    $stream[] = 'ET';
+}
+
+function pdf_add_text_right(
+    array &$stream,
+    float $pageHeight,
+    float $rightX,
+    float $baselineTop,
+    string $text,
+    string $font = 'F1',
+    float $fontSize = 11.0,
+    ?array $colorRgb = null
+): void {
+    $width = pdf_text_width_estimate($text, $fontSize, $font);
+    $x = $rightX - $width;
+    pdf_add_text($stream, $pageHeight, $x, $baselineTop, $text, $font, $fontSize, $colorRgb);
+}
+
+function pdf_add_wrapped_text(
+    array &$stream,
+    float $pageHeight,
+    float $x,
+    float $baselineTop,
+    string $text,
+    int $wrapWidth,
+    float $lineHeight,
+    string $font = 'F1',
+    float $fontSize = 11.0,
+    ?array $colorRgb = null,
+    int $maxLines = 0
+): float {
+    $lines = wrap_pdf_text_line($text, $wrapWidth);
+    if ($maxLines > 0 && count($lines) > $maxLines) {
+        $lines = array_slice($lines, 0, $maxLines);
+        $last = trim((string) ($lines[$maxLines - 1] ?? ''));
+        if ($last !== '') {
+            $lines[$maxLines - 1] = rtrim(substr($last, 0, max(0, $wrapWidth - 3))) . '...';
+        }
+    }
+
+    $y = $baselineTop;
+    foreach ($lines as $line) {
+        pdf_add_text($stream, $pageHeight, $x, $y, $line, $font, $fontSize, $colorRgb);
+        $y += $lineHeight;
+    }
+
+    return $y;
+}
+
+function build_rechnung_pdf(array $d, array $lineItems, float $zwischensumme, float $ust, float $summe, string $datumFormatted): string {
+    $pageWidth = 595.0;
+    $pageHeight = 842.0;
+
+    $cBg = pdf_rgb_hex('#f3efe8');
+    $cPanel = pdf_rgb_hex('#fbf8f3');
+    $cHeader = pdf_rgb_hex('#1f1812');
+    $cText = pdf_rgb_hex('#1f1812');
+    $cMuted = pdf_rgb_hex('#5f554b');
+    $cDim = pdf_rgb_hex('#8f8376');
+    $cBorder = pdf_rgb_hex('#d5c9bb');
+    $cSoft = pdf_rgb_hex('#ebe5dc');
+    $cWhite = [1.0, 1.0, 1.0];
+
+    $panelX = 24.0;
+    $panelY = 24.0;
+    $panelW = $pageWidth - 48.0;
+    $panelH = $pageHeight - 48.0;
+
+    $innerX = $panelX + 22.0;
+    $innerW = $panelW - 44.0;
+
+    $stream = [];
+
+    pdf_add_rect($stream, $pageHeight, 0.0, 0.0, $pageWidth, $pageHeight, $cBg, null);
+    pdf_add_rect($stream, $pageHeight, $panelX, $panelY, $panelW, $panelH, $cPanel, $cBorder, 1.0);
+
+    $headerH = 92.0;
+    pdf_add_rect($stream, $pageHeight, $panelX, $panelY, $panelW, $headerH, $cHeader, $cHeader, 1.0);
+
+    pdf_add_text($stream, $pageHeight, $panelX + 22.0, $panelY + 38.0, 'RECHNUNG', 'F3', 27.0, $cWhite);
+    pdf_add_text($stream, $pageHeight, $panelX + 22.0, $panelY + 57.0, 'Disinfo Combat GmbH', 'F1', 10.0, $cSoft);
+
+    $headerRight = $panelX + $panelW - 22.0;
+    pdf_add_text_right($stream, $pageHeight, $headerRight, $panelY + 34.0, 'Nr. ' . (string) ($d['rechnungs_nr'] ?? '-'), 'F2', 11.0, $cWhite);
+    pdf_add_text_right($stream, $pageHeight, $headerRight, $panelY + 52.0, 'Wien, ' . $datumFormatted, 'F1', 10.0, $cSoft);
+
+    $recipientLines = [];
+    foreach ([(string) ($d['empfaenger'] ?? ''), (string) ($d['adresse'] ?? ''), (string) ($d['plz_ort'] ?? '')] as $line) {
+        if (trim($line) !== '') {
+            $recipientLines[] = trim($line);
+        }
+    }
+    $contactLine = trim((string) ($d['anrede'] ?? '') . ' ' . (string) ($d['kontakt_name'] ?? ''));
+    if ($contactLine !== '') {
+        $recipientLines[] = 'z. Hd. ' . $contactLine;
+    }
+    $mailLine = trim((string) ($d['kontakt_email'] ?? ''));
+    if ($mailLine !== '') {
+        $recipientLines[] = 'E-Mail: ' . $mailLine;
+    }
+
+    $recipientWrapped = [];
+    foreach ($recipientLines as $line) {
+        foreach (wrap_pdf_text_line($line, 46) as $wrapped) {
+            $recipientWrapped[] = $wrapped;
+        }
+    }
+    if (empty($recipientWrapped)) {
+        $recipientWrapped[] = '-';
+    }
+    if (count($recipientWrapped) > 8) {
+        $recipientWrapped = array_slice($recipientWrapped, 0, 8);
+        $recipientWrapped[7] = rtrim(substr((string) $recipientWrapped[7], 0, 42)) . '...';
+    }
+
+    $detailLines = [];
+    $ws = trim((string) ($d['workshop_titel'] ?? ''));
+    $ev = trim((string) ($d['veranstaltungs_datum'] ?? ''));
+    if ($ws !== '') {
+        $detailLines[] = 'Workshop: ' . $ws;
+    }
+    if ($ev !== '') {
+        $detailLines[] = 'Termin: ' . $ev;
+    }
+    if (empty($detailLines)) {
+        $detailLines[] = 'Workshop: -';
+    }
+
+    $detailWrapped = [];
+    foreach ($detailLines as $line) {
+        foreach (wrap_pdf_text_line($line, 30) as $wrapped) {
+            $detailWrapped[] = $wrapped;
+        }
+    }
+    if (count($detailWrapped) > 8) {
+        $detailWrapped = array_slice($detailWrapped, 0, 8);
+        $detailWrapped[7] = rtrim(substr((string) $detailWrapped[7], 0, 26)) . '...';
+    }
+
+    $cursorTop = $panelY + $headerH + 18.0;
+    $leftW = floor($innerW * 0.62);
+    $gap = 14.0;
+    $rightW = $innerW - $leftW - $gap;
+    $lineHeight = 13.0;
+
+    $leftBoxH = 42.0 + max(3, count($recipientWrapped)) * $lineHeight;
+    $rightBoxH = 42.0 + max(3, count($detailWrapped)) * $lineHeight;
+    $boxH = max($leftBoxH, $rightBoxH);
+
+    pdf_add_rect($stream, $pageHeight, $innerX, $cursorTop, $leftW, $boxH, $cWhite, $cBorder, 0.8);
+    pdf_add_rect($stream, $pageHeight, $innerX + $leftW + $gap, $cursorTop, $rightW, $boxH, $cWhite, $cBorder, 0.8);
+
+    pdf_add_text($stream, $pageHeight, $innerX + 12.0, $cursorTop + 18.0, 'RECHNUNG AN', 'F2', 8.8, $cDim);
+    $yLeft = $cursorTop + 35.0;
+    foreach ($recipientWrapped as $idx => $line) {
+        pdf_add_text(
+            $stream,
+            $pageHeight,
+            $innerX + 12.0,
+            $yLeft,
+            $line,
+            $idx === 0 ? 'F2' : 'F1',
+            $idx === 0 ? 10.8 : 10.1,
+            $idx === 0 ? $cText : $cMuted
+        );
+        $yLeft += $lineHeight;
+    }
+
+    $rightX = $innerX + $leftW + $gap;
+    pdf_add_text($stream, $pageHeight, $rightX + 12.0, $cursorTop + 18.0, 'DETAILS', 'F2', 8.8, $cDim);
+    $yRight = $cursorTop + 35.0;
+    foreach ($detailWrapped as $line) {
+        pdf_add_text($stream, $pageHeight, $rightX + 12.0, $yRight, $line, 'F1', 10.0, $cMuted);
+        $yRight += $lineHeight;
+    }
+
+    $cursorTop += $boxH + 18.0;
+
+    pdf_add_text($stream, $pageHeight, $innerX, $cursorTop + 10.0, 'Sehr geehrte Damen und Herren,', 'F1', 10.5, $cText);
+    $cursorTop += 28.0;
+
+    $leistungText = trim((string) ($d['fuer_text'] ?? ''));
+    if ($leistungText !== '') {
+        $cursorTop = pdf_add_wrapped_text(
+            $stream,
+            $pageHeight,
+            $innerX,
+            $cursorTop,
+            'fuer ' . $leistungText,
+            92,
+            13.0,
+            'F1',
+            10.0,
+            $cMuted,
+            3
+        ) + 2.0;
+    }
+
+    if ($ws !== '') {
+        $cursorTop = pdf_add_wrapped_text(
+            $stream,
+            $pageHeight,
+            $innerX,
+            $cursorTop,
+            $ws,
+            88,
+            13.0,
+            'F2',
+            10.6,
+            $cText,
+            2
+        );
+    }
+    if ($ev !== '') {
+        $cursorTop = pdf_add_wrapped_text(
+            $stream,
+            $pageHeight,
+            $innerX,
+            $cursorTop,
+            'am ' . $ev,
+            90,
+            13.0,
+            'F1',
+            10.0,
+            $cMuted,
+            2
+        );
+    }
+
+    $cursorTop += 14.0;
+
+    $displayItems = $lineItems;
+    if (count($displayItems) > 12) {
+        $displayItems = array_slice($displayItems, 0, 11);
+        $displayItems[] = ['label' => 'Weitere Positionen gekuerzt', 'amount' => 0.0];
+    }
+
+    $tableX = $innerX;
+    $tableW = $innerW;
+    $tableHeaderH = 24.0;
+    $rowH = 22.0;
+    $sumRowH = 24.0;
+    $totalRowH = 28.0;
+
+    $tableHeight = $tableHeaderH + (count($displayItems) * $rowH) + (2 * $sumRowH) + $totalRowH;
+    $maxTableBottom = $panelY + $panelH - 170.0;
+    while ($cursorTop + $tableHeight > $maxTableBottom && count($displayItems) > 3) {
+        array_pop($displayItems);
+        $tableHeight = $tableHeaderH + (count($displayItems) * $rowH) + (2 * $sumRowH) + $totalRowH;
+    }
+
+    pdf_add_rect($stream, $pageHeight, $tableX, $cursorTop, $tableW, $tableHeight, $cWhite, $cBorder, 0.8);
+    pdf_add_rect($stream, $pageHeight, $tableX, $cursorTop, $tableW, $tableHeaderH, $cSoft, $cBorder, 0.5);
+
+    $amountRight = $tableX + $tableW - 12.0;
+    pdf_add_text($stream, $pageHeight, $tableX + 12.0, $cursorTop + 16.0, 'Position', 'F2', 9.8, $cText);
+    pdf_add_text_right($stream, $pageHeight, $amountRight, $cursorTop + 16.0, 'Betrag (netto)', 'F2', 9.8, $cText);
+
+    $rowTop = $cursorTop + $tableHeaderH;
+    foreach ($displayItems as $idx => $item) {
+        if ($idx % 2 === 1) {
+            pdf_add_rect($stream, $pageHeight, $tableX, $rowTop, $tableW, $rowH, pdf_rgb_hex('#f8f4ee'), null);
+        }
+
+        $label = trim((string) ($item['label'] ?? 'Position'));
+        $labelLines = wrap_pdf_text_line($label, 62);
+        $labelOut = $labelLines[0] ?? $label;
+        if (count($labelLines) > 1) {
+            $labelOut = rtrim(substr($labelOut, 0, 56)) . '...';
+        }
+
+        pdf_add_text($stream, $pageHeight, $tableX + 12.0, $rowTop + 14.0, $labelOut, 'F1', 10.0, $cMuted);
+        pdf_add_text_right(
+            $stream,
+            $pageHeight,
+            $amountRight,
+            $rowTop + 14.0,
+            format_rechnung_amount_text((float) ($item['amount'] ?? 0)),
+            'F1',
+            10.0,
+            $cText
+        );
+
+        pdf_add_line($stream, $pageHeight, $tableX, $rowTop + $rowH, $tableX + $tableW, $rowTop + $rowH, $cBorder, 0.45);
+        $rowTop += $rowH;
+    }
+
+    pdf_add_line($stream, $pageHeight, $tableX, $rowTop, $tableX + $tableW, $rowTop, $cBorder, 1.2);
+    pdf_add_text($stream, $pageHeight, $tableX + 12.0, $rowTop + 16.0, 'Zwischensumme', 'F2', 10.0, $cText);
+    pdf_add_text_right($stream, $pageHeight, $amountRight, $rowTop + 16.0, format_rechnung_amount_text($zwischensumme), 'F2', 10.0, $cText);
+
+    $rowTop += $sumRowH;
+    pdf_add_text($stream, $pageHeight, $tableX + 12.0, $rowTop + 16.0, '20 % USt.', 'F1', 10.0, $cMuted);
+    pdf_add_text_right($stream, $pageHeight, $amountRight, $rowTop + 16.0, format_rechnung_amount_text($ust), 'F1', 10.0, $cText);
+
+    $rowTop += $sumRowH;
+    pdf_add_rect($stream, $pageHeight, $tableX, $rowTop, $tableW, $totalRowH, $cHeader, $cHeader, 0.7);
+    pdf_add_text($stream, $pageHeight, $tableX + 12.0, $rowTop + 18.0, 'SUMME', 'F2', 11.0, $cWhite);
+    pdf_add_text_right($stream, $pageHeight, $amountRight, $rowTop + 18.0, format_rechnung_amount_text($summe), 'F2', 11.0, $cWhite);
+
+    $cursorTop += $tableHeight + 16.0;
+
+    $paymentH = 76.0;
+    pdf_add_rect($stream, $pageHeight, $innerX, $cursorTop, $innerW, $paymentH, $cSoft, $cBorder, 0.7);
+    pdf_add_text($stream, $pageHeight, $innerX + 12.0, $cursorTop + 17.0, 'Zahlungsinformation', 'F2', 9.0, $cDim);
+    pdf_add_text($stream, $pageHeight, $innerX + 12.0, $cursorTop + 33.0, 'Bitte ueberweisen Sie binnen 14 Tagen ab Rechnungsdatum.', 'F1', 10.0, $cMuted);
+    pdf_add_text($stream, $pageHeight, $innerX + 12.0, $cursorTop + 49.0, 'Disinfo Combat GmbH  |  IBAN: AT39 2011 1844 5223 9900', 'F1', 10.0, $cText);
+    pdf_add_text($stream, $pageHeight, $innerX + 12.0, $cursorTop + 63.0, 'BIC: GIBAATWWXXX', 'F1', 10.0, $cText);
+
+    $cursorTop += $paymentH + 18.0;
+
+    pdf_add_text($stream, $pageHeight, $innerX, $cursorTop + 10.0, 'Wir danken fuer Ihren Auftrag und verbleiben', 'F1', 10.0, $cMuted);
+    pdf_add_text($stream, $pageHeight, $innerX, $cursorTop + 24.0, 'mit freundlichen Gruessen', 'F1', 10.0, $cMuted);
+    $sign = trim((string) ($d['absender_name'] ?? ''));
+    if ($sign !== '') {
+        pdf_add_text($stream, $pageHeight, $innerX, $cursorTop + 48.0, $sign, 'F2', 10.6, $cText);
+    }
+
+    pdf_add_text_right(
+        $stream,
+        $pageHeight,
+        $panelX + $panelW - 12.0,
+        $panelY + $panelH - 10.0,
+        'Rechnungsnr.: ' . (string) ($d['rechnungs_nr'] ?? '-'),
+        'F1',
+        8.4,
+        $cDim
+    );
+
+    $streamData = implode("\n", $stream) . "\n";
 
     $objects = [];
     $objects[] = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
     $objects[] = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
-    $objects[] = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n";
+    $objects[] = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> >> /Contents 7 0 R >>\nendobj\n";
     $objects[] = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n";
-    $objects[] = "5 0 obj\n<< /Length " . strlen($stream) . " >>\nstream\n" . $stream . "endstream\nendobj\n";
+    $objects[] = "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n";
+    $objects[] = "6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>\nendobj\n";
+    $objects[] = "7 0 obj\n<< /Length " . strlen($streamData) . " >>\nstream\n" . $streamData . "endstream\nendobj\n";
 
     $pdf = "%PDF-1.4\n";
     $offsets = [0];
@@ -720,7 +1127,6 @@ function build_rechnung_pdf(array $d, array $lineItems, float $zwischensumme, fl
 
     return $pdf;
 }
-
 function send_rechnung_email(string $to, array $d): bool {
     $months = [
         '01' => 'Januar',  '02' => 'Februar', '03' => 'Maerz',     '04' => 'April',
