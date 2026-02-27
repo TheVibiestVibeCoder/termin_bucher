@@ -265,6 +265,101 @@ $statusLabels = [
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/style.css">
+    <style>
+        .discount-form-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            margin-bottom: 2rem;
+        }
+        .discount-form-title {
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--dim);
+            margin-bottom: 1rem;
+        }
+        .discount-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .discount-form .form-group {
+            margin-bottom: 0;
+        }
+        .discount-grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+        }
+        .discount-grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1rem;
+        }
+        .discount-grid-align-start {
+            align-items: start;
+        }
+        .discount-form input[type="text"],
+        .discount-form input[type="number"],
+        .discount-form input[type="datetime-local"],
+        .discount-form select {
+            min-height: 42px;
+        }
+        .discount-form textarea {
+            min-height: 124px;
+        }
+        .discount-form-note {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--dim);
+            margin-top: 0.35rem;
+            line-height: 1.4;
+        }
+        .discount-active-row {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .discount-active-row input {
+            width: auto;
+            accent-color: #2ecc71;
+        }
+        .discount-active-row label {
+            margin-bottom: 0;
+            cursor: pointer;
+        }
+        .discount-form-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            align-items: stretch;
+        }
+        .discount-form-actions .btn-admin {
+            min-width: 150px;
+            min-height: 40px;
+        }
+        .discount-workshop-picker-row select {
+            min-height: 42px;
+        }
+        .discount-workshop-picker-row .btn-admin {
+            min-height: 42px;
+            padding-inline: 14px;
+        }
+        @media (max-width: 980px) {
+            .discount-grid-2,
+            .discount-grid-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (max-width: 640px) {
+            .discount-form-actions .btn-admin {
+                width: 100%;
+            }
+        }
+    </style>
 </head>
 <body>
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
@@ -290,76 +385,76 @@ $statusLabels = [
             </div>
         <?php endif; ?>
 
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:2rem;">
-            <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--dim);margin-bottom:1rem;">
+        <div class="discount-form-card">
+            <div class="discount-form-title">
                 <?= (int) $formData['id'] > 0 ? 'Code bearbeiten' : 'Neuen Code erstellen' ?>
             </div>
-            <form method="POST">
+            <form method="POST" class="discount-form">
                 <?= csrf_field() ?>
                 <input type="hidden" name="save_discount" value="1">
                 <input type="hidden" name="discount_id" value="<?= (int) $formData['id'] ?>">
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-                    <div class="form-group" style="margin-bottom:0;">
+                <div class="discount-grid-2">
+                    <div class="form-group">
                         <label for="code">Code</label>
                         <input type="text" id="code" name="code" required placeholder="Z.B. SPRING25"
                                value="<?= e((string) $formData['code']) ?>">
                     </div>
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group">
                         <label for="label">Bezeichnung (optional)</label>
                         <input type="text" id="label" name="label" placeholder="z.B. Fruehjahrsaktion"
                                value="<?= e((string) $formData['label']) ?>">
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">
-                    <div class="form-group" style="margin-bottom:0;">
+                <div class="discount-grid-2">
+                    <div class="form-group">
                         <label for="discount_type">Rabattart</label>
                         <select id="discount_type" name="discount_type">
                             <option value="percent" <?= $formData['discount_type'] === 'percent' ? 'selected' : '' ?>>Prozent</option>
                             <option value="fixed" <?= $formData['discount_type'] === 'fixed' ? 'selected' : '' ?>>Fixbetrag</option>
                         </select>
                     </div>
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group">
                         <label for="discount_value">Rabattwert</label>
                         <input type="text" id="discount_value" name="discount_value" required placeholder="z.B. 15 oder 49.90"
                                value="<?= e((string) $formData['discount_value']) ?>">
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">
-                    <div class="form-group" style="margin-bottom:0;">
+                <div class="discount-grid-2">
+                    <div class="form-group">
                         <label for="starts_at">Gueltig ab (optional)</label>
                         <input type="datetime-local" id="starts_at" name="starts_at"
                                value="<?= e(datetime_input_value((string) $formData['starts_at'])) ?>">
                     </div>
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group">
                         <label for="expires_at">Gueltig bis (optional)</label>
                         <input type="datetime-local" id="expires_at" name="expires_at"
                                value="<?= e(datetime_input_value((string) $formData['expires_at'])) ?>">
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-top:1rem;">
-                    <div class="form-group" style="margin-bottom:0;">
+                <div class="discount-grid-3">
+                    <div class="form-group">
                         <label for="max_total_uses">Max. Nutzungen gesamt (0 = unbegrenzt)</label>
                         <input type="number" id="max_total_uses" name="max_total_uses" min="0"
                                value="<?= (int) $formData['max_total_uses'] ?>">
                     </div>
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group">
                         <label for="max_uses_per_email">Max. pro E-Mail (0 = unbegrenzt)</label>
                         <input type="number" id="max_uses_per_email" name="max_uses_per_email" min="0"
                                value="<?= (int) $formData['max_uses_per_email'] ?>">
                     </div>
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group">
                         <label for="min_participants">Min. Teilnehmer:innen</label>
                         <input type="number" id="min_participants" name="min_participants" min="0"
                                value="<?= (int) $formData['min_participants'] ?>">
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">
-                    <div class="form-group" style="margin-bottom:0;">
+                <div class="discount-grid-2 discount-grid-align-start">
+                    <div class="form-group">
                         <label for="workshop_picker">Nur fuer bestimmte Workshops (optional)</label>
                         <div class="discount-workshop-picker">
                             <div class="discount-workshop-picker-row">
@@ -389,27 +484,22 @@ $statusLabels = [
                                 <?php endif; ?>
                             </div>
                         </div>
-                        <span style="display:block;font-size:0.72rem;color:var(--dim);margin-top:0.35rem;">
-                            Leer lassen = gilt fuer alle Workshops.
-                        </span>
+                        <span class="discount-form-note">Leer lassen = gilt fuer alle Workshops.</span>
                     </div>
-                    <div class="form-group" style="margin-bottom:0;">
+                    <div class="form-group">
                         <label for="allowed_emails">Nur fuer bestimmte E-Mails (optional)</label>
                         <textarea id="allowed_emails" name="allowed_emails" rows="6"
                                   placeholder="max@example.com&#10;team@example.com"><?= e((string) $formData['allowed_emails']) ?></textarea>
-                        <span style="display:block;font-size:0.72rem;color:var(--dim);margin-top:0.35rem;">
-                            Eine E-Mail pro Zeile oder mit Komma getrennt.
-                        </span>
+                        <span class="discount-form-note">Eine E-Mail pro Zeile oder mit Komma getrennt.</span>
                     </div>
                 </div>
 
-                <div class="form-group" style="display:flex;align-items:center;gap:0.6rem;margin-top:1rem;margin-bottom:0;">
-                    <input type="checkbox" id="active" name="active" value="1" <?= (int) $formData['active'] === 1 ? 'checked' : '' ?>
-                           style="width:auto;accent-color:#2ecc71;">
-                    <label for="active" style="margin-bottom:0;cursor:pointer;">Code aktiv</label>
+                <div class="discount-active-row">
+                    <input type="checkbox" id="active" name="active" value="1" <?= (int) $formData['active'] === 1 ? 'checked' : '' ?>>
+                    <label for="active">Code aktiv</label>
                 </div>
 
-                <div style="display:flex;gap:0.75rem;margin-top:1.25rem;">
+                <div class="discount-form-actions">
                     <button type="submit" class="btn-admin btn-success">Speichern</button>
                     <?php if ((int) $formData['id'] > 0): ?>
                         <a href="discount-codes.php" class="btn-admin">Abbrechen</a>
