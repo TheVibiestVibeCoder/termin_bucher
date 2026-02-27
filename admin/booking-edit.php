@@ -32,8 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $confirmed    = isset($_POST['confirmed']) ? 1 : 0;
 
     if (strlen($name) < 2) $errors[] = 'Bitte geben Sie einen Namen ein.';
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gÃ¼ltige E-Mail-Adresse ein.';
-    if ($participants < 1 || $participants > 500) $errors[] = 'UngÃ¼ltige Anzahl Teilnehmer:innen.';
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
+    if ($participants < 1 || $participants > 500) $errors[] = 'Ungültige Anzahl Teilnehmer:innen.';
 
     if (mb_strlen($name) > 120) $errors[] = 'Name ist zu lang.';
     if (mb_strlen($email) > 254) $errors[] = 'E-Mail-Adresse ist zu lang.';
@@ -157,7 +157,7 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
         } catch (e) {}
     })();
     </script>
-    <title>Buchung bearbeiten â€“ Admin</title>
+    <title>Buchung bearbeiten - Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -196,7 +196,7 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
             </div>
             <?php if ($booking['confirmed'] && $booking['confirmed_at']): ?>
             <div>
-                <strong style="color:var(--text);">BestÃ¤tigt:</strong> <?= e(date('d.m.Y H:i', strtotime($booking['confirmed_at']))) ?>
+                <strong style="color:var(--text);">Bestätigt:</strong> <?= e(date('d.m.Y H:i', strtotime($booking['confirmed_at']))) ?>
             </div>
             <?php endif; ?>
             <?php if ($metaPricePerPerson > 0): ?>
@@ -259,7 +259,7 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
                 <input type="checkbox" id="confirmed" name="confirmed" value="1"
                        <?= $booking['confirmed'] ? 'checked' : '' ?>
                        style="width:auto;accent-color:#2ecc71;">
-                <label for="confirmed" style="margin-bottom:0;cursor:pointer;">Buchung bestÃ¤tigt</label>
+                <label for="confirmed" style="margin-bottom:0;cursor:pointer;">Buchung bestätigt</label>
             </div>
 
             <div style="display:flex;gap:0.75rem;margin-top:0.5rem;">

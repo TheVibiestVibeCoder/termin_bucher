@@ -311,7 +311,7 @@ function render_cancellation_policy_block(): string {
             <div style="font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#d6b180;margin-bottom:6px;">Stornobedingungen</div>
             <p style="margin:0;font-size:14px;line-height:1.6;color:#f0dfc4;">
                 Absagen bis 14 Kalendertage vor Veranstaltungsbeginn sind kostenfrei.
-                Bei spÃ¤teren Absagen stellen wir 80&nbsp;% des vereinbarten Gesamtpreises in Rechnung.
+                Bei späteren Absagen stellen wir 80&nbsp;% des vereinbarten Gesamtpreises in Rechnung.
             </p>
         </div>';
 }
@@ -337,27 +337,27 @@ function send_confirmation_email(
     $cancellationBlock = render_cancellation_policy_block();
 
     $content = '
-        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestÃ¤tigen</h2>
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestätigen</h2>
         <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
-        <p style="color:#a0a0a0;line-height:1.7;">vielen Dank fÃ¼r Ihre Anmeldung zum Workshop:</p>
+        <p style="color:#a0a0a0;line-height:1.7;">vielen Dank für Ihre Anmeldung zum Workshop:</p>
         <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         <p style="color:#a0a0a0;line-height:1.7;">Hier finden Sie alle Details zu Ihrer Anfrage:</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
         ' . $cancellationBlock . '
-        <p style="color:#a0a0a0;line-height:1.7;">Bitte bestÃ¤tigen Sie Ihre Buchung, indem Sie auf den folgenden Link klicken:</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Bitte bestätigen Sie Ihre Buchung, indem Sie auf den folgenden Link klicken:</p>
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:28px 0 24px;">
             <tr>
                 <td align="left">
-                    <a href="' . e($confirmUrl) . '" style="display:inline-block;max-width:100%;box-sizing:border-box;padding:14px 20px;background:#ffffff;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;line-height:1.35;word-break:break-word;">Buchung bestÃ¤tigen &rarr;</a>
+                    <a href="' . e($confirmUrl) . '" style="display:inline-block;max-width:100%;box-sizing:border-box;padding:14px 20px;background:#ffffff;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;line-height:1.35;word-break:break-word;">Buchung bestätigen &rarr;</a>
                 </td>
             </tr>
         </table>
-        <p style="color:#666;font-size:13px;line-height:1.5;">Dieser Link ist 48 Stunden gÃ¼ltig. Falls Sie diese Anmeldung nicht durchgefÃ¼hrt haben, kÃ¶nnen Sie diese E-Mail ignorieren.</p>
+        <p style="color:#666;font-size:13px;line-height:1.5;">Dieser Link ist 48 Stunden gültig. Falls Sie diese Anmeldung nicht durchgeführt haben, können Sie diese E-Mail ignorieren.</p>
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Buchung bestÃ¤tigen: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'Buchung bestätigen: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -379,9 +379,9 @@ function send_booking_confirmed_email(
     $cancellationBlock = render_cancellation_policy_block();
 
     $content = '
-        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestÃ¤tigt!</h2>
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestätigt!</h2>
         <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
-        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung fÃ¼r den folgenden Workshop wurde erfolgreich bestÃ¤tigt:</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung für den folgenden Workshop wurde erfolgreich bestätigt:</p>
         <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
@@ -390,7 +390,7 @@ function send_booking_confirmed_email(
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'BestÃ¤tigt: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'Bestätigt: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -409,7 +409,7 @@ function send_admin_notification(
     $participantsBlock = render_booking_participants_block($participants);
 
     $content = '
-        <h2 style="margin:0 0 14px;color:#ffffff;">Neue Buchung bestÃ¤tigt</h2>
+        <h2 style="margin:0 0 14px;color:#ffffff;">Neue Buchung bestätigt</h2>
         <p style="margin:0 0 10px;color:#c8c8c8;"><strong style="color:#ffffff;">Workshop:</strong> ' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
@@ -436,18 +436,18 @@ function send_participant_confirmed_email(
     $cancellationBlock = render_cancellation_policy_block();
 
     $content = '
-        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Teilnahme bestÃ¤tigt!</h2>
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Teilnahme bestätigt!</h2>
         <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($participantName) . ',</p>
-        <p style="color:#a0a0a0;line-height:1.7;"><strong style="color:#ffffff;">' . e($bookerName) . '</strong> hat Sie fÃ¼r den folgenden Workshop angemeldet:</p>
+        <p style="color:#a0a0a0;line-height:1.7;"><strong style="color:#ffffff;">' . e($bookerName) . '</strong> hat Sie für den folgenden Workshop angemeldet:</p>
         <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $cancellationBlock . '
-        <p style="color:#a0a0a0;line-height:1.7;">Ihre Teilnahme wurde erfolgreich bestÃ¤tigt.</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Ihre Teilnahme wurde erfolgreich bestätigt.</p>
         <p style="color:#a0a0a0;line-height:1.7;">Bei Fragen erreichen Sie uns unter <a href="mailto:' . e(MAIL_FROM) . '" style="color:#ffffff;">' . e(MAIL_FROM) . '</a>.</p>
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Ihre Teilnahme wurde bestÃ¤tigt: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'Ihre Teilnahme wurde bestätigt: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -457,7 +457,7 @@ function send_booking_cancelled_email(string $to, string $name, string $workshop
     $content = '
         <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;margin-bottom:20px;">Buchung storniert</h2>
         <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
-        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung fÃ¼r den folgenden Workshop wurde leider storniert:</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung für den folgenden Workshop wurde leider storniert:</p>
         <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         <p style="color:#a0a0a0;line-height:1.7;">Falls dies ein Versehen war oder Sie Fragen haben, kontaktieren Sie uns bitte unter <a href="mailto:' . e(MAIL_FROM) . '" style="color:#ffffff;">' . e(MAIL_FROM) . '</a> - wir helfen Ihnen gerne weiter.</p>
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
@@ -478,7 +478,7 @@ function send_booking_cancelled_email(string $to, string $name, string $workshop
  */
 function send_rechnung_email(string $to, array $d): bool {
     $months = [
-        '01' => 'Januar',  '02' => 'Februar', '03' => 'MÃ¤rz',     '04' => 'April',
+        '01' => 'Januar',  '02' => 'Februar', '03' => 'März',     '04' => 'April',
         '05' => 'Mai',     '06' => 'Juni',    '07' => 'Juli',     '08' => 'August',
         '09' => 'September','10' => 'Oktober','11' => 'November', '12' => 'Dezember',
     ];
@@ -531,7 +531,7 @@ function send_rechnung_email(string $to, array $d): bool {
 
   <!-- Salutation + intro -->
   <p style="margin:0 0 6px 0;">Sehr geehrte Damen und Herren,</p>
-  <p style="margin:0 0 28px 0;">fÃ¼r ' . e($d['fuer_text']) . '<br>
+  <p style="margin:0 0 28px 0;">für ' . e($d['fuer_text']) . '<br>
   <strong>' . e($d['workshop_titel']) . '</strong><br>
   am ' . e($d['veranstaltungs_datum']) . ' berechnen wir wie vereinbart:</p>
 
@@ -545,7 +545,7 @@ function send_rechnung_email(string $to, array $d): bool {
   </table>
 
   <!-- Payment instructions -->
-  <p style="margin:32px 0 6px 0;">Wir bitten um Ãœberweisung auf das untenstehende Konto binnen 14 Tagen ab Rechnungsdatum:</p>
+  <p style="margin:32px 0 6px 0;">Wir bitten um Überweisung auf das untenstehende Konto binnen 14 Tagen ab Rechnungsdatum:</p>
   <div style="background:#f4f4f4;padding:16px 20px;border-radius:4px;margin:0 0 28px 0;">
     <strong>Disinfo Combat GmbH</strong><br>
     IBAN: AT39 2011 1844 5223 9900<br>
@@ -553,7 +553,7 @@ function send_rechnung_email(string $to, array $d): bool {
   </div>
 
   <!-- Closing -->
-  <p style="margin:0 0 4px 0;">Wir danken fÃ¼r Ihren Auftrag und verbleiben<br>mit freundlichen GrÃ¼ÃŸen</p>
+  <p style="margin:0 0 4px 0;">Wir danken für Ihren Auftrag und verbleiben<br>mit freundlichen Grüßen</p>
   <p style="margin:28px 0 0 0;"><strong>' . e($d['absender_name']) . '</strong></p>
 
 </div>';
