@@ -407,6 +407,95 @@ if ($workshop) {
         .rechnung-card-toggle { font-size: 0.65rem; color: var(--dim); flex-shrink: 0; }
         .rechnung-card-body { padding: 1rem; border-top: 1px solid var(--border); transition: opacity 0.15s; }
         .rechnung-card-body.rc-hidden { display: none; }
+    
+        .booking-filter-bar {
+            margin-bottom: 1.5rem;
+        }
+        .booking-filter-form {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .booking-filter-select {
+            min-width: 260px;
+            padding: 8px 14px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: var(--font-b);
+            font-size: 0.85rem;
+        }
+        .booking-filter-select option {
+            background: var(--input-option-bg);
+            color: var(--text);
+        }
+        html[data-theme="dark"] .booking-filter-select,
+        html[data-theme="dark"] .booking-filter-select option {
+            background: #141414;
+            color: #ffffff;
+        }
+        html[data-theme="light"] .booking-filter-select,
+        html[data-theme="light"] .booking-filter-select option {
+            background: #f6f1e8;
+            color: #1f1812;
+        }
+
+        .workshop-actions {
+            margin-bottom: 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 0.85rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .workshop-actions-copy {
+            min-width: 220px;
+            flex: 1;
+        }
+        .workshop-actions-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--dim);
+            margin-bottom: 0.2rem;
+        }
+        .workshop-actions-note {
+            color: var(--muted);
+            font-size: 0.8rem;
+            line-height: 1.35;
+        }
+        .workshop-actions-buttons {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            flex-wrap: wrap;
+        }
+        .bulk-email-modal {
+            max-width: 680px;
+        }
+
+        @media (max-width: 700px) {
+            .booking-filter-select {
+                width: 100%;
+                min-width: 0;
+            }
+            .workshop-actions {
+                align-items: flex-start;
+            }
+            .workshop-actions-buttons {
+                width: 100%;
+            }
+            .workshop-actions-buttons .btn-admin {
+                flex: 1;
+            }
+        }
     </style>
 </head>
 <body>
@@ -428,9 +517,9 @@ if ($workshop) {
         <?= render_flash() ?>
 
         <!-- Filter -->
-        <div style="margin-bottom:1.5rem;">
-            <form method="GET" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
-                <select name="workshop_id" style="padding:8px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--font-b);font-size:0.85rem;">
+        <div class="booking-filter-bar">
+            <form method="GET" class="booking-filter-form">
+                <select name="workshop_id" class="booking-filter-select">
                     <option value="0">Alle Workshops</option>
                     <?php foreach ($allWorkshops as $ws): ?>
                         <option value="<?= $ws['id'] ?>" <?= $workshopId == $ws['id'] ? 'selected' : '' ?>><?= e($ws['title']) ?></option>
@@ -441,46 +530,17 @@ if ($workshop) {
         </div>
 
         <?php if ($workshop): ?>
-        <!-- Rechnung senden -->
-        <div style="margin-bottom:1.25rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;">
-            <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--dim);">
-                Rechnung senden
-            </div>
-            <button type="button" class="btn-admin btn-success" onclick="openRechnungModal()">
-                Rechnung senden &rarr;
-            </button>
-            <span style="font-size:0.78rem;color:var(--dim);">
-                Generiert eine Rechnung und sendet sie an alle bestätigten Teilnehmer:innen dieses Workshops.
-            </span>
-        </div>
-
-        <!-- Bulk email to all participants of this workshop -->
-        <div style="margin-bottom:2rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;">
-            <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--dim);margin-bottom:1rem;">
-                E-Mail an alle bestätigten Teilnehmer:innen senden
-            </div>
-            <form method="POST">
-                <?= csrf_field() ?>
-                <input type="hidden" name="email_all_submit" value="1">
-                <input type="hidden" name="bulk_workshop_id" value="<?= $workshop['id'] ?>">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.75rem;">
-                    <div class="form-group" style="margin-bottom:0;">
-                        <label for="bulk_subject">Betreff</label>
-                        <input type="text" id="bulk_subject" name="bulk_subject" required placeholder="Betreff der E-Mail">
-                    </div>
+        <div class="workshop-actions">
+            <div class="workshop-actions-copy">
+                <div class="workshop-actions-title">Workshop-Aktionen</div>
+                <div class="workshop-actions-note">
+                    Rechnungserstellung und Sammelmail werden als Pop-up geöffnet und bleiben damit kompakt.
                 </div>
-                <div class="form-group" style="margin-bottom:0.75rem;">
-                    <label for="bulk_message">Nachricht</label>
-                    <textarea id="bulk_message" name="bulk_message" rows="4" required placeholder="Ihre Nachricht an alle Teilnehmer:innen..."></textarea>
-                </div>
-                <button type="submit" class="btn-admin btn-success"
-                        onclick='return confirm(<?= json_for_html("E-Mail an alle bestaetigten Teilnehmer:innen von \\\"{$workshop['title']}\\\" senden?") ?>)'>
-                    An alle senden &rarr;
-                </button>
-                <span style="font-size:0.78rem;color:var(--dim);margin-left:0.75rem;">
-                    Geht an alle bestätigten Buchenden + einzeln angegebene Teilnehmer:innen (keine Duplikate).
-                </span>
-            </form>
+            </div>
+            <div class="workshop-actions-buttons">
+                <button type="button" class="btn-admin btn-success" onclick="openRechnungModal()">Rechnung senden</button>
+                <button type="button" class="btn-admin" onclick="openBulkEmailModal()">E-Mail an alle</button>
+            </div>
         </div>
         <?php endif; ?>
 
@@ -629,6 +689,39 @@ if ($workshop) {
         : '';
     $selStyle = 'width:100%;padding:8px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--font-b);font-size:0.9rem;';
 ?>
+<!-- Bulk Email Modal -->
+<div class="email-modal-overlay" id="bulkEmailModal">
+    <div class="email-modal bulk-email-modal">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:0.3rem;">
+            <h3 style="margin-bottom:0;">E-Mail an alle senden</h3>
+            <button type="button" onclick="closeBulkEmailModal()" style="background:none;border:none;color:var(--dim);font-size:1.3rem;cursor:pointer;line-height:1;">&times;</button>
+        </div>
+        <p style="color:var(--dim);font-size:0.83rem;margin-bottom:1rem;">
+            Diese Nachricht wird an alle bestätigten Buchenden und einzeln erfassten Teilnehmer:innen dieses Workshops gesendet.
+        </p>
+        <form method="POST">
+            <?= csrf_field() ?>
+            <input type="hidden" name="email_all_submit" value="1">
+            <input type="hidden" name="bulk_workshop_id" value="<?= $workshop['id'] ?>">
+            <div class="form-group">
+                <label for="bulk_subject">Betreff</label>
+                <input type="text" id="bulk_subject" name="bulk_subject" required placeholder="Betreff der E-Mail">
+            </div>
+            <div class="form-group">
+                <label for="bulk_message">Nachricht</label>
+                <textarea id="bulk_message" name="bulk_message" rows="6" required placeholder="Ihre Nachricht an alle Teilnehmer:innen..."></textarea>
+            </div>
+            <div style="display:flex;gap:0.75rem;">
+                <button type="submit" class="btn-submit" style="flex:1;"
+                        onclick='return confirm(<?= json_for_html("E-Mail an alle bestaetigten Teilnehmer:innen von \\\"{$workshop['title']}\\\" senden?") ?>)'>
+                    An alle senden &rarr;
+                </button>
+                <button type="button" class="btn-admin" onclick="closeBulkEmailModal()">Abbrechen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Rechnung Modal -->
 <div class="email-modal-overlay" id="rechnungModal">
   <div class="rechnung-modal">
@@ -830,6 +923,22 @@ document.getElementById('emailModal').addEventListener('click', function(e) {
     if (e.target === this) closeEmailModal();
 });
 
+// -- Bulk email modal ---------------------------------------------------------
+function openBulkEmailModal() {
+    var modal = document.getElementById('bulkEmailModal');
+    if (modal) modal.classList.add('open');
+}
+function closeBulkEmailModal() {
+    var modal = document.getElementById('bulkEmailModal');
+    if (modal) modal.classList.remove('open');
+}
+var bulkEmailModal = document.getElementById('bulkEmailModal');
+if (bulkEmailModal) {
+    bulkEmailModal.addEventListener('click', function(e) {
+        if (e.target === this) closeBulkEmailModal();
+    });
+}
+
 // -- Rechnung modal -----------------------------------------------------------
 function openRechnungModal() {
     document.getElementById('rechnungModal').classList.add('open');
@@ -884,7 +993,7 @@ function rcSelectAll(state) {
 }
 
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') { closeEmailModal(); closeRechnungModal(); }
+    if (e.key === 'Escape') { closeEmailModal(); closeBulkEmailModal(); closeRechnungModal(); }
 });
 </script>
 
