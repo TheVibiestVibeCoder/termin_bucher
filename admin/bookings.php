@@ -10,7 +10,7 @@ if ($workshopId) {
 }
 $returnUrl = 'bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : '');
 
-// ── Handle actions ──────────────────────────────────────────────────────────
+// â”€â”€ Handle actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
     flash('error', 'Ungueltige Sitzung.');
     redirect($returnUrl);
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             send_booking_cancelled_email($drow['email'], $drow['name'], $drow['workshop_title']);
         }
 
-        flash('success', 'Buchung gelöscht.' . ($drow && $drow['confirmed'] ? ' Stornierungsmail gesendet.' : ''));
+        flash('success', 'Buchung gelÃ¶scht.' . ($drow && $drow['confirmed'] ? ' Stornierungsmail gesendet.' : ''));
         redirect($returnUrl);
     }
 
@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['rechnung_submit'])) {
         $rwid = (int) ($_POST['rechnung_workshop_id'] ?? 0);
         if (!$rwid) {
-            flash('error', 'Kein Workshop ausgewählt.');
+            flash('error', 'Kein Workshop ausgewÃ¤hlt.');
         } else {
             $commonData = [
                 'rechnung_datum'       => trim($_POST['r_rechnung_datum']       ?? date('Y-m-d')),
@@ -193,9 +193,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if ($rsent === 0) {
-                flash('error', 'Keine Empfänger ausgewählt oder keine gültigen E-Mail-Adressen vorhanden.');
+                flash('error', 'Keine EmpfÃ¤nger ausgewÃ¤hlt oder keine gÃ¼ltigen E-Mail-Adressen vorhanden.');
             } else {
-                flash('success', "Rechnung an {$rsent} Empfänger gesendet.");
+                flash('success', "Rechnung an {$rsent} EmpfÃ¤nger gesendet.");
             }
         }
         redirect($returnUrl);
@@ -208,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $bulkMessage = trim($_POST['bulk_message'] ?? '');
 
         if (!$bulkWid) {
-            flash('error', 'Kein Workshop ausgewählt.');
+            flash('error', 'Kein Workshop ausgewÃ¤hlt.');
         } elseif (!$bulkSubject || !$bulkMessage) {
             flash('error', 'Betreff und Nachricht sind erforderlich.');
         } else {
@@ -241,15 +241,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sent++;
                 }
             }
-            flash('success', "E-Mail an {$sent} Empfänger gesendet.");
+            flash('success', "E-Mail an {$sent} EmpfÃ¤nger gesendet.");
         }
         redirect($returnUrl);
     }
 }
 
-// ── Fetch bookings ──────────────────────────────────────────────────────────
+// â”€â”€ Fetch bookings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $sql = '
-    SELECT b.*, w.title AS workshop_title, w.slug AS workshop_slug
+    SELECT b.*, w.title AS workshop_title, w.slug AS workshop_slug, w.price_currency AS workshop_currency
     FROM bookings b
     JOIN workshops w ON b.workshop_id = w.id
 ';
@@ -314,7 +314,7 @@ if ($workshop) {
         } catch (e) {}
     })();
     </script>
-    <title>Buchungen – Admin</title>
+    <title>Buchungen â€“ Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -375,7 +375,7 @@ if ($workshop) {
             <h1>
                 Buchungen
                 <?php if ($workshop): ?>
-                    <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> – <?= e($workshop['title']) ?></span>
+                    <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> â€“ <?= e($workshop['title']) ?></span>
                 <?php endif; ?>
             </h1>
         </div>
@@ -405,14 +405,14 @@ if ($workshop) {
                 Rechnung senden &rarr;
             </button>
             <span style="font-size:0.78rem;color:var(--dim);">
-                Generiert eine Rechnung und sendet sie an alle bestätigten Teilnehmer:innen dieses Workshops.
+                Generiert eine Rechnung und sendet sie an alle bestÃ¤tigten Teilnehmer:innen dieses Workshops.
             </span>
         </div>
 
         <!-- Bulk email to all participants of this workshop -->
         <div style="margin-bottom:2rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;">
             <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--dim);margin-bottom:1rem;">
-                E-Mail an alle bestätigten Teilnehmer:innen senden
+                E-Mail an alle bestÃ¤tigten Teilnehmer:innen senden
             </div>
             <form method="POST">
                 <?= csrf_field() ?>
@@ -433,7 +433,7 @@ if ($workshop) {
                     An alle senden &rarr;
                 </button>
                 <span style="font-size:0.78rem;color:var(--dim);margin-left:0.75rem;">
-                    Geht an alle bestätigten Buchenden + einzeln angegebene Teilnehmer:innen (keine Duplikate).
+                    Geht an alle bestÃ¤tigten Buchenden + einzeln angegebene Teilnehmer:innen (keine Duplikate).
                 </span>
             </form>
         </div>
@@ -452,6 +452,7 @@ if ($workshop) {
                         <th>Organisation</th>
                         <th>Workshop</th>
                         <th>TN</th>
+                        <th>Rabatt</th>
                         <th>Status</th>
                         <th>Datum</th>
                         <th>Aktionen</th>
@@ -459,27 +460,42 @@ if ($workshop) {
                 </thead>
                 <tbody>
                     <?php foreach ($bookings as $b):
-                        $bParts = $participantsByBooking[(int)$b['id']] ?? [];
-                        $isIndividual = ($b['booking_mode'] ?? 'group') === 'individual';
-                    ?>
+    $bParts = $participantsByBooking[(int)$b['id']] ?? [];
+    $isIndividual = ($b['booking_mode'] ?? 'group') === 'individual';
+    $bookingCurrency = trim((string)($b['booking_currency'] ?? ''));
+    if ($bookingCurrency === '') {
+        $bookingCurrency = trim((string)($b['workshop_currency'] ?? 'EUR'));
+    }
+?>
                     <tr>
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><a href="mailto:<?= e($b['email']) ?>" style="color:var(--muted);"><?= e($b['email']) ?></a></td>
                         <td><?= e($b['organization']) ?></td>
                         <td><?= e($b['workshop_title']) ?></td>
                         <td>
-                            <?= (int) $b['participants'] ?>
-                            <?php if ($isIndividual && !empty($bParts)): ?>
-                                <button type="button"
-                                        onclick="var r=this.closest('tr').nextElementSibling;r.style.display=r.style.display==='none'?'':'none';"
-                                        style="font-size:0.65rem;padding:1px 6px;margin-left:4px;background:var(--surface-soft);border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;">
-                                    einzeln
-                                </button>
-                            <?php endif; ?>
-                        </td>
+    <?= (int) $b['participants'] ?>
+    <?php if ($isIndividual && !empty($bParts)): ?>
+        <button type="button"
+                onclick="var r=this.closest('tr').nextElementSibling;r.style.display=r.style.display==='none'?'':'none';"
+                style="font-size:0.65rem;padding:1px 6px;margin-left:4px;background:var(--surface-soft);border:1px solid var(--border);border-radius:3px;color:var(--muted);cursor:pointer;">
+            einzeln
+        </button>
+    <?php endif; ?>
+</td>
+<td>
+    <?php if ((float) $b['discount_amount'] > 0): ?>
+        <div style="color:var(--text);font-weight:600;"><?= e($b['discount_code']) ?></div>
+        <div style="font-size:0.75rem;color:#2ecc71;">-<?= e(format_price((float) $b['discount_amount'], $bookingCurrency)) ?></div>
+    <?php elseif (trim((string)($b['discount_code'] ?? '')) !== ''): ?>
+        <div style="color:var(--text);"><?= e($b['discount_code']) ?></div>
+        <div style="font-size:0.75rem;color:var(--dim);">kein Abzug</div>
+    <?php else: ?>
+        <span style="color:var(--dim);">-</span>
+    <?php endif; ?>
+</td>
                         <td>
                             <?php if ($b['confirmed']): ?>
-                                <span class="status-badge status-confirmed">Bestätigt</span>
+                                <span class="status-badge status-confirmed">BestÃ¤tigt</span>
                             <?php else: ?>
                                 <span class="status-badge status-pending">Ausstehend</span>
                             <?php endif; ?>
@@ -493,7 +509,7 @@ if ($workshop) {
                                 <form method="POST" style="display:inline;">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="confirm_booking_id" value="<?= $b['id'] ?>">
-                                    <button type="submit" class="btn-admin btn-success" title="Manuell bestätigen">Bestätigen</button>
+                                    <button type="submit" class="btn-admin btn-success" title="Manuell bestÃ¤tigen">BestÃ¤tigen</button>
                                 </form>
                                 <?php endif; ?>
 
@@ -501,17 +517,17 @@ if ($workshop) {
                                         onclick='openEmailModal(<?= (int) $b['id'] ?>, <?= json_for_html((string) $b['name']) ?>, <?= json_for_html((string) $b['email']) ?>)'
                                         title="E-Mail senden">E-Mail</button>
 
-                                <form method="POST" style="display:inline;" onsubmit="return confirm('Buchung wirklich löschen?')">
+                                <form method="POST" style="display:inline;" onsubmit="return confirm('Buchung wirklich lÃ¶schen?')">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="delete_booking_id" value="<?= $b['id'] ?>">
-                                    <button type="submit" class="btn-admin btn-danger" title="Löschen">Löschen</button>
+                                    <button type="submit" class="btn-admin btn-danger" title="LÃ¶schen">LÃ¶schen</button>
                                 </form>
                             </div>
                         </td>
                     </tr>
                     <?php if ($isIndividual && !empty($bParts)): ?>
                     <tr style="display:none;background:rgba(245,166,35,0.04);" class="parts-row">
-                        <td colspan="8" style="padding:0.75rem 1rem 0.75rem 2.5rem;">
+                        <td colspan="9" style="padding:0.75rem 1rem 0.75rem 2.5rem;">
                             <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:0.5rem;">
                                 Einzeln angemeldete Teilnehmer:innen
                             </div>
@@ -585,7 +601,7 @@ if ($workshop) {
         <input type="hidden" name="rechnung_submit" value="1">
         <input type="hidden" name="rechnung_workshop_id" value="<?= $workshop['id'] ?>">
 
-        <!-- ── Gemeinsame Felder ───────────────────────────────────────── -->
+        <!-- â”€â”€ Gemeinsame Felder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
         <div class="rechnung-section-label" style="margin-top:0;">Gemeinsame Rechnungsdaten</div>
         <div class="rechnung-grid-2" style="margin-bottom:0.6rem;">
             <div class="form-group" style="margin-bottom:0;">
@@ -594,14 +610,14 @@ if ($workshop) {
                        value="<?= date('Y-m-d') ?>" oninput="rcUpdateNrs()">
             </div>
             <div class="form-group" style="margin-bottom:0;">
-                <label>Startnummer <span style="color:var(--dim);font-size:0.78em;">(+1 je Empfänger)</span></label>
+                <label>Startnummer <span style="color:var(--dim);font-size:0.78em;">(+1 je EmpfÃ¤nger)</span></label>
                 <input type="number" id="r_start_nr" name="r_start_nr" value="1" min="1" oninput="rcUpdateNrs()">
             </div>
         </div>
         <div class="form-group" style="margin-bottom:0.6rem;">
-            <label>Für (Leistungsbeschreibung)</label>
+            <label>FÃ¼r (Leistungsbeschreibung)</label>
             <input type="text" name="r_fuer_text" value="die Abhaltung des Workshops"
-                   placeholder="z.B. die Abhaltung des zweistündigen Workshops">
+                   placeholder="z.B. die Abhaltung des zweistÃ¼ndigen Workshops">
         </div>
         <div class="rechnung-grid-2" style="margin-bottom:0.6rem;">
             <div class="form-group" style="margin-bottom:0;">
@@ -611,7 +627,7 @@ if ($workshop) {
             <div class="form-group" style="margin-bottom:0;">
                 <label>Veranstaltungsdatum</label>
                 <input type="text" name="r_veranstaltungs_datum" value="<?= e($evtDateDefault) ?>"
-                       placeholder="z.B. 15. März 2025, 09:00 Uhr">
+                       placeholder="z.B. 15. MÃ¤rz 2025, 09:00 Uhr">
             </div>
         </div>
 
@@ -647,13 +663,13 @@ if ($workshop) {
             <input type="text" name="r_absender_name" placeholder="Mag.a Maria Muster">
         </div>
 
-        <!-- ── Pro-Buchung-Karten ──────────────────────────────────────── -->
+        <!-- â”€â”€ Pro-Buchung-Karten â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
         <div style="display:flex;align-items:center;justify-content:space-between;
                     border-top:1px solid var(--border);padding-top:1.1rem;margin-top:0.6rem;">
             <div class="rechnung-section-label" style="margin:0;">
-                Empfänger
+                EmpfÃ¤nger
                 <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0;">
-                    (<?= count($confirmedBookingsForRechnung) ?> bestätigt)
+                    (<?= count($confirmedBookingsForRechnung) ?> bestÃ¤tigt)
                 </span>
             </div>
             <div style="display:flex;gap:0.4rem;">
@@ -670,7 +686,7 @@ if ($workshop) {
 
         <?php if (empty($confirmedBookingsForRechnung)): ?>
         <p style="color:var(--dim);font-size:0.85rem;padding:0.75rem 0;">
-            Keine bestätigten Buchungen für diesen Workshop.
+            Keine bestÃ¤tigten Buchungen fÃ¼r diesen Workshop.
         </p>
         <?php endif; ?>
 
@@ -685,12 +701,12 @@ if ($workshop) {
                     <span class="rechnung-card-summary">
                         <strong><?= e($cb['organization'] ?: $cb['name']) ?></strong>
                         <?php if ($cb['organization'] && $cb['organization'] !== $cb['name']): ?>
-                            <span style="color:var(--dim);"> – <?= e($cb['name']) ?></span>
+                            <span style="color:var(--dim);"> â€“ <?= e($cb['name']) ?></span>
                         <?php endif; ?>
-                        <span style="color:var(--dim);"> · <?= e($cb['email']) ?></span>
+                        <span style="color:var(--dim);"> Â· <?= e($cb['email']) ?></span>
                     </span>
                 </label>
-                <span class="rechnung-card-toggle" id="rc-tog-<?= $i ?>">▲</span>
+                <span class="rechnung-card-toggle" id="rc-tog-<?= $i ?>">â–²</span>
             </div>
             <!-- Card body (collapsible) -->
             <div class="rechnung-card-body" id="rc-body-<?= $i ?>">
@@ -702,7 +718,7 @@ if ($workshop) {
                     </div>
                     <div class="form-group" style="margin-bottom:0;">
                         <label>Adresse</label>
-                        <input type="text" name="r_booking_adresse[<?= $i ?>]" placeholder="Musterstraße 12">
+                        <input type="text" name="r_booking_adresse[<?= $i ?>]" placeholder="MusterstraÃŸe 12">
                     </div>
                 </div>
                 <div class="rechnung-grid-2" style="margin-bottom:0.5rem;">
@@ -752,7 +768,7 @@ if ($workshop) {
 <?php endif; ?>
 
 <script>
-// ── Email modal ──────────────────────────────────────────────────────────────
+// â”€â”€ Email modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openEmailModal(id, name, email) {
     document.getElementById('emailBookingId').value = id;
     document.getElementById('emailRecipient').textContent = 'An: ' + name + ' (' + email + ')';
@@ -765,7 +781,7 @@ document.getElementById('emailModal').addEventListener('click', function(e) {
     if (e.target === this) closeEmailModal();
 });
 
-// ── Rechnung modal ───────────────────────────────────────────────────────────
+// â”€â”€ Rechnung modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openRechnungModal() {
     document.getElementById('rechnungModal').classList.add('open');
     rcUpdateNrs();           // initialise invoice numbers on open
@@ -801,7 +817,7 @@ function rcToggle(i) {
     var tog  = document.getElementById('rc-tog-' + i);
     if (!body) return;
     body.classList.toggle('rc-hidden');
-    if (tog) tog.textContent = body.classList.contains('rc-hidden') ? '▼' : '▲';
+    if (tog) tog.textContent = body.classList.contains('rc-hidden') ? 'â–¼' : 'â–²';
 }
 
 // Dim card when deselected
@@ -827,4 +843,9 @@ document.addEventListener('keydown', function(e) {
 
 </body>
 </html>
+
+
+
+
+
 

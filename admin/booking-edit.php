@@ -8,7 +8,7 @@ if (!$id) {
     redirect('bookings.php');
 }
 
-$stmt = $db->prepare('SELECT b.*, w.title AS workshop_title, w.id AS workshop_id FROM bookings b JOIN workshops w ON b.workshop_id = w.id WHERE b.id = :id');
+$stmt = $db->prepare('SELECT b.*, w.title AS workshop_title, w.id AS workshop_id, w.price_netto AS workshop_price_netto, w.price_currency AS workshop_currency FROM bookings b JOIN workshops w ON b.workshop_id = w.id WHERE b.id = :id');
 $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
 $booking = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
@@ -32,8 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $confirmed    = isset($_POST['confirmed']) ? 1 : 0;
 
     if (strlen($name) < 2) $errors[] = 'Bitte geben Sie einen Namen ein.';
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
-    if ($participants < 1 || $participants > 500) $errors[] = 'Ungültige Anzahl Teilnehmer:innen.';
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gÃ¼ltige E-Mail-Adresse ein.';
+    if ($participants < 1 || $participants > 500) $errors[] = 'UngÃ¼ltige Anzahl Teilnehmer:innen.';
 
     if (mb_strlen($name) > 120) $errors[] = 'Name ist zu lang.';
     if (mb_strlen($email) > 254) $errors[] = 'E-Mail-Adresse ist zu lang.';
@@ -59,12 +59,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             }
         }
     }
+    $pricePerPersonSnapshot = (float) ($booking['price_per_person_netto'] ?? 0);
+    if ($pricePerPersonSnapshot <= 0) {
+        $pricePerPersonSnapshot = (float) ($booking['workshop_price_netto'] ?? 0);
+    }
+
+    $bookingCurrency = trim((string) ($booking['booking_currency'] ?? ''));
+    if ($bookingCurrency === '') {
+        $bookingCurrency = trim((string) ($booking['workshop_currency'] ?? 'EUR'));
+    }
+
+    $discountTypeSnapshot = (string) ($booking['discount_type'] ?? '');
+    $discountValueSnapshot = (float) ($booking['discount_value'] ?? 0);
+    $recalculatedTotals = calculate_booking_totals(
+        $pricePerPersonSnapshot,
+        $participants,
+        $discountTypeSnapshot,
+        $discountValueSnapshot
+    );
 
     if (empty($errors)) {
         $upd = $db->prepare('
             UPDATE bookings
             SET name = :name, email = :email, organization = :org, phone = :phone,
                 participants = :participants, message = :msg, confirmed = :confirmed,
+                price_per_person_netto = :ppnet, booking_currency = :bcurrency,
+                subtotal_netto = :subtotal, discount_amount = :damount, total_netto = :total,
                 confirmed_at = CASE WHEN :confirmed = 1 THEN COALESCE(confirmed_at, datetime("now")) ELSE NULL END
             WHERE id = :id
         ');
@@ -75,6 +95,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         $upd->bindValue(':participants', $participants, SQLITE3_INTEGER);
         $upd->bindValue(':msg',          $message,      SQLITE3_TEXT);
         $upd->bindValue(':confirmed',    $confirmed,    SQLITE3_INTEGER);
+        $upd->bindValue(':ppnet',        $pricePerPersonSnapshot,             SQLITE3_FLOAT);
+        $upd->bindValue(':bcurrency',    $bookingCurrency,                    SQLITE3_TEXT);
+        $upd->bindValue(':subtotal',     (float) $recalculatedTotals['subtotal'], SQLITE3_FLOAT);
+        $upd->bindValue(':damount',      (float) $recalculatedTotals['discount'], SQLITE3_FLOAT);
+        $upd->bindValue(':total',        (float) $recalculatedTotals['total'],    SQLITE3_FLOAT);
         $upd->bindValue(':id',           $id,           SQLITE3_INTEGER);
         $upd->execute();
 
@@ -90,8 +115,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
     $booking['participants'] = $participants;
     $booking['message']      = $message;
     $booking['confirmed']    = $confirmed;
+    $booking['price_per_person_netto'] = $pricePerPersonSnapshot;
+    $booking['booking_currency'] = $bookingCurrency;
+    $booking['subtotal_netto'] = (float) $recalculatedTotals['subtotal'];
+    $booking['discount_amount'] = (float) $recalculatedTotals['discount'];
+    $booking['total_netto'] = (float) $recalculatedTotals['total'];
 }
-?>
+
+$metaCurrency = trim((string) ($booking['booking_currency'] ?? ''));
+if ($metaCurrency === '') {
+    $metaCurrency = trim((string) ($booking['workshop_currency'] ?? 'EUR'));
+}
+
+$metaPricePerPerson = (float) ($booking['price_per_person_netto'] ?? 0);
+if ($metaPricePerPerson <= 0) {
+    $metaPricePerPerson = (float) ($booking['workshop_price_netto'] ?? 0);
+}
+
+$metaSubtotal = (float) ($booking['subtotal_netto'] ?? 0);
+$metaDiscount = (float) ($booking['discount_amount'] ?? 0);
+$metaTotal = (float) ($booking['total_netto'] ?? 0);
+if ($metaSubtotal <= 0 && $metaPricePerPerson > 0) {
+    $metaSubtotal = $metaPricePerPerson * (int) ($booking['participants'] ?? 1);
+}
+if ($metaTotal <= 0 && $metaSubtotal > 0) {
+    $metaTotal = max(0, $metaSubtotal - $metaDiscount);
+}?>
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -108,7 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         } catch (e) {}
     })();
     </script>
-    <title>Buchung bearbeiten – Admin</title>
+    <title>Buchung bearbeiten â€“ Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -147,7 +196,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             </div>
             <?php if ($booking['confirmed'] && $booking['confirmed_at']): ?>
             <div>
-                <strong style="color:var(--text);">Bestätigt:</strong> <?= e(date('d.m.Y H:i', strtotime($booking['confirmed_at']))) ?>
+                <strong style="color:var(--text);">BestÃ¤tigt:</strong> <?= e(date('d.m.Y H:i', strtotime($booking['confirmed_at']))) ?>
+            </div>
+            <?php endif; ?>
+            <?php if ($metaPricePerPerson > 0): ?>
+            <div style="margin-top:0.45rem;">
+                <strong style="color:var(--text);">Preis / Person (netto):</strong>
+                <?= e(format_price($metaPricePerPerson, $metaCurrency)) ?>
+            </div>
+            <div style="margin-top:0.2rem;">
+                <strong style="color:var(--text);">Zwischensumme (netto):</strong>
+                <?= e(format_price($metaSubtotal, $metaCurrency)) ?>
+            </div>
+            <?php if ($metaDiscount > 0): ?>
+            <div style="margin-top:0.2rem;">
+                <strong style="color:var(--text);">Rabatt:</strong>
+                <?= e($booking['discount_code'] ?: '-') ?>
+                <span style="color:#2ecc71;">(-<?= e(format_price($metaDiscount, $metaCurrency)) ?>)</span>
+            </div>
+            <?php endif; ?>
+            <div style="margin-top:0.2rem;">
+                <strong style="color:var(--text);">Gesamt (netto):</strong>
+                <?= e(format_price($metaTotal, $metaCurrency)) ?>
             </div>
             <?php endif; ?>
         </div>
@@ -189,7 +259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
                 <input type="checkbox" id="confirmed" name="confirmed" value="1"
                        <?= $booking['confirmed'] ? 'checked' : '' ?>
                        style="width:auto;accent-color:#2ecc71;">
-                <label for="confirmed" style="margin-bottom:0;cursor:pointer;">Buchung bestätigt</label>
+                <label for="confirmed" style="margin-bottom:0;cursor:pointer;">Buchung bestÃ¤tigt</label>
             </div>
 
             <div style="display:flex;gap:0.75rem;margin-top:0.5rem;">
@@ -202,3 +272,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
 <script src="../assets/site-ui.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+

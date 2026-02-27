@@ -30,8 +30,17 @@ $eventDate    = $workshop['event_date']     ?? '';
 $eventDateEnd = $workshop['event_date_end'] ?? '';
 $location     = $workshop['location']       ?? '';
 
-$errors           = [];
-$formData         = ['name' => '', 'email' => '', 'organization' => '', 'phone' => '', 'participants' => 1, 'message' => '', 'booking_mode' => 'group'];
+$errors = [];
+$formData = [
+    'name' => '',
+    'email' => '',
+    'organization' => '',
+    'phone' => '',
+    'participants' => 1,
+    'message' => '',
+    'booking_mode' => 'group',
+    'discount_code' => '',
+];
 $participantNames  = [];
 $participantEmails = [];
 $maxLen = [
@@ -42,9 +51,12 @@ $maxLen = [
     'message'      => 3000,
 ];
 
+$pricingSummary = calculate_booking_totals($price, 1);
+$discountFeedback = null;
+$discountContext = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if (!csrf_verify()) {
-        $errors[] = 'Ungültige Sitzung. Bitte versuchen Sie es erneut.';
+        $errors[] = 'Ungueltige Sitzung. Bitte versuchen Sie es erneut.';
     }
     if (!rate_limit('booking', 3)) {
         $errors[] = 'Zu viele Anfragen. Bitte warten Sie einen Moment.';
@@ -57,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     $formData['participants'] = max(1, (int) ($_POST['participants'] ?? 1));
     $formData['message']      = trim($_POST['message'] ?? '');
     $formData['booking_mode'] = ($_POST['booking_mode'] ?? 'group') === 'individual' ? 'individual' : 'group';
+    $formData['discount_code'] = normalize_discount_code((string) ($_POST['discount_code'] ?? ''));
 
     if ($formData['booking_mode'] === 'individual') {
         $participantNames  = array_map('trim', (array)($_POST['participant_name']  ?? []));
@@ -64,8 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     }
 
     if (strlen($formData['name']) < 2) $errors[] = 'Bitte geben Sie Ihren Namen ein.';
-    if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
-    if ($formData['participants'] < 1 || $formData['participants'] > 50) $errors[] = 'Ungültige Anzahl Teilnehmer:innen.';
+    if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gueltige E-Mail-Adresse ein.';
+    if ($formData['participants'] < 1 || $formData['participants'] > 50) $errors[] = 'Ungueltige Anzahl Teilnehmer:innen.';
 
     if (mb_strlen($formData['name']) > $maxLen['name']) $errors[] = 'Name ist zu lang.';
     if (mb_strlen($formData['email']) > $maxLen['email']) $errors[] = 'E-Mail-Adresse ist zu lang.';
@@ -76,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if ($formData['booking_mode'] === 'individual' && empty($errors)) {
         $expected = $formData['participants'];
         if (count($participantNames) !== $expected || count($participantEmails) !== $expected) {
-            $errors[] = 'Bitte füllen Sie die Daten für alle Teilnehmer:innen aus.';
+            $errors[] = 'Bitte fuellen Sie die Daten fuer alle Teilnehmer:innen aus.';
         } else {
             foreach ($participantNames as $i => $pn) {
                 if (strlen($pn) < 2) $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Bitte geben Sie einen Namen ein.';
@@ -84,21 +97,95 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 if (mb_strlen($pn) > $maxLen['name']) $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Name ist zu lang.';
                 if (mb_strlen($participantEmail) > $maxLen['email']) $errors[] = 'Teilnehmer:in ' . ($i+1) . ': E-Mail-Adresse ist zu lang.';
                 if (!filter_var($participantEmail, FILTER_VALIDATE_EMAIL)) {
-                    $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Ungültige E-Mail-Adresse.';
+                    $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Ungueltige E-Mail-Adresse.';
                 }
             }
         }
     }
 
     if ($capacity > 0 && $formData['participants'] > $spotsLeft) {
-        $errors[] = "Leider sind nur noch {$spotsLeft} Plätze verfügbar.";
+        $errors[] = "Leider sind nur noch {$spotsLeft} Plaetze verfuegbar.";
+    }
+
+    $pricingSummary = calculate_booking_totals($price, (int) $formData['participants']);
+
+    if ($formData['discount_code'] !== '') {
+        $discountFeedback = validate_discount_for_booking(
+            $db,
+            $formData['discount_code'],
+            (int) $workshop['id'],
+            (string) $formData['email'],
+            (int) $formData['participants'],
+            (float) $pricingSummary['subtotal']
+        );
+
+        if ($discountFeedback['ok'] && is_array($discountFeedback['code'])) {
+            $discountContext = $discountFeedback;
+            $pricingSummary['discount'] = (float) $discountFeedback['discount'];
+            $pricingSummary['total'] = (float) $discountFeedback['total'];
+        } else {
+            $errors[] = $discountFeedback['message'] ?: 'Rabattcode ist ungueltig.';
+        }
     }
 
     if (empty($errors)) {
         $token = generate_token();
+
+        $discountCodeId = null;
+        $discountCodeText = '';
+        $discountType = '';
+        $discountValue = 0.0;
+        $discountAmount = 0.0;
+
+        if ($discountContext && is_array($discountContext['code'])) {
+            $discountCodeId = (int) $discountContext['code']['id'];
+            $discountCodeText = (string) $discountContext['code']['code'];
+            $discountType = (string) $discountContext['code']['discount_type'];
+            $discountValue = (float) $discountContext['code']['discount_value'];
+            $discountAmount = (float) $pricingSummary['discount'];
+        }
+
         $stmt = $db->prepare('
-            INSERT INTO bookings (workshop_id, name, email, organization, phone, participants, message, token, booking_mode)
-            VALUES (:wid, :name, :email, :org, :phone, :participants, :msg, :token, :bmode)
+            INSERT INTO bookings (
+                workshop_id,
+                name,
+                email,
+                organization,
+                phone,
+                participants,
+                message,
+                token,
+                booking_mode,
+                price_per_person_netto,
+                booking_currency,
+                discount_code_id,
+                discount_code,
+                discount_type,
+                discount_value,
+                discount_amount,
+                subtotal_netto,
+                total_netto
+            )
+            VALUES (
+                :wid,
+                :name,
+                :email,
+                :org,
+                :phone,
+                :participants,
+                :msg,
+                :token,
+                :bmode,
+                :ppnet,
+                :currency,
+                :dcid,
+                :dcode,
+                :dtype,
+                :dvalue,
+                :damount,
+                :subtotal,
+                :total
+            )
         ');
         $stmt->bindValue(':wid',          $workshop['id'],           SQLITE3_INTEGER);
         $stmt->bindValue(':name',         $formData['name'],         SQLITE3_TEXT);
@@ -109,37 +196,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         $stmt->bindValue(':msg',          $formData['message'],      SQLITE3_TEXT);
         $stmt->bindValue(':token',        $token,                    SQLITE3_TEXT);
         $stmt->bindValue(':bmode',        $formData['booking_mode'], SQLITE3_TEXT);
+        $stmt->bindValue(':ppnet',        (float) $price,            SQLITE3_FLOAT);
+        $stmt->bindValue(':currency',     $currency,                 SQLITE3_TEXT);
+        if ($discountCodeId === null) {
+            $stmt->bindValue(':dcid', null, SQLITE3_NULL);
+        } else {
+            $stmt->bindValue(':dcid', $discountCodeId, SQLITE3_INTEGER);
+        }
+        $stmt->bindValue(':dcode',        $discountCodeText,         SQLITE3_TEXT);
+        $stmt->bindValue(':dtype',        $discountType,             SQLITE3_TEXT);
+        $stmt->bindValue(':dvalue',       $discountValue,            SQLITE3_FLOAT);
+        $stmt->bindValue(':damount',      $discountAmount,           SQLITE3_FLOAT);
+        $stmt->bindValue(':subtotal',     (float) $pricingSummary['subtotal'], SQLITE3_FLOAT);
+        $stmt->bindValue(':total',        (float) $pricingSummary['total'],    SQLITE3_FLOAT);
         $insertResult = $stmt->execute();
         if ($insertResult === false) {
             $errors[] = 'Technischer Fehler beim Speichern. Bitte versuchen Sie es erneut.';
         } else {
             $bookingId = $db->lastInsertRowID();
 
-        $bookingParticipantsForEmail = [];
+            $bookingParticipantsForEmail = [];
 
-        // Save individual participant details if in individual mode
-        if ($formData['booking_mode'] === 'individual') {
-            foreach ($participantNames as $i => $pName) {
-                $participantEmail = $participantEmails[$i] ?? '';
-                $pstmt = $db->prepare('INSERT INTO booking_participants (booking_id, name, email) VALUES (:bid, :name, :email)');
-                $pstmt->bindValue(':bid',   $bookingId,                 SQLITE3_INTEGER);
-                $pstmt->bindValue(':name',  $pName,                     SQLITE3_TEXT);
-                $pstmt->bindValue(':email', $participantEmail, SQLITE3_TEXT);
-                $pstmt->execute();
+            // Save individual participant details if in individual mode
+            if ($formData['booking_mode'] === 'individual') {
+                foreach ($participantNames as $i => $pName) {
+                    $participantEmail = $participantEmails[$i] ?? '';
+                    $pstmt = $db->prepare('INSERT INTO booking_participants (booking_id, name, email) VALUES (:bid, :name, :email)');
+                    $pstmt->bindValue(':bid',   $bookingId,        SQLITE3_INTEGER);
+                    $pstmt->bindValue(':name',  $pName,            SQLITE3_TEXT);
+                    $pstmt->bindValue(':email', $participantEmail, SQLITE3_TEXT);
+                    $pstmt->execute();
 
-                $bookingParticipantsForEmail[] = [
-                    'name'  => $pName,
-                    'email' => $participantEmail,
-                ];
+                    $bookingParticipantsForEmail[] = [
+                        'name'  => $pName,
+                        'email' => $participantEmail,
+                    ];
+                }
             }
-        }
+
+            $bookingForEmail = $formData;
+            $bookingForEmail['price_per_person_netto'] = (float) $price;
+            $bookingForEmail['booking_currency'] = $currency;
+            $bookingForEmail['discount_code'] = $discountCodeText;
+            $bookingForEmail['discount_type'] = $discountType;
+            $bookingForEmail['discount_value'] = $discountValue;
+            $bookingForEmail['discount_amount'] = $discountAmount;
+            $bookingForEmail['subtotal_netto'] = (float) $pricingSummary['subtotal'];
+            $bookingForEmail['total_netto'] = (float) $pricingSummary['total'];
 
             if (!send_confirmation_email(
                 $formData['email'],
                 $formData['name'],
                 $workshop['title'],
                 $token,
-                $formData,
+                $bookingForEmail,
                 $workshop,
                 $bookingParticipantsForEmail
             )) {
@@ -148,8 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 $rollbackStmt->execute();
                 $errors[] = 'Die Bestaetigungs-E-Mail konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
             } else {
-
-        flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschließen.');
+                flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestaetigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschliessen.');
                 redirect('workshop.php?slug=' . urlencode($slug));
             }
         }
@@ -407,6 +516,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                             </select>
                         </div>
 
+                        <?php if ($price > 0): ?>
+                        <div class="form-group">
+                            <label for="discount_code">Rabattcode (optional)</label>
+                            <input type="text" id="discount_code" name="discount_code" placeholder="Code eingeben"
+                                   value="<?= e($formData['discount_code']) ?>" autocomplete="off">
+                            <?php if ($formData['discount_code'] !== '' && is_array($discountFeedback)): ?>
+                                <?php if ($discountFeedback['ok'] && is_array($discountFeedback['code'])): ?>
+                                    <span class="discount-code-hint discount-code-hint-ok">
+                                        Code aktiv: <?= e($discountFeedback['code']['code']) ?>
+                                        (<?= e(format_discount_value($discountFeedback['code']['discount_type'], (float) $discountFeedback['code']['discount_value'], $currency)) ?>)
+                                    </span>
+                                <?php else: ?>
+                                    <span class="discount-code-hint discount-code-hint-error">
+                                        <?= e($discountFeedback['message'] ?? 'Rabattcode ungueltig.') ?>
+                                    </span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="discount-code-hint">Code wird beim Absenden final geprueft.</span>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
                         <!-- Booking mode toggle -->
                         <div class="form-group">
                             <label>Buchungsart</label>
@@ -440,8 +570,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                         </div>
 
                         <?php if ($price > 0): ?>
-                        <div id="price-summary" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:var(--radius);padding:0.875rem 1rem;margin-bottom:1.25rem;font-size:0.88rem;color:var(--muted);">
-                            Gesamtpreis (Netto): <strong id="price-total" style="color:var(--text);font-size:1rem;"><?= e(format_price($price, $currency)) ?></strong>
+                        <div id="price-summary" class="price-summary-box">
+                            <div class="price-summary-row">
+                                <span>Zwischensumme (Netto):</span>
+                                <strong id="price-subtotal"><?= e(format_price((float) $pricingSummary['subtotal'], $currency)) ?></strong>
+                            </div>
+                            <div class="price-summary-row" id="price-discount-row" <?= (float) $pricingSummary['discount'] > 0 ? '' : 'style="display:none;"' ?>>
+                                <span id="price-discount-label">
+                                    Rabatt<?= ($discountContext && is_array($discountContext['code'])) ? ' (' . e($discountContext['code']['code']) . ')' : '' ?>
+                                </span>
+                                <strong id="price-discount" style="color:#2ecc71;">-<?= e(format_price((float) $pricingSummary['discount'], $currency)) ?></strong>
+                            </div>
+                            <div class="price-summary-row price-summary-row-total">
+                                <span>Gesamtpreis (Netto):</span>
+                                <strong id="price-total"><?= e(format_price((float) $pricingSummary['total'], $currency)) ?></strong>
+                            </div>
+                            <div style="font-size:0.74rem;color:var(--dim);margin-top:0.4rem;">zzgl. MwSt.</div>
                         </div>
                         <?php endif; ?>
 
@@ -477,11 +621,31 @@ burger.addEventListener('click', () => {
 
 <?php if ($price > 0): ?>
 // Live price calculation
-const pricePerPerson = <?= $price ?>;
+const pricePerPerson = <?= json_for_html((float) $price) ?>;
 const participantsSelect = document.getElementById('participants');
-const priceTotal = document.getElementById('price-total');
-const currency = '<?= e($currency) ?>';
+const subtotalEl = document.getElementById('price-subtotal');
+const discountRowEl = document.getElementById('price-discount-row');
+const discountEl = document.getElementById('price-discount');
+const discountLabelEl = document.getElementById('price-discount-label');
+const totalEl = document.getElementById('price-total');
+const discountInput = document.getElementById('discount_code');
+const currency = <?= json_for_html($currency) ?>;
 const symbols = { EUR: '€', CHF: 'CHF', USD: '$' };
+
+let activeDiscount = <?= json_for_html(
+    ($discountContext && is_array($discountContext['code']))
+        ? [
+            'code' => (string) $discountContext['code']['code'],
+            'type' => (string) $discountContext['code']['discount_type'],
+            'value' => (float) $discountContext['code']['discount_value'],
+            'minParticipants' => (int) $discountContext['code']['min_participants'],
+        ]
+        : null
+) ?>;
+
+function round2(amount) {
+    return Math.round(amount * 100) / 100;
+}
 
 function formatPrice(amount) {
     const formatted = amount.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -489,10 +653,63 @@ function formatPrice(amount) {
     return currency === 'USD' ? sym + ' ' + formatted : formatted + ' ' + sym;
 }
 
-participantsSelect.addEventListener('change', function () {
-    const total = pricePerPerson * parseInt(this.value, 10);
-    priceTotal.textContent = formatPrice(total);
-});
+function normalizeCode(value) {
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function calcDiscount(subtotal, participants) {
+    if (!activeDiscount) {
+        return 0;
+    }
+    if ((activeDiscount.minParticipants || 0) > participants) {
+        return 0;
+    }
+    if (activeDiscount.type === 'percent') {
+        return Math.min(subtotal, round2(subtotal * ((activeDiscount.value || 0) / 100)));
+    }
+    if (activeDiscount.type === 'fixed') {
+        return Math.min(subtotal, round2(activeDiscount.value || 0));
+    }
+    return 0;
+}
+
+function updatePriceSummary() {
+    const participants = parseInt(participantsSelect.value, 10) || 1;
+    const subtotal = round2(pricePerPerson * participants);
+    const discount = calcDiscount(subtotal, participants);
+    const total = round2(subtotal - discount);
+
+    subtotalEl.textContent = formatPrice(subtotal);
+    totalEl.textContent = formatPrice(total);
+
+    if (discount > 0) {
+        discountRowEl.style.display = '';
+        discountEl.textContent = '-' + formatPrice(discount);
+        if (activeDiscount && activeDiscount.code) {
+            discountLabelEl.textContent = 'Rabatt (' + activeDiscount.code + ')';
+        } else {
+            discountLabelEl.textContent = 'Rabatt';
+        }
+    } else {
+        discountRowEl.style.display = 'none';
+    }
+}
+
+participantsSelect.addEventListener('change', updatePriceSummary);
+
+if (discountInput) {
+    discountInput.addEventListener('input', function () {
+        if (!activeDiscount) {
+            return;
+        }
+        if (normalizeCode(discountInput.value) !== normalizeCode(activeDiscount.code)) {
+            activeDiscount = null;
+            updatePriceSummary();
+        }
+    });
+}
+
+updatePriceSummary();
 <?php endif; ?>
 
 const observer = new IntersectionObserver((entries) => {
@@ -586,3 +803,9 @@ if (descToggle && descWrap) {
 
 </body>
 </html>
+
+
+
+
+
+

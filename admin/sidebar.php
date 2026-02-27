@@ -26,6 +26,12 @@ $currentPage = basename($_SERVER['SCRIPT_NAME'], '.php');
                 Buchungen
             </a>
         </li>
+        <li>
+            <a href="discount-codes.php" class="<?= $currentPage === 'discount-codes' ? 'active' : '' ?>">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41 11 3.83a2 2 0 0 0-1.41-.59H4a2 2 0 0 0-2 2v5.59c0 .53.21 1.04.59 1.41l9.58 9.59a2 2 0 0 0 2.83 0l5.59-5.59a2 2 0 0 0 0-2.83Z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                Rabattcodes
+            </a>
+        </li>
         <li style="margin-top:2rem;">
             <a href="../index.php" style="font-size:0.8rem;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
