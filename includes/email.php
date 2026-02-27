@@ -37,7 +37,30 @@ function build_site_url(string $path = ''): string {
     return rtrim($base, '/') . '/' . ltrim($path, '/');
 }
 
-function send_email(string $to, string $subject, string $htmlBody): bool {
+function build_plain_text_email_body(string $htmlBody): string {
+    $textBody = strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $htmlBody));
+    return html_entity_decode($textBody, ENT_QUOTES, 'UTF-8');
+}
+
+function encode_mail_subject_and_from(string $subject, string $fromName): array {
+    $subjectHeader = $subject;
+    $fromNameHeader = $fromName;
+
+    if (function_exists('mb_encode_mimeheader')) {
+        $encodedSubject = mb_encode_mimeheader($subject, 'UTF-8', 'B');
+        $encodedFrom    = mb_encode_mimeheader($fromName, 'UTF-8', 'B');
+        if (is_string($encodedSubject) && $encodedSubject !== '') {
+            $subjectHeader = $encodedSubject;
+        }
+        if (is_string($encodedFrom) && $encodedFrom !== '') {
+            $fromNameHeader = $encodedFrom;
+        }
+    }
+
+    return [$subjectHeader, $fromNameHeader];
+}
+
+function send_email_with_attachments(string $to, string $subject, string $htmlBody, array $attachments = []): bool {
     $to = sanitize_email_address($to);
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         return false;
@@ -58,44 +81,96 @@ function send_email(string $to, string $subject, string $htmlBody): bool {
         return false;
     }
 
-    $subjectHeader = $subject;
-    $fromNameHeader = $fromName;
-    if (function_exists('mb_encode_mimeheader')) {
-        $encodedSubject = mb_encode_mimeheader($subject, 'UTF-8', 'B');
-        $encodedFrom    = mb_encode_mimeheader($fromName, 'UTF-8', 'B');
-        if (is_string($encodedSubject) && $encodedSubject !== '') {
-            $subjectHeader = $encodedSubject;
-        }
-        if (is_string($encodedFrom) && $encodedFrom !== '') {
-            $fromNameHeader = $encodedFrom;
-        }
-    }
-
-    $boundary = bin2hex(random_bytes(16));
+    [$subjectHeader, $fromNameHeader] = encode_mail_subject_and_from($subject, $fromName);
 
     $headers  = "From: {$fromNameHeader} <{$from}>\r\n";
     $headers .= "Reply-To: {$from}\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
-    $headers .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
     $headers .= "X-Mailer: DisinfoWorkshops/1.0\r\n";
 
-    // Plain-text version (strip tags)
-    $textBody = strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $htmlBody));
-    $textBody = html_entity_decode($textBody, ENT_QUOTES, 'UTF-8');
+    $textBody = build_plain_text_email_body($htmlBody);
 
-    $body  = "--{$boundary}\r\n";
+    $normalizedAttachments = [];
+    foreach ($attachments as $attachment) {
+        if (!is_array($attachment)) {
+            continue;
+        }
+
+        $rawContent = $attachment['content'] ?? '';
+        if (!is_string($rawContent) || $rawContent === '') {
+            continue;
+        }
+
+        $filename = sanitize_mail_header_value((string) ($attachment['filename'] ?? 'attachment.bin'));
+        if ($filename === '') {
+            $filename = 'attachment.bin';
+        }
+        $filename = preg_replace('/[^A-Za-z0-9._-]/', '_', $filename);
+
+        $mime = sanitize_mail_header_value((string) ($attachment['mime'] ?? 'application/octet-stream'));
+        if ($mime === '') {
+            $mime = 'application/octet-stream';
+        }
+
+        $normalizedAttachments[] = [
+            'filename' => $filename,
+            'mime' => $mime,
+            'content' => $rawContent,
+        ];
+    }
+
+    if (empty($normalizedAttachments)) {
+        $boundary = bin2hex(random_bytes(16));
+        $headers .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
+
+        $body  = "--{$boundary}\r\n";
+        $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+        $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+        $body .= $textBody . "\r\n\r\n";
+        $body .= "--{$boundary}\r\n";
+        $body .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+        $body .= $htmlBody . "\r\n\r\n";
+        $body .= "--{$boundary}--\r\n";
+
+        return mail($to, $subjectHeader, $body, $headers);
+    }
+
+    $mixedBoundary = 'mix_' . bin2hex(random_bytes(12));
+    $altBoundary   = 'alt_' . bin2hex(random_bytes(12));
+
+    $headers .= "Content-Type: multipart/mixed; boundary=\"{$mixedBoundary}\"\r\n";
+
+    $body  = "--{$mixedBoundary}\r\n";
+    $body .= "Content-Type: multipart/alternative; boundary=\"{$altBoundary}\"\r\n\r\n";
+
+    $body .= "--{$altBoundary}\r\n";
     $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
     $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
     $body .= $textBody . "\r\n\r\n";
-    $body .= "--{$boundary}\r\n";
+
+    $body .= "--{$altBoundary}\r\n";
     $body .= "Content-Type: text/html; charset=UTF-8\r\n";
     $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
     $body .= $htmlBody . "\r\n\r\n";
-    $body .= "--{$boundary}--\r\n";
+    $body .= "--{$altBoundary}--\r\n";
+
+    foreach ($normalizedAttachments as $attachment) {
+        $body .= "\r\n--{$mixedBoundary}\r\n";
+        $body .= "Content-Type: {$attachment['mime']}; name=\"{$attachment['filename']}\"\r\n";
+        $body .= "Content-Transfer-Encoding: base64\r\n";
+        $body .= "Content-Disposition: attachment; filename=\"{$attachment['filename']}\"\r\n\r\n";
+        $body .= chunk_split(base64_encode($attachment['content'])) . "\r\n";
+    }
+
+    $body .= "--{$mixedBoundary}--\r\n";
 
     return mail($to, $subjectHeader, $body, $headers);
 }
 
+function send_email(string $to, string $subject, string $htmlBody): bool {
+    return send_email_with_attachments($to, $subject, $htmlBody, []);
+}
 /**
  * Wrap booking emails in a mobile-safe shell.
  */
@@ -311,7 +386,7 @@ function render_cancellation_policy_block(): string {
             <div style="font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#d6b180;margin-bottom:6px;">Stornobedingungen</div>
             <p style="margin:0;font-size:14px;line-height:1.6;color:#f0dfc4;">
                 Absagen bis 14 Kalendertage vor Veranstaltungsbeginn sind kostenfrei.
-                Bei späteren Absagen stellen wir 80&nbsp;% des vereinbarten Gesamtpreises in Rechnung.
+                Bei spÃ¤teren Absagen stellen wir 80&nbsp;% des vereinbarten Gesamtpreises in Rechnung.
             </p>
         </div>';
 }
@@ -337,27 +412,27 @@ function send_confirmation_email(
     $cancellationBlock = render_cancellation_policy_block();
 
     $content = '
-        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestätigen</h2>
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestÃ¤tigen</h2>
         <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
-        <p style="color:#a0a0a0;line-height:1.7;">vielen Dank für Ihre Anmeldung zum Workshop:</p>
+        <p style="color:#a0a0a0;line-height:1.7;">vielen Dank fÃ¼r Ihre Anmeldung zum Workshop:</p>
         <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         <p style="color:#a0a0a0;line-height:1.7;">Hier finden Sie alle Details zu Ihrer Anfrage:</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
         ' . $cancellationBlock . '
-        <p style="color:#a0a0a0;line-height:1.7;">Bitte bestätigen Sie Ihre Buchung, indem Sie auf den folgenden Link klicken:</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Bitte bestÃ¤tigen Sie Ihre Buchung, indem Sie auf den folgenden Link klicken:</p>
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:28px 0 24px;">
             <tr>
                 <td align="left">
-                    <a href="' . e($confirmUrl) . '" style="display:inline-block;max-width:100%;box-sizing:border-box;padding:14px 20px;background:#ffffff;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;line-height:1.35;word-break:break-word;">Buchung bestätigen &rarr;</a>
+                    <a href="' . e($confirmUrl) . '" style="display:inline-block;max-width:100%;box-sizing:border-box;padding:14px 20px;background:#ffffff;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;line-height:1.35;word-break:break-word;">Buchung bestÃ¤tigen &rarr;</a>
                 </td>
             </tr>
         </table>
-        <p style="color:#666;font-size:13px;line-height:1.5;">Dieser Link ist 48 Stunden gültig. Falls Sie diese Anmeldung nicht durchgeführt haben, können Sie diese E-Mail ignorieren.</p>
+        <p style="color:#666;font-size:13px;line-height:1.5;">Dieser Link ist 48 Stunden gÃ¼ltig. Falls Sie diese Anmeldung nicht durchgefÃ¼hrt haben, kÃ¶nnen Sie diese E-Mail ignorieren.</p>
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Buchung bestätigen: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'Buchung bestÃ¤tigen: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -379,9 +454,9 @@ function send_booking_confirmed_email(
     $cancellationBlock = render_cancellation_policy_block();
 
     $content = '
-        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestätigt!</h2>
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestÃ¤tigt!</h2>
         <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
-        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung für den folgenden Workshop wurde erfolgreich bestätigt:</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung fÃ¼r den folgenden Workshop wurde erfolgreich bestÃ¤tigt:</p>
         <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
@@ -390,7 +465,7 @@ function send_booking_confirmed_email(
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Bestätigt: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'BestÃ¤tigt: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -409,7 +484,7 @@ function send_admin_notification(
     $participantsBlock = render_booking_participants_block($participants);
 
     $content = '
-        <h2 style="margin:0 0 14px;color:#ffffff;">Neue Buchung bestätigt</h2>
+        <h2 style="margin:0 0 14px;color:#ffffff;">Neue Buchung bestÃ¤tigt</h2>
         <p style="margin:0 0 10px;color:#c8c8c8;"><strong style="color:#ffffff;">Workshop:</strong> ' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
@@ -436,18 +511,18 @@ function send_participant_confirmed_email(
     $cancellationBlock = render_cancellation_policy_block();
 
     $content = '
-        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Teilnahme bestätigt!</h2>
+        <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Teilnahme bestÃ¤tigt!</h2>
         <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($participantName) . ',</p>
-        <p style="color:#a0a0a0;line-height:1.7;"><strong style="color:#ffffff;">' . e($bookerName) . '</strong> hat Sie für den folgenden Workshop angemeldet:</p>
+        <p style="color:#a0a0a0;line-height:1.7;"><strong style="color:#ffffff;">' . e($bookerName) . '</strong> hat Sie fÃ¼r den folgenden Workshop angemeldet:</p>
         <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $cancellationBlock . '
-        <p style="color:#a0a0a0;line-height:1.7;">Ihre Teilnahme wurde erfolgreich bestätigt.</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Ihre Teilnahme wurde erfolgreich bestÃ¤tigt.</p>
         <p style="color:#a0a0a0;line-height:1.7;">Bei Fragen erreichen Sie uns unter <a href="mailto:' . e(MAIL_FROM) . '" style="color:#ffffff;">' . e(MAIL_FROM) . '</a>.</p>
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Ihre Teilnahme wurde bestätigt: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'Ihre Teilnahme wurde bestÃ¤tigt: ' . $workshopTitle, render_booking_email_shell($content));
 }
 
 /**
@@ -457,7 +532,7 @@ function send_booking_cancelled_email(string $to, string $name, string $workshop
     $content = '
         <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;margin-bottom:20px;">Buchung storniert</h2>
         <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
-        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung für den folgenden Workshop wurde leider storniert:</p>
+        <p style="color:#a0a0a0;line-height:1.7;">Ihre Buchung fÃ¼r den folgenden Workshop wurde leider storniert:</p>
         <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
         <p style="color:#a0a0a0;line-height:1.7;">Falls dies ein Versehen war oder Sie Fragen haben, kontaktieren Sie uns bitte unter <a href="mailto:' . e(MAIL_FROM) . '" style="color:#ffffff;">' . e(MAIL_FROM) . '</a> - wir helfen Ihnen gerne weiter.</p>
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
@@ -474,94 +549,301 @@ function send_booking_cancelled_email(string $to, string $name, string $workshop
  *   rechnung_datum (YYYY-MM-DD), rechnungs_nr,
  *   fuer_text, workshop_titel, veranstaltungs_datum,
  *   pos1_label, pos1_betrag, pos2_label (opt), pos2_betrag (opt),
- *   absender_name
+ *   absender_name,
+ *   line_items (optional array of [label => string, amount => float])
  */
+function parse_rechnung_amount(string $rawValue): float {
+    $raw = trim($rawValue);
+    if ($raw === '') {
+        return 0.0;
+    }
+
+    $raw = preg_replace('/[^0-9,.-]/', '', $raw);
+    if ($raw === '' || $raw === '-' || $raw === ',' || $raw === '.') {
+        return 0.0;
+    }
+
+    if (str_contains($raw, ',') && str_contains($raw, '.')) {
+        $raw = str_replace('.', '', $raw);
+        $raw = str_replace(',', '.', $raw);
+    } elseif (str_contains($raw, ',')) {
+        $raw = str_replace(',', '.', $raw);
+    }
+
+    return (float) $raw;
+}
+
+function format_rechnung_amount_html(float $amount): string {
+    $prefix = $amount < 0 ? '- ' : '';
+    return $prefix . 'EUR&nbsp;' . number_format(abs($amount), 2, ',', '.');
+}
+
+function format_rechnung_amount_text(float $amount): string {
+    $prefix = $amount < 0 ? '- ' : '';
+    return $prefix . 'EUR ' . number_format(abs($amount), 2, ',', '.');
+}
+
+function pdf_escape_win_ansi_text(string $text): string {
+    $converted = $text;
+    if (function_exists('iconv')) {
+        $iconvConverted = @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text);
+        if (is_string($iconvConverted) && $iconvConverted !== '') {
+            $converted = $iconvConverted;
+        }
+    }
+
+    $converted = str_replace(["\\", "(", ")"], ["\\\\", "\\(", "\\)"], $converted);
+    $converted = str_replace(["\r", "\n"], '', $converted);
+
+    return $converted;
+}
+
+function wrap_pdf_text_line(string $line, int $width = 96): array {
+    $line = trim((string) preg_replace('/\s+/', ' ', $line));
+    if ($line === '') {
+        return [''];
+    }
+
+    $wrapped = wordwrap($line, $width, "\n", true);
+    return explode("\n", $wrapped);
+}
+
+function build_rechnung_pdf(array $d, array $lineItems, float $zwischensumme, float $ust, float $summe, string $datumFormatted): string {
+    $lines = [];
+    $lines[] = 'RECHNUNG';
+    $lines[] = 'Nr: ' . (string) ($d['rechnungs_nr'] ?? '-');
+    $lines[] = 'Datum: ' . $datumFormatted;
+    $lines[] = '';
+    $lines[] = 'Empfaenger:';
+
+    foreach ([(string) ($d['empfaenger'] ?? ''), (string) ($d['adresse'] ?? ''), (string) ($d['plz_ort'] ?? '')] as $recipientLine) {
+        if (trim($recipientLine) !== '') {
+            $lines[] = $recipientLine;
+        }
+    }
+
+    $contactLine = trim((string) ($d['anrede'] ?? '') . ' ' . (string) ($d['kontakt_name'] ?? ''));
+    if ($contactLine !== '') {
+        $lines[] = 'z. Hd. ' . $contactLine;
+    }
+    if (trim((string) ($d['kontakt_email'] ?? '')) !== '') {
+        $lines[] = 'E-Mail: ' . (string) $d['kontakt_email'];
+    }
+
+    $lines[] = '';
+    $lines[] = 'Leistung:';
+    $leistungLine = trim((string) ($d['fuer_text'] ?? ''));
+    if ($leistungLine !== '') {
+        foreach (wrap_pdf_text_line('fuer ' . $leistungLine, 90) as $wrappedLine) {
+            $lines[] = $wrappedLine;
+        }
+    }
+    if (trim((string) ($d['workshop_titel'] ?? '')) !== '') {
+        $lines[] = 'Workshop: ' . (string) $d['workshop_titel'];
+    }
+    if (trim((string) ($d['veranstaltungs_datum'] ?? '')) !== '') {
+        $lines[] = 'Veranstaltungsdatum: ' . (string) $d['veranstaltungs_datum'];
+    }
+
+    $lines[] = '';
+    $lines[] = 'Positionen (netto):';
+    foreach ($lineItems as $item) {
+        $label = trim((string) ($item['label'] ?? 'Position'));
+        $amount = (float) ($item['amount'] ?? 0);
+        $amountText = format_rechnung_amount_text($amount);
+        $line = str_pad($label, 72, ' ', STR_PAD_RIGHT) . str_pad($amountText, 20, ' ', STR_PAD_LEFT);
+        foreach (wrap_pdf_text_line($line, 96) as $wrappedLine) {
+            $lines[] = $wrappedLine;
+        }
+    }
+
+    $lines[] = str_repeat('-', 96);
+    $lines[] = str_pad('Zwischensumme', 72, ' ', STR_PAD_RIGHT) . str_pad(format_rechnung_amount_text($zwischensumme), 20, ' ', STR_PAD_LEFT);
+    $lines[] = str_pad('20% USt.', 72, ' ', STR_PAD_RIGHT) . str_pad(format_rechnung_amount_text($ust), 20, ' ', STR_PAD_LEFT);
+    $lines[] = str_pad('SUMME', 72, ' ', STR_PAD_RIGHT) . str_pad(format_rechnung_amount_text($summe), 20, ' ', STR_PAD_LEFT);
+
+    $lines[] = '';
+    $lines[] = 'Bitte ueberweisen Sie den Betrag binnen 14 Tagen ab Rechnungsdatum.';
+    $lines[] = 'Disinfo Combat GmbH';
+    $lines[] = 'IBAN: AT39 2011 1844 5223 9900';
+    $lines[] = 'BIC: GIBAATWWXXX';
+
+    $lines[] = '';
+    $lines[] = 'Mit freundlichen Gruessen';
+    $lines[] = (string) ($d['absender_name'] ?? '');
+
+    $maxLines = 52;
+    if (count($lines) > $maxLines) {
+        $lines = array_slice($lines, 0, $maxLines - 1);
+        $lines[] = '...';
+    }
+
+    $streamLines = ['BT', '/F1 11 Tf', '50 800 Td'];
+    $first = true;
+    foreach ($lines as $line) {
+        $escaped = pdf_escape_win_ansi_text($line);
+        if ($first) {
+            $streamLines[] = '(' . $escaped . ') Tj';
+            $first = false;
+            continue;
+        }
+
+        $streamLines[] = '0 -14 Td';
+        $streamLines[] = '(' . $escaped . ') Tj';
+    }
+    $streamLines[] = 'ET';
+    $stream = implode("\n", $streamLines) . "\n";
+
+    $objects = [];
+    $objects[] = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+    $objects[] = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
+    $objects[] = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n";
+    $objects[] = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n";
+    $objects[] = "5 0 obj\n<< /Length " . strlen($stream) . " >>\nstream\n" . $stream . "endstream\nendobj\n";
+
+    $pdf = "%PDF-1.4\n";
+    $offsets = [0];
+    foreach ($objects as $object) {
+        $offsets[] = strlen($pdf);
+        $pdf .= $object;
+    }
+
+    $xrefPos = strlen($pdf);
+    $pdf .= "xref\n0 " . (count($objects) + 1) . "\n";
+    $pdf .= "0000000000 65535 f \n";
+    for ($i = 1; $i <= count($objects); $i++) {
+        $pdf .= sprintf('%010d 00000 n ' . "\n", $offsets[$i]);
+    }
+
+    $pdf .= "trailer\n<< /Size " . (count($objects) + 1) . " /Root 1 0 R >>\n";
+    $pdf .= "startxref\n" . $xrefPos . "\n%%EOF";
+
+    return $pdf;
+}
+
 function send_rechnung_email(string $to, array $d): bool {
     $months = [
-        '01' => 'Januar',  '02' => 'Februar', '03' => 'März',     '04' => 'April',
-        '05' => 'Mai',     '06' => 'Juni',    '07' => 'Juli',     '08' => 'August',
-        '09' => 'September','10' => 'Oktober','11' => 'November', '12' => 'Dezember',
+        '01' => 'Januar',  '02' => 'Februar', '03' => 'Maerz',     '04' => 'April',
+        '05' => 'Mai',     '06' => 'Juni',    '07' => 'Juli',      '08' => 'August',
+        '09' => 'September','10' => 'Oktober','11' => 'November',  '12' => 'Dezember',
     ];
 
-    // Format invoice date
-    $datumTs = strtotime($d['rechnung_datum']);
+    $datumTs = strtotime((string) ($d['rechnung_datum'] ?? ''));
     $datumFormatted = ($datumTs)
-        ? (int)date('j', $datumTs) . '. ' . ($months[date('m', $datumTs)] ?? date('m', $datumTs)) . ' ' . date('Y', $datumTs)
-        : e($d['rechnung_datum']);
+        ? (int) date('j', $datumTs) . '. ' . ($months[date('m', $datumTs)] ?? date('m', $datumTs)) . ' ' . date('Y', $datumTs)
+        : e((string) ($d['rechnung_datum'] ?? ''));
 
-    // Amounts
-    $pos1 = (float) str_replace(',', '.', $d['pos1_betrag'] ?? '0');
-    $pos2 = !empty($d['pos2_betrag']) ? (float) str_replace(',', '.', $d['pos2_betrag']) : 0.0;
-    $hasPos2 = !empty($d['pos2_label']) && $pos2 > 0;
+    $lineItems = [];
+    if (isset($d['line_items']) && is_array($d['line_items'])) {
+        foreach ($d['line_items'] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
 
-    $zwischensumme = $pos1 + $pos2;
-    $ust           = $zwischensumme * 0.20;
-    $summe         = $zwischensumme + $ust;
+            $label = trim((string) ($item['label'] ?? ''));
+            $amount = (float) ($item['amount'] ?? 0);
+            if ($label === '' || abs($amount) < 0.00001) {
+                continue;
+            }
 
-    $fmt = fn(float $n): string => 'EUR&nbsp;' . number_format($n, 2, ',', '.');
+            $lineItems[] = [
+                'label' => $label,
+                'amount' => $amount,
+            ];
+        }
+    }
 
-    // Row helper
+    if (empty($lineItems)) {
+        $pos1 = parse_rechnung_amount((string) ($d['pos1_betrag'] ?? '0'));
+        $pos2 = parse_rechnung_amount((string) ($d['pos2_betrag'] ?? '0'));
+        $pos1Label = trim((string) ($d['pos1_label'] ?? 'Position 1'));
+        $pos2Label = trim((string) ($d['pos2_label'] ?? ''));
+
+        if ($pos1Label !== '' && abs($pos1) > 0.00001) {
+            $lineItems[] = ['label' => $pos1Label, 'amount' => $pos1];
+        }
+        if ($pos2Label !== '' && abs($pos2) > 0.00001) {
+            $lineItems[] = ['label' => $pos2Label, 'amount' => $pos2];
+        }
+    }
+
+    $zwischensumme = 0.0;
+    foreach ($lineItems as $item) {
+        $zwischensumme += (float) $item['amount'];
+    }
+
+    $ust = $zwischensumme * 0.20;
+    $summe = $zwischensumme + $ust;
+
     $row = fn(string $label, string $amount, bool $bold = false, string $topBorder = '', string $fs = '14px'): string =>
         '<tr>'
         . '<td style="padding:8px 0 8px 0;' . ($bold ? 'font-weight:bold;' : '') . ($topBorder ? "border-top:{$topBorder};" : '') . 'font-size:' . $fs . ';">' . $label . '</td>'
         . '<td style="text-align:right;white-space:nowrap;padding:8px 0 8px 16px;' . ($bold ? 'font-weight:bold;' : '') . ($topBorder ? "border-top:{$topBorder};" : '') . 'font-size:' . $fs . ';">' . $amount . '</td>'
         . '</tr>';
 
-    $pos2Row = $hasPos2
-        ? $row(e($d['pos2_label']), $fmt($pos2))
-        : '';
+    $lineRows = '';
+    foreach ($lineItems as $item) {
+        $lineRows .= $row(e((string) $item['label']), format_rechnung_amount_html((float) $item['amount']));
+    }
 
     $html = '
 <div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;padding:50px 40px;color:#000;background:#fff;line-height:1.65;font-size:14px;">
 
-  <!-- Recipient block -->
   <div style="margin-bottom:48px;">
-    <strong>' . e($d['empfaenger']) . '</strong><br>
-    ' . e($d['adresse']) . '<br>
-    ' . e($d['plz_ort']) . '<br>
-    z.&nbsp;Hd. ' . e($d['anrede']) . ' ' . e($d['kontakt_name']) . '<br>
-    per E-Mail: ' . e($d['kontakt_email']) . '
+    <strong>' . e((string) ($d['empfaenger'] ?? '')) . '</strong><br>
+    ' . e((string) ($d['adresse'] ?? '')) . '<br>
+    ' . e((string) ($d['plz_ort'] ?? '')) . '<br>
+    z.&nbsp;Hd. ' . e((string) ($d['anrede'] ?? '')) . ' ' . e((string) ($d['kontakt_name'] ?? '')) . '<br>
+    per E-Mail: ' . e((string) ($d['kontakt_email'] ?? '')) . '
   </div>
 
-  <!-- Date + invoice number (right-aligned) -->
   <div style="text-align:right;margin-bottom:40px;">
     Wien, ' . $datumFormatted . '<br>
-    Nr.&nbsp;' . e($d['rechnungs_nr']) . '
+    Nr.&nbsp;' . e((string) ($d['rechnungs_nr'] ?? '')) . '
   </div>
 
-  <!-- Salutation + intro -->
   <p style="margin:0 0 6px 0;">Sehr geehrte Damen und Herren,</p>
-  <p style="margin:0 0 28px 0;">für ' . e($d['fuer_text']) . '<br>
-  <strong>' . e($d['workshop_titel']) . '</strong><br>
-  am ' . e($d['veranstaltungs_datum']) . ' berechnen wir wie vereinbart:</p>
+  <p style="margin:0 0 28px 0;">fuer ' . e((string) ($d['fuer_text'] ?? '')) . '<br>
+  <strong>' . e((string) ($d['workshop_titel'] ?? '')) . '</strong><br>
+  am ' . e((string) ($d['veranstaltungs_datum'] ?? '')) . ' berechnen wir wie vereinbart:</p>
 
-  <!-- Line items -->
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
-    ' . $row(e($d['pos1_label']), $fmt($pos1))
-    . $pos2Row
-    . $row('Zwischensumme', $fmt($zwischensumme), true, '1px solid #bbb')
-    . $row('20&nbsp;%&nbsp;USt.', $fmt($ust))
-    . $row('SUMME', $fmt($summe), true, '2px solid #000', '16px') . '
+    ' . $lineRows
+    . $row('Zwischensumme', format_rechnung_amount_html($zwischensumme), true, '1px solid #bbb')
+    . $row('20&nbsp;%&nbsp;USt.', format_rechnung_amount_html($ust))
+    . $row('SUMME', format_rechnung_amount_html($summe), true, '2px solid #000', '16px') . '
   </table>
 
-  <!-- Payment instructions -->
-  <p style="margin:32px 0 6px 0;">Wir bitten um Überweisung auf das untenstehende Konto binnen 14 Tagen ab Rechnungsdatum:</p>
+  <p style="margin:32px 0 6px 0;">Wir bitten um Ueberweisung auf das untenstehende Konto binnen 14 Tagen ab Rechnungsdatum:</p>
   <div style="background:#f4f4f4;padding:16px 20px;border-radius:4px;margin:0 0 28px 0;">
     <strong>Disinfo Combat GmbH</strong><br>
     IBAN: AT39 2011 1844 5223 9900<br>
     BIC: GIBAATWWXXX
   </div>
 
-  <!-- Closing -->
-  <p style="margin:0 0 4px 0;">Wir danken für Ihren Auftrag und verbleiben<br>mit freundlichen Grüßen</p>
-  <p style="margin:28px 0 0 0;"><strong>' . e($d['absender_name']) . '</strong></p>
+  <p style="margin:0 0 4px 0;">Wir danken fuer Ihren Auftrag und verbleiben<br>mit freundlichen Gruessen</p>
+  <p style="margin:28px 0 0 0;"><strong>' . e((string) ($d['absender_name'] ?? '')) . '</strong></p>
 
 </div>';
 
-    $subject = 'Rechnung: ' . $d['workshop_titel'] . ' - Nr. ' . $d['rechnungs_nr'];
-    return send_email($to, $subject, $html);
-}
+    $subject = 'Rechnung: ' . (string) ($d['workshop_titel'] ?? '') . ' - Nr. ' . (string) ($d['rechnungs_nr'] ?? '');
+    $pdfContent = build_rechnung_pdf($d, $lineItems, $zwischensumme, $ust, $summe, $datumFormatted);
 
+    $invoiceNumberRaw = trim((string) ($d['rechnungs_nr'] ?? ''));
+    if ($invoiceNumberRaw === '') {
+        $invoiceNumberRaw = 'Rechnung';
+    }
+    $invoiceNumberSafe = preg_replace('/[^A-Za-z0-9._-]/', '_', $invoiceNumberRaw);
+    $filename = 'Rechnung-' . $invoiceNumberSafe . '.pdf';
+
+    return send_email_with_attachments($to, $subject, $html, [
+        [
+            'filename' => $filename,
+            'mime' => 'application/pdf',
+            'content' => $pdfContent,
+        ],
+    ]);
+}
 /**
  * Send a custom email from admin.
  */

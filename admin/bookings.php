@@ -170,12 +170,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // r_booking_selected is an assoc array: index => "1" for checked cards
             $selectedCards = $_POST['r_booking_selected'] ?? [];
+            $baseLineItems = [];
+            $pos1Label = trim((string) ($commonData['pos1_label'] ?? ''));
+            $pos2Label = trim((string) ($commonData['pos2_label'] ?? ''));
+            $pos1Amount = parse_rechnung_amount((string) ($commonData['pos1_betrag'] ?? '0'));
+            $pos2Amount = parse_rechnung_amount((string) ($commonData['pos2_betrag'] ?? '0'));
+
+            if ($pos1Label !== '' && abs($pos1Amount) > 0.00001) {
+                $baseLineItems[] = ['label' => $pos1Label, 'amount' => $pos1Amount];
+            }
+            if ($pos2Label !== '' && abs($pos2Amount) > 0.00001) {
+                $baseLineItems[] = ['label' => $pos2Label, 'amount' => $pos2Amount];
+            }
+
+            $baseSubtotal = 0.0;
+            foreach ($baseLineItems as $lineItem) {
+                $baseSubtotal += (float) $lineItem['amount'];
+            }
+
             $rsent = 0;
 
             foreach (array_keys($selectedCards) as $i) {
                 $i = (int) $i;
                 $email = trim($_POST['r_booking_kontakt_email'][$i] ?? '');
                 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
+
+                $bookingId = (int) ($_POST['r_booking_id'][$i] ?? 0);
+                $discountCode = '';
+                $discountAmount = 0.0;
+                if ($bookingId > 0) {
+                    $rbStmt = $db->prepare('SELECT discount_code, discount_amount FROM bookings WHERE id = :id AND workshop_id = :wid AND confirmed = 1 LIMIT 1');
+                    $rbStmt->bindValue(':id', $bookingId, SQLITE3_INTEGER);
+                    $rbStmt->bindValue(':wid', $rwid, SQLITE3_INTEGER);
+                    $rbRow = $rbStmt->execute()->fetchArray(SQLITE3_ASSOC);
+                    if ($rbRow) {
+                        $discountCode = trim((string) ($rbRow['discount_code'] ?? ''));
+                        $discountAmount = max(0.0, (float) ($rbRow['discount_amount'] ?? 0));
+                    }
+                }
+
+                $invoiceLineItems = $baseLineItems;
+                if ($discountAmount > 0 && $baseSubtotal > 0) {
+                    $effectiveDiscount = min($discountAmount, $baseSubtotal);
+                    $discountLabel = 'Rabatt';
+                    if ($discountCode !== '') {
+                        $discountLabel .= ' (' . $discountCode . ')';
+                    }
+                    $invoiceLineItems[] = [
+                        'label' => $discountLabel,
+                        'amount' => -$effectiveDiscount,
+                    ];
+                }
 
                 $invoiceData = array_merge($commonData, [
                     'empfaenger'    => trim($_POST['r_booking_empfaenger'][$i]   ?? ''),
@@ -185,13 +230,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'kontakt_name'  => trim($_POST['r_booking_kontakt_name'][$i] ?? ''),
                     'kontakt_email' => $email,
                     'rechnungs_nr'  => trim($_POST['r_booking_rechnungs_nr'][$i] ?? ''),
+                    'line_items'    => $invoiceLineItems,
                 ]);
 
                 if (send_rechnung_email($email, $invoiceData)) {
                     $rsent++;
                 }
             }
-
             if ($rsent === 0) {
                 flash('error', 'Keine Empfänger ausgewählt oder keine gültigen E-Mail-Adressen vorhanden.');
             } else {
@@ -653,8 +698,11 @@ if ($workshop) {
                 <input type="text" name="r_pos2_betrag" placeholder="200,00">
             </div>
         </div>
-        <p style="font-size:0.73rem;color:var(--dim);margin:0.25rem 0 0.6rem;">
+        <p style="font-size:0.73rem;color:var(--dim);margin:0.25rem 0 0.35rem;">
             Zwischensumme, 20&nbsp;% USt. und SUMME werden automatisch berechnet.
+        </p>
+        <p style="font-size:0.73rem;color:var(--dim);margin:0 0 0.6rem;">
+            Vorhandene Buchungsrabatte werden pro Empfänger automatisch als eigene Rabattposition abgezogen.
         </p>
 
         <div class="rechnung-section-label">Absender</div>
@@ -710,6 +758,7 @@ if ($workshop) {
             </div>
             <!-- Card body (collapsible) -->
             <div class="rechnung-card-body" id="rc-body-<?= $i ?>">
+                <input type="hidden" name="r_booking_id[<?= $i ?>]" value="<?= (int) $cb['id'] ?>">
                 <div class="rechnung-grid-2" style="margin-bottom:0.5rem;">
                     <div class="form-group" style="margin-bottom:0;">
                         <label>Firma / Organisation</label>
