@@ -2,14 +2,13 @@
 require __DIR__ . '/../includes/config.php';
 require_admin();
 
-// ── Stats ────────────────────────────────────────────────────────────────────
+// -- Stats --------------------------------------------------------------------
 $totalWorkshops    = (int) $db->querySingle('SELECT COUNT(*) FROM workshops WHERE active = 1');
 $totalBookings     = (int) $db->querySingle('SELECT COUNT(*) FROM bookings WHERE confirmed = 1');
 $pendingBookings   = (int) $db->querySingle('SELECT COUNT(*) FROM bookings WHERE confirmed = 0');
 $totalParticipants = (int) $db->querySingle('SELECT COALESCE(SUM(participants), 0) FROM bookings WHERE confirmed = 1');
 
-// ── Revenue per workshop (confirmed bookings × price_netto) ──────────────────
-// Group by currency so we can display mixed currencies correctly
+// Revenue per workshop (confirmed bookings, discount-aware)
 $revenueResult = $db->query('
     SELECT
         w.id AS workshop_id,
@@ -17,24 +16,31 @@ $revenueResult = $db->query('
         w.price_netto,
         w.price_currency,
         COALESCE(SUM(b.participants), 0) AS confirmed_participants,
-        COUNT(b.id) AS confirmed_bookings
+        COUNT(b.id) AS confirmed_bookings,
+        COALESCE(SUM(
+            CASE
+                WHEN b.subtotal_netto > 0 OR b.total_netto > 0 OR b.discount_amount > 0 THEN b.total_netto
+                WHEN b.price_per_person_netto > 0 THEN b.price_per_person_netto * b.participants
+                ELSE w.price_netto * b.participants
+            END
+        ), 0) AS net_revenue
     FROM workshops w
     LEFT JOIN bookings b ON b.workshop_id = w.id AND b.confirmed = 1
     WHERE w.price_netto > 0
     GROUP BY w.id
-    ORDER BY (w.price_netto * COALESCE(SUM(b.participants), 0)) DESC
+    ORDER BY net_revenue DESC
 ');
 $revenueByWorkshop = [];
 $totalRevenueByCurrency = [];
 while ($row = $revenueResult->fetchArray(SQLITE3_ASSOC)) {
-    $rev = (float) $row['price_netto'] * (int) $row['confirmed_participants'];
+    $rev = (float) $row['net_revenue'];
     $row['revenue'] = $rev;
     $revenueByWorkshop[] = $row;
     $cur = $row['price_currency'];
     $totalRevenueByCurrency[$cur] = ($totalRevenueByCurrency[$cur] ?? 0) + $rev;
 }
 
-// ── Recent bookings ──────────────────────────────────────────────────────────
+// Recent bookings
 $recentResult = $db->query('
     SELECT b.*, w.id AS workshop_id, w.title AS workshop_title, w.price_netto, w.price_currency
     FROM bookings b
@@ -63,7 +69,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
         } catch (e) {}
     })();
     </script>
-    <title>Dashboard – Admin</title>
+    <title>Dashboard - Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -82,7 +88,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
 
         <?= render_flash() ?>
 
-        <!-- ── Stats row ── -->
+        <!-- -- Stats row -- -->
         <div class="stats-row">
             <div class="stat-card">
                 <div class="stat-card-label">Aktive Workshops</div>
@@ -102,7 +108,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
             </div>
         </div>
 
-        <!-- ── Revenue section ── -->
+        <!-- -- Revenue section -- -->
         <h2 style="font-family:var(--font-h);font-size:1.5rem;font-weight:400;margin-bottom:1.25rem;">
             Umsatz (Netto)
         </h2>
@@ -161,7 +167,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
             </div>
         <?php endif; ?>
 
-        <!-- ── Recent bookings ── -->
+        <!-- -- Recent bookings -- -->
         <h2 style="font-family:var(--font-h);font-size:1.5rem;font-weight:400;margin-bottom:1.25rem;">Letzte Buchungen</h2>
 
         <?php if (empty($recentBookings)): ?>
@@ -182,8 +188,13 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                 </thead>
                 <tbody>
                     <?php foreach ($recentBookings as $b):
-                        $bPrice = (float) $b['price_netto'];
-                        $bRev   = $bPrice * (int) $b['participants'];
+                                                if ((float) $b['subtotal_netto'] > 0 || (float) $b['total_netto'] > 0 || (float) $b['discount_amount'] > 0) {
+                            $bRev = (float) $b['total_netto'];
+                        } elseif ((float) $b['price_per_person_netto'] > 0) {
+                            $bRev = (float) $b['price_per_person_netto'] * (int) $b['participants'];
+                        } else {
+                            $bRev = (float) $b['price_netto'] * (int) $b['participants'];
+                        }
                     ?>
                     <tr>
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
@@ -220,3 +231,6 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
 <script src="../assets/site-ui.js"></script>
 </body>
 </html>
+
+
+
