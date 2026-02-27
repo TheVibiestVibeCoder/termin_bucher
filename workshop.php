@@ -29,6 +29,73 @@ $isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
 $eventDate    = $workshop['event_date']     ?? '';
 $eventDateEnd = $workshop['event_date_end'] ?? '';
 $location     = $workshop['location']       ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['discount_preview'])) {
+    header('Content-Type: application/json; charset=UTF-8');
+
+    if (!csrf_verify()) {
+        http_response_code(400);
+        echo json_encode([
+            'ok' => false,
+            'message' => 'Sitzung ungueltig. Bitte Seite neu laden.',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $previewParticipants = max(1, min(50, (int) ($_POST['participants'] ?? 1)));
+    $previewEmail = trim((string) ($_POST['email'] ?? ''));
+    $previewCode = normalize_discount_code((string) ($_POST['discount_code'] ?? ''));
+
+    $previewPricing = calculate_booking_totals($price, $previewParticipants);
+    $previewDiscount = null;
+    $previewOk = true;
+    $previewMessage = 'Kein Rabattcode gesetzt.';
+
+    if ($previewCode !== '') {
+        $validation = validate_discount_for_booking(
+            $db,
+            $previewCode,
+            (int) $workshop['id'],
+            $previewEmail,
+            $previewParticipants,
+            (float) $previewPricing['subtotal']
+        );
+
+        if ($validation['ok'] && is_array($validation['code'])) {
+            $previewPricing['discount'] = (float) $validation['discount'];
+            $previewPricing['total'] = (float) $validation['total'];
+            $previewDiscount = [
+                'code' => (string) $validation['code']['code'],
+                'type' => (string) $validation['code']['discount_type'],
+                'value' => (float) $validation['code']['discount_value'],
+                'minParticipants' => (int) $validation['code']['min_participants'],
+                'label' => format_discount_value(
+                    (string) $validation['code']['discount_type'],
+                    (float) $validation['code']['discount_value'],
+                    $currency
+                ),
+            ];
+            $previewMessage = 'Rabattcode angewendet.';
+        } else {
+            $previewOk = false;
+            $previewMessage = (string) ($validation['message'] ?? 'Rabattcode ungueltig.');
+        }
+    }
+
+    echo json_encode([
+        'ok' => $previewOk,
+        'message' => $previewMessage,
+        'discount' => $previewDiscount,
+        'pricing' => [
+            'subtotal' => (float) $previewPricing['subtotal'],
+            'discount' => (float) $previewPricing['discount'],
+            'total' => (float) $previewPricing['total'],
+            'subtotalFormatted' => format_price((float) $previewPricing['subtotal'], $currency),
+            'discountFormatted' => format_price((float) $previewPricing['discount'], $currency),
+            'totalFormatted' => format_price((float) $previewPricing['total'], $currency),
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $errors = [];
 $formData = [
@@ -264,7 +331,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         }
     }
 }
-?>
+
+$discountHintText = 'Code wird beim Absenden final geprueft.';
+$discountHintClass = 'discount-code-hint';
+if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
+    if ($discountFeedback['ok'] && is_array($discountFeedback['code'])) {
+        $discountHintText = 'Code aktiv: '
+            . (string) $discountFeedback['code']['code']
+            . ' ('
+            . format_discount_value(
+                (string) $discountFeedback['code']['discount_type'],
+                (float) $discountFeedback['code']['discount_value'],
+                $currency
+            )
+            . ')';
+        $discountHintClass = 'discount-code-hint discount-code-hint-ok';
+    } else {
+        $discountHintText = (string) ($discountFeedback['message'] ?? 'Rabattcode ungueltig.');
+        $discountHintClass = 'discount-code-hint discount-code-hint-error';
+    }
+}?>
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -521,20 +607,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                             <label for="discount_code">Rabattcode (optional)</label>
                             <input type="text" id="discount_code" name="discount_code" placeholder="Code eingeben"
                                    value="<?= e($formData['discount_code']) ?>" autocomplete="off">
-                            <?php if ($formData['discount_code'] !== '' && is_array($discountFeedback)): ?>
-                                <?php if ($discountFeedback['ok'] && is_array($discountFeedback['code'])): ?>
-                                    <span class="discount-code-hint discount-code-hint-ok">
-                                        Code aktiv: <?= e($discountFeedback['code']['code']) ?>
-                                        (<?= e(format_discount_value($discountFeedback['code']['discount_type'], (float) $discountFeedback['code']['discount_value'], $currency)) ?>)
-                                    </span>
-                                <?php else: ?>
-                                    <span class="discount-code-hint discount-code-hint-error">
-                                        <?= e($discountFeedback['message'] ?? 'Rabattcode ungueltig.') ?>
-                                    </span>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <span class="discount-code-hint">Code wird beim Absenden final geprueft.</span>
-                            <?php endif; ?>
+                            <span id="discount-feedback" class="<?= e($discountHintClass) ?>"><?= e($discountHintText) ?></span>
                         </div>
                         <?php endif; ?>
                         <!-- Booking mode toggle -->
@@ -614,13 +687,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
 <script>
 const burger = document.getElementById('burger');
 const navLinks = document.getElementById('nav-links');
-burger.addEventListener('click', () => {
-    const open = navLinks.classList.toggle('open');
-    burger.setAttribute('aria-expanded', open);
-});
+if (burger && navLinks) {
+    burger.addEventListener('click', () => {
+        const open = navLinks.classList.toggle('open');
+        burger.setAttribute('aria-expanded', open);
+    });
+}
 
 <?php if ($price > 0): ?>
-// Live price calculation
+// Live price calculation + discount preview
 const pricePerPerson = <?= json_for_html((float) $price) ?>;
 const participantsSelect = document.getElementById('participants');
 const subtotalEl = document.getElementById('price-subtotal');
@@ -629,8 +704,13 @@ const discountEl = document.getElementById('price-discount');
 const discountLabelEl = document.getElementById('price-discount-label');
 const totalEl = document.getElementById('price-total');
 const discountInput = document.getElementById('discount_code');
+const discountFeedbackEl = document.getElementById('discount-feedback');
+const emailInput = document.getElementById('email');
+const csrfTokenInput = document.querySelector('form input[name="_token"]');
+const discountPreviewUrl = <?= json_for_html('workshop.php?slug=' . rawurlencode($slug)) ?>;
 const currency = <?= json_for_html($currency) ?>;
-const symbols = { EUR: '€', CHF: 'CHF', USD: '$' };
+const defaultDiscountHint = 'Code wird beim Absenden final geprueft.';
+const symbols = { EUR: 'EUR', CHF: 'CHF', USD: 'USD' };
 
 let activeDiscount = <?= json_for_html(
     ($discountContext && is_array($discountContext['code']))
@@ -642,6 +722,7 @@ let activeDiscount = <?= json_for_html(
         ]
         : null
 ) ?>;
+let discountPreviewRequestId = 0;
 
 function round2(amount) {
     return Math.round(amount * 100) / 100;
@@ -673,11 +754,50 @@ function calcDiscount(subtotal, participants) {
     return 0;
 }
 
-function updatePriceSummary() {
+function setDiscountFeedback(message, state) {
+    if (!discountFeedbackEl) {
+        return;
+    }
+
+    discountFeedbackEl.textContent = (message && String(message).trim() !== '')
+        ? String(message)
+        : defaultDiscountHint;
+
+    discountFeedbackEl.className = 'discount-code-hint';
+    if (state === 'ok') {
+        discountFeedbackEl.classList.add('discount-code-hint-ok');
+    } else if (state === 'error') {
+        discountFeedbackEl.classList.add('discount-code-hint-error');
+    }
+}
+
+function updatePriceSummary(serverPricing) {
+    if (!participantsSelect || !subtotalEl || !totalEl || !discountRowEl || !discountEl || !discountLabelEl) {
+        return;
+    }
+
     const participants = parseInt(participantsSelect.value, 10) || 1;
-    const subtotal = round2(pricePerPerson * participants);
-    const discount = calcDiscount(subtotal, participants);
-    const total = round2(subtotal - discount);
+    let subtotal = round2(pricePerPerson * participants);
+    let discount = calcDiscount(subtotal, participants);
+    let total = round2(subtotal - discount);
+
+    if (serverPricing && typeof serverPricing === 'object') {
+        const serverSubtotal = Number(serverPricing.subtotal);
+        const serverDiscount = Number(serverPricing.discount);
+        const serverTotal = Number(serverPricing.total);
+
+        if (Number.isFinite(serverSubtotal)) {
+            subtotal = round2(serverSubtotal);
+        }
+        if (Number.isFinite(serverDiscount)) {
+            discount = Math.max(0, round2(serverDiscount));
+        }
+        if (Number.isFinite(serverTotal)) {
+            total = round2(serverTotal);
+        } else {
+            total = round2(subtotal - discount);
+        }
+    }
 
     subtotalEl.textContent = formatPrice(subtotal);
     totalEl.textContent = formatPrice(total);
@@ -685,31 +805,136 @@ function updatePriceSummary() {
     if (discount > 0) {
         discountRowEl.style.display = '';
         discountEl.textContent = '-' + formatPrice(discount);
-        if (activeDiscount && activeDiscount.code) {
-            discountLabelEl.textContent = 'Rabatt (' + activeDiscount.code + ')';
-        } else {
-            discountLabelEl.textContent = 'Rabatt';
-        }
+        discountLabelEl.textContent = activeDiscount && activeDiscount.code
+            ? 'Rabatt (' + activeDiscount.code + ')'
+            : 'Rabatt';
     } else {
         discountRowEl.style.display = 'none';
     }
 }
 
-participantsSelect.addEventListener('change', updatePriceSummary);
+async function previewDiscountCode() {
+    if (!discountInput || !participantsSelect || !csrfTokenInput) {
+        return;
+    }
 
-if (discountInput) {
-    discountInput.addEventListener('input', function () {
-        if (!activeDiscount) {
+    const normalizedCode = normalizeCode(discountInput.value);
+    if (normalizedCode === '') {
+        activeDiscount = null;
+        setDiscountFeedback(defaultDiscountHint, 'neutral');
+        updatePriceSummary();
+        return;
+    }
+
+    const requestId = ++discountPreviewRequestId;
+
+    const payload = new URLSearchParams();
+    payload.set('discount_preview', '1');
+    payload.set('_token', csrfTokenInput.value || '');
+    payload.set('discount_code', normalizedCode);
+    payload.set('email', emailInput ? String(emailInput.value || '').trim() : '');
+    payload.set('participants', String(parseInt(participantsSelect.value, 10) || 1));
+
+    setDiscountFeedback('Rabattcode wird geprueft ...', 'neutral');
+
+    try {
+        const response = await fetch(discountPreviewUrl, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            },
+            body: payload.toString(),
+        });
+
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (jsonError) {
+            data = null;
+        }
+
+        if (requestId !== discountPreviewRequestId) {
             return;
         }
-        if (normalizeCode(discountInput.value) !== normalizeCode(activeDiscount.code)) {
+
+        if (!response.ok || !data || typeof data !== 'object') {
+            throw new Error('invalid-response');
+        }
+
+        if (data.ok && data.discount && typeof data.discount === 'object') {
+            activeDiscount = {
+                code: String(data.discount.code || ''),
+                type: String(data.discount.type || ''),
+                value: Number(data.discount.value || 0),
+                minParticipants: Number(data.discount.minParticipants || 0),
+            };
+            setDiscountFeedback(
+                'Code aktiv: ' + activeDiscount.code + ' (' + String(data.discount.label || '') + ')',
+                'ok'
+            );
+        } else {
             activeDiscount = null;
+            setDiscountFeedback(
+                data.message ? String(data.message) : 'Rabattcode ungueltig.',
+                'error'
+            );
+        }
+
+        updatePriceSummary(data.pricing && typeof data.pricing === 'object' ? data.pricing : null);
+    } catch (error) {
+        if (requestId !== discountPreviewRequestId) {
+            return;
+        }
+
+        activeDiscount = null;
+        setDiscountFeedback('Rabattcode konnte nicht geprueft werden. Bitte erneut versuchen.', 'error');
+        updatePriceSummary();
+    }
+}
+
+if (participantsSelect) {
+    participantsSelect.addEventListener('change', function () {
+        updatePriceSummary();
+        if (discountInput && normalizeCode(discountInput.value) !== '') {
+            previewDiscountCode();
+        }
+    });
+}
+
+if (discountInput) {
+    discountInput.addEventListener('blur', previewDiscountCode);
+
+    discountInput.addEventListener('input', function () {
+        const normalizedCode = normalizeCode(discountInput.value);
+
+        if (normalizedCode === '') {
+            activeDiscount = null;
+            setDiscountFeedback(defaultDiscountHint, 'neutral');
+            updatePriceSummary();
+            return;
+        }
+
+        if (activeDiscount && normalizeCode(activeDiscount.code) !== normalizedCode) {
+            activeDiscount = null;
+            setDiscountFeedback('Rabattcode wird nach Verlassen des Feldes geprueft.', 'neutral');
             updatePriceSummary();
         }
     });
 }
 
+if (emailInput) {
+    emailInput.addEventListener('blur', function () {
+        if (discountInput && normalizeCode(discountInput.value) !== '') {
+            previewDiscountCode();
+        }
+    });
+}
+
 updatePriceSummary();
+if (discountInput && normalizeCode(discountInput.value) !== '') {
+    previewDiscountCode();
+}
 <?php endif; ?>
 
 const observer = new IntersectionObserver((entries) => {
@@ -721,22 +946,30 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
 // Booking mode + individual participant fields
 (function () {
-    const modeRadios       = document.querySelectorAll('input[name="booking_mode"]');
-    const countSelect      = document.getElementById('participants');
-    const wrap             = document.getElementById('participant-fields-wrap');
-    const inner            = document.getElementById('participant-fields-inner');
-    const nameInput        = document.getElementById('name');
-    const emailInput       = document.getElementById('email');
-    const modeGroupWrap    = document.getElementById('mode_individual').closest('.form-group');
+    const modeRadios = document.querySelectorAll('input[name="booking_mode"]');
+    const countSelect = document.getElementById('participants');
+    const wrap = document.getElementById('participant-fields-wrap');
+    const inner = document.getElementById('participant-fields-inner');
+    const nameInput = document.getElementById('name');
+    const emailInputField = document.getElementById('email');
+    const modeIndividual = document.getElementById('mode_individual');
+
+    if (!modeIndividual || !countSelect || !wrap || !inner || !nameInput || !emailInputField) {
+        return;
+    }
+
+    const modeGroupWrap = modeIndividual.closest('.form-group');
+    if (!modeGroupWrap) {
+        return;
+    }
 
     function escAttr(s) {
-        return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     function updateModeVisibility() {
         const count = parseInt(countSelect.value, 10) || 1;
         if (count <= 1) {
-            // Hide booking mode toggle and force group mode
             modeGroupWrap.style.display = 'none';
             document.getElementById('mode_group').checked = true;
             wrap.style.display = 'none';
@@ -747,25 +980,29 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     }
 
     function buildParticipantFields() {
-        const isIndividual = document.getElementById('mode_individual').checked;
-        if (!isIndividual) { wrap.style.display = 'none'; inner.innerHTML = ''; return; }
+        const isIndividual = modeIndividual.checked;
+        if (!isIndividual) {
+            wrap.style.display = 'none';
+            inner.innerHTML = '';
+            return;
+        }
 
-        const count   = parseInt(countSelect.value, 10) || 1;
+        const count = parseInt(countSelect.value, 10) || 1;
         const prefill = window.__prefillParticipants || [];
         wrap.style.display = '';
-        inner.innerHTML    = '';
+        inner.innerHTML = '';
 
         for (let i = 0; i < count; i++) {
-            const pName  = prefill[i] ? prefill[i][0] : (i === 0 ? nameInput.value  : '');
-            const pEmail = prefill[i] ? prefill[i][1] : (i === 0 ? emailInput.value : '');
-            const entry  = document.createElement('div');
+            const pName = prefill[i] ? prefill[i][0] : (i === 0 ? nameInput.value : '');
+            const pEmail = prefill[i] ? prefill[i][1] : (i === 0 ? emailInputField.value : '');
+            const entry = document.createElement('div');
             entry.className = 'participant-entry';
             entry.innerHTML = `
                 <div class="participant-entry-num">Teilnehmer:in ${i + 1}</div>
                 <div class="form-group">
                     <label>Name *</label>
                     <input type="text" name="participant_name[]" value="${escAttr(pName)}"
-                           required placeholder="Vollständiger Name">
+                           required placeholder="Vollstaendiger Name">
                 </div>
                 <div class="form-group">
                     <label>E-Mail *</label>
@@ -777,16 +1014,17 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     }
 
     modeRadios.forEach(r => r.addEventListener('change', buildParticipantFields));
-    countSelect.addEventListener('change', function() {
+    countSelect.addEventListener('change', function () {
         updateModeVisibility();
         buildParticipantFields();
     });
-    updateModeVisibility();  // run on load
-    buildParticipantFields(); // run on load (handles repopulation after errors)
+
+    updateModeVisibility();
+    buildParticipantFields();
 })();
 
 // Mobile description expand/collapse
-const descWrap   = document.getElementById('detailDescWrap');
+const descWrap = document.getElementById('detailDescWrap');
 const descToggle = document.getElementById('detailDescToggle');
 if (descToggle && descWrap) {
     descToggle.addEventListener('click', () => {
@@ -794,7 +1032,7 @@ if (descToggle && descWrap) {
         descToggle.setAttribute('aria-expanded', expanded);
         descToggle.innerHTML = expanded
             ? 'Weniger anzeigen <span class="toggle-arrow" style="transform:rotate(180deg);display:inline-block;">&#8595;</span>'
-            : 'Vollständig lesen <span class="toggle-arrow">&#8595;</span>';
+            : 'Vollstaendig lesen <span class="toggle-arrow">&#8595;</span>';
     });
 }
 </script>
@@ -803,9 +1041,3 @@ if (descToggle && descWrap) {
 
 </body>
 </html>
-
-
-
-
-
-

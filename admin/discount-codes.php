@@ -360,15 +360,35 @@ $statusLabels = [
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">
                     <div class="form-group" style="margin-bottom:0;">
-                        <label for="allowed_workshop_ids">Nur fuer bestimmte Workshops (optional)</label>
-                        <select id="allowed_workshop_ids" name="allowed_workshop_ids[]" multiple size="6">
-                            <?php foreach ($workshops as $w): ?>
-                                <option value="<?= (int) $w['id'] ?>"
-                                    <?= in_array((int) $w['id'], $formData['allowed_workshop_ids'], true) ? 'selected' : '' ?>>
-                                    <?= e((string) $w['title']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <label for="workshop_picker">Nur fuer bestimmte Workshops (optional)</label>
+                        <div class="discount-workshop-picker">
+                            <div class="discount-workshop-picker-row">
+                                <select id="workshop_picker">
+                                    <option value="">Workshop auswaehlen ...</option>
+                                    <?php foreach ($workshops as $w): ?>
+                                        <option value="<?= (int) $w['id'] ?>"><?= e((string) $w['title']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <button type="button" class="btn-admin" id="add_workshop_btn">Hinzufuegen</button>
+                            </div>
+
+                            <div class="discount-workshop-selected" id="selected-workshops">
+                                <?php if (empty($formData['allowed_workshop_ids'])): ?>
+                                    <div class="discount-workshop-empty">Leer = gilt fuer alle Workshops.</div>
+                                <?php else: ?>
+                                    <?php foreach ($formData['allowed_workshop_ids'] as $wid): ?>
+                                        <?php $wid = (int) $wid; ?>
+                                        <?php if (isset($workshopMap[$wid])): ?>
+                                            <span class="discount-workshop-chip" data-workshop-id="<?= $wid ?>">
+                                                <span class="discount-workshop-chip-label"><?= e((string) $workshopMap[$wid]) ?></span>
+                                                <button type="button" class="discount-workshop-chip-remove" aria-label="Workshop entfernen">&times;</button>
+                                                <input type="hidden" name="allowed_workshop_ids[]" value="<?= $wid ?>">
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                         <span style="display:block;font-size:0.72rem;color:var(--dim);margin-top:0.35rem;">
                             Leer lassen = gilt fuer alle Workshops.
                         </span>
@@ -455,7 +475,7 @@ $statusLabels = [
                                     <div style="font-size:0.75rem;color:var(--dim);">
                                         bestaetigt: <?= (int) $code['usage_confirmed'] ?>
                                         <?php if ($remaining !== null): ?>
-                                            · rest: <?= $remaining ?>
+                                            - rest: <?= $remaining ?>
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -491,6 +511,98 @@ $statusLabels = [
     </div>
 </div>
 
+<script>
+(function () {
+    const picker = document.getElementById('workshop_picker');
+    const addButton = document.getElementById('add_workshop_btn');
+    const selectedWrap = document.getElementById('selected-workshops');
+
+    if (!picker || !addButton || !selectedWrap) {
+        return;
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function hasWorkshop(id) {
+        const lookup = String(id);
+        return Array.from(selectedWrap.querySelectorAll('.discount-workshop-chip')).some(function (chip) {
+            return String(chip.dataset.workshopId || '') === lookup;
+        });
+    }
+
+    function ensureEmptyHint() {
+        const hasChips = selectedWrap.querySelector('.discount-workshop-chip');
+        const emptyHint = selectedWrap.querySelector('.discount-workshop-empty');
+
+        if (!hasChips && !emptyHint) {
+            const hint = document.createElement('div');
+            hint.className = 'discount-workshop-empty';
+            hint.textContent = 'Leer = gilt fuer alle Workshops.';
+            selectedWrap.appendChild(hint);
+        }
+
+        if (hasChips && emptyHint) {
+            emptyHint.remove();
+        }
+    }
+
+    function addWorkshop(id, title) {
+        if (!id || hasWorkshop(id)) {
+            return;
+        }
+
+        const chip = document.createElement('span');
+        chip.className = 'discount-workshop-chip';
+        chip.dataset.workshopId = String(id);
+        chip.innerHTML =
+            '<span class="discount-workshop-chip-label">' + escapeHtml(title) + '</span>' +
+            '<button type="button" class="discount-workshop-chip-remove" aria-label="Workshop entfernen">&times;</button>' +
+            '<input type="hidden" name="allowed_workshop_ids[]" value="' + escapeHtml(id) + '">';
+
+        selectedWrap.appendChild(chip);
+        ensureEmptyHint();
+    }
+
+    addButton.addEventListener('click', function () {
+        const option = picker.options[picker.selectedIndex];
+        if (!option || !option.value) {
+            return;
+        }
+
+        addWorkshop(option.value, option.textContent || option.innerText || 'Workshop');
+        picker.value = '';
+    });
+
+    picker.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            addButton.click();
+        }
+    });
+
+    selectedWrap.addEventListener('click', function (event) {
+        const removeButton = event.target.closest('.discount-workshop-chip-remove');
+        if (!removeButton) {
+            return;
+        }
+
+        const chip = removeButton.closest('.discount-workshop-chip');
+        if (chip) {
+            chip.remove();
+        }
+        ensureEmptyHint();
+    });
+
+    ensureEmptyHint();
+})();
+</script>
 <script src="../assets/site-ui.js"></script>
 </body>
 </html>
+
