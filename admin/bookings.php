@@ -12,7 +12,7 @@ $returnUrl = 'bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : '');
 
 // -- Handle actions ----------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
-    flash('error', 'Ungueltige Sitzung.');
+    flash('error', 'Ungültige Sitzung.');
     redirect($returnUrl);
 }
 
@@ -73,13 +73,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$brow) {
                 flash('error', 'Buchung nicht gefunden.');
             } elseif ((int) $brow['confirmed'] === 1) {
-                flash('success', 'Buchung ist bereits bestaetigt.');
+                flash('success', 'Buchung ist bereits bestätigt.');
             } else {
                 $capacity = (int) $brow['workshop_capacity'];
                 $booked = count_confirmed_bookings($db, (int) $brow['workshop_id']);
 
                 if ($capacity > 0 && ($booked + (int) $brow['participants']) > $capacity) {
-                    flash('error', 'Buchung kann nicht bestaetigt werden: Kapazitaet erreicht.');
+                    flash('error', 'Buchung kann nicht bestätigt werden: Kapazität erreicht.');
                 } else {
                     $stmt = $db->prepare("UPDATE bookings SET confirmed = 1, confirmed_at = datetime('now') WHERE id = :id AND confirmed = 0");
                     $stmt->bindValue(':id', $bid, SQLITE3_INTEGER);
@@ -87,9 +87,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     if ($updateResult !== false && $db->changes() === 1) {
                         $sendConfirmationEmail = $brow;
-                        flash('success', 'Buchung manuell bestaetigt.');
+                        flash('success', 'Buchung manuell bestätigt.');
                     } else {
-                        flash('error', 'Buchung konnte nicht bestaetigt werden.');
+                        flash('error', 'Buchung konnte nicht bestätigt werden.');
                     }
                 }
             }
@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($inTransaction) {
                 $db->exec('ROLLBACK');
             }
-            flash('error', 'Technischer Fehler bei der Bestaetigung.');
+            flash('error', 'Technischer Fehler bei der Bestätigung.');
         }
 
         if (is_array($sendConfirmationEmail)) {
@@ -120,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sendConfirmationEmail,
                 $emailParticipants
             )) {
-                flash('error', 'Bestaetigungs-E-Mail konnte nicht gesendet werden.');
+                flash('error', 'Bestätigungs-E-Mail konnte nicht gesendet werden.');
             }
         }
 
@@ -713,7 +713,7 @@ if ($workshop) {
             </div>
             <div style="display:flex;gap:0.75rem;">
                 <button type="submit" class="btn-submit" style="flex:1;"
-                        onclick='return confirm(<?= json_for_html("E-Mail an alle bestaetigten Teilnehmer:innen von \\\"{$workshop['title']}\\\" senden?") ?>)'>
+                        onclick='return confirm(<?= json_for_html("E-Mail an alle bestätigten Teilnehmer:innen von \\\"{$workshop['title']}\\\" senden?") ?>)'>
                     An alle senden &rarr;
                 </button>
                 <button type="button" class="btn-admin" onclick="closeBulkEmailModal()">Abbrechen</button>
@@ -1001,9 +1001,3 @@ document.addEventListener('keydown', function(e) {
 
 </body>
 </html>
-
-
-
-
-
-

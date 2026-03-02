@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['logout'])) {
         }
         session_destroy();
     } else {
-        flash('error', 'Ungueltige Sitzung.');
+        flash('error', 'Ungültige Sitzung.');
     }
     redirect('index.php');
 }
@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['logout'])) {
 // Handle login
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     if (!csrf_verify()) {
-        flash('error', 'Ungueltige Sitzung.');
+        flash('error', 'Ungültige Sitzung.');
     } elseif (!rate_limit('admin_login', 5)) {
         flash('error', 'Zu viele Versuche. Bitte warten Sie.');
     } elseif (!admin_password_configured()) {
