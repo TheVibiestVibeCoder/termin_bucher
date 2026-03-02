@@ -529,7 +529,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         aria-controls="detailMorePanel">
                         <span class="detail-more-kicker">Mehr anzeigen</span>
                         <span class="detail-more-title">Mehr Details</span>
-                        <span class="detail-more-hint">Hover oder tippen</span>
+                        <span class="detail-more-hint">Klicken oder tippen</span>
                     </button>
                     <?php endif; ?>
                 </div>
@@ -1082,7 +1082,7 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     buildParticipantFields();
 })();
 
-// Detail "more details" interaction (desktop hover + mobile tap)
+// Detail "more details" interaction (click/tap)
 (function () {
     const moreToggle = document.getElementById('detailMoreToggle');
     const moreLayer = document.getElementById('detailMoreLayer');
@@ -1094,69 +1094,29 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
         return;
     }
 
-    const desktopHoverMedia = window.matchMedia('(hover: hover) and (pointer: fine)');
-    let closeTimer = null;
     let panelOpen = false;
-
-    function isDesktopHover() {
-        return desktopHoverMedia.matches;
-    }
-
-    function clearCloseTimer() {
-        if (closeTimer !== null) {
-            window.clearTimeout(closeTimer);
-            closeTimer = null;
-        }
-    }
 
     function updateExpanded(expanded) {
         moreToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     }
 
-    function positionPanel() {
-        if (!isDesktopHover()) {
-            morePanel.style.left = '';
-            morePanel.style.top = '';
-            return;
-        }
-
-        const triggerRect = moreToggle.getBoundingClientRect();
-        const panelRect = morePanel.getBoundingClientRect();
-        const gap = 14;
-        const minPadding = 16;
-
-        let left = triggerRect.left + window.scrollX;
-        let top = triggerRect.bottom + window.scrollY + gap;
-
-        const maxLeft = window.scrollX + window.innerWidth - panelRect.width - minPadding;
-        left = Math.max(window.scrollX + minPadding, Math.min(left, maxLeft));
-
-        const maxTop = window.scrollY + window.innerHeight - panelRect.height - minPadding;
-        if (top > maxTop) {
-            top = triggerRect.top + window.scrollY - panelRect.height - gap;
-        }
-        top = Math.max(window.scrollY + minPadding, top);
-
-        morePanel.style.left = `${left}px`;
-        morePanel.style.top = `${top}px`;
-    }
-
     function openPanel(focusPanel) {
-        clearCloseTimer();
         if (panelOpen) {
-            positionPanel();
             return;
         }
 
+        morePanel.style.left = '';
+        morePanel.style.top = '';
         moreLayer.hidden = false;
+
         window.requestAnimationFrame(() => {
             moreLayer.classList.add('is-open');
-            positionPanel();
             updateExpanded(true);
             if (focusPanel) {
                 morePanel.focus({ preventScroll: true });
             }
         });
+
         panelOpen = true;
     }
 
@@ -1165,7 +1125,6 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
             return;
         }
 
-        clearCloseTimer();
         moreLayer.classList.remove('is-open');
         updateExpanded(false);
         panelOpen = false;
@@ -1179,14 +1138,6 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
         }, 280);
     }
 
-    function scheduleHoverClose() {
-        if (!isDesktopHover()) {
-            return;
-        }
-        clearCloseTimer();
-        closeTimer = window.setTimeout(closePanel, 120);
-    }
-
     moreToggle.addEventListener('click', (event) => {
         event.preventDefault();
         if (panelOpen) {
@@ -1195,16 +1146,6 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
         }
         openPanel(true);
     });
-
-    moreToggle.addEventListener('mouseenter', () => {
-        if (isDesktopHover()) {
-            openPanel(false);
-        }
-    });
-    moreToggle.addEventListener('mouseleave', scheduleHoverClose);
-
-    morePanel.addEventListener('mouseenter', clearCloseTimer);
-    morePanel.addEventListener('mouseleave', scheduleHoverClose);
 
     moreBackdrop.addEventListener('click', () => {
         closePanel();
@@ -1222,38 +1163,7 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
             moreToggle.focus({ preventScroll: true });
         }
     });
-
-    window.addEventListener('resize', () => {
-        if (!panelOpen) {
-            return;
-        }
-        if (isDesktopHover()) {
-            positionPanel();
-            return;
-        }
-        morePanel.style.left = '';
-        morePanel.style.top = '';
-    });
-
-    window.addEventListener('scroll', () => {
-        if (panelOpen && isDesktopHover()) {
-            positionPanel();
-        }
-    }, { passive: true });
-
-    const onHoverModeChange = () => {
-        if (panelOpen) {
-            closePanel();
-        }
-    };
-
-    if (typeof desktopHoverMedia.addEventListener === 'function') {
-        desktopHoverMedia.addEventListener('change', onHoverModeChange);
-    } else if (typeof desktopHoverMedia.addListener === 'function') {
-        desktopHoverMedia.addListener(onHoverModeChange);
-    }
 })();
-
 // Mobile description expand/collapse
 const descWrap = document.getElementById('detailDescWrap');
 const descToggle = document.getElementById('detailDescToggle');
