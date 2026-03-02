@@ -1110,12 +1110,18 @@ footer a:hover { color: var(--text); }
 @media (max-width: 780px), (hover: none) {
     .detail-more-panel {
         left: 50% !important;
-        top: auto !important;
-        bottom: 0.65rem;
+        top: max(78px, calc(env(safe-area-inset-top) + 72px)) !important;
+        bottom: max(0.65rem, calc(env(safe-area-inset-bottom) + 0.35rem));
         width: min(740px, calc(100vw - 1rem));
-        max-height: min(82vh, 760px);
+        max-height: calc(100vh - max(78px, calc(env(safe-area-inset-top) + 72px)) - max(0.65rem, calc(env(safe-area-inset-bottom) + 0.35rem)));
         border-radius: 16px 16px 12px 12px;
         transform: translate(-50%, 20px);
+    }
+
+    @supports (height: 100dvh) {
+        .detail-more-panel {
+            max-height: calc(100dvh - max(78px, calc(env(safe-area-inset-top) + 72px)) - max(0.65rem, calc(env(safe-area-inset-bottom) + 0.35rem)));
+        }
     }
 
     .detail-more-layer.is-open .detail-more-panel {
