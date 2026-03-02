@@ -542,7 +542,7 @@ function validate_discount_for_booking(
 
     $allowedIds = parse_discount_workshop_ids((string) ($code['allowed_workshop_ids'] ?? ''));
     if (!empty($allowedIds) && !in_array($workshopId, $allowedIds, true)) {
-        $base['message'] = 'Dieser Rabattcode gilt nicht fuer diesen Workshop.';
+        $base['message'] = 'Dieser Rabattcode gilt nicht für diesen Workshop.';
 
         return $base;
     }
@@ -551,12 +551,12 @@ function validate_discount_for_booking(
     $email = strtolower(trim($email));
     if (!empty($allowedEmails)) {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $base['message'] = 'Bitte geben Sie zuerst eine gueltige E-Mail-Adresse ein.';
+            $base['message'] = 'Bitte geben Sie zuerst eine gültige E-Mail-Adresse ein.';
 
             return $base;
         }
         if (!in_array($email, $allowedEmails, true)) {
-            $base['message'] = 'Dieser Rabattcode ist nicht fuer diese E-Mail-Adresse freigeschaltet.';
+            $base['message'] = 'Dieser Rabattcode ist nicht für diese E-Mail-Adresse freigeschaltet.';
 
             return $base;
         }
@@ -575,7 +575,7 @@ function validate_discount_for_booking(
     $maxEmailUses = max(0, (int) ($code['max_uses_per_email'] ?? 0));
     if ($maxEmailUses > 0) {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $base['message'] = 'Bitte geben Sie zuerst eine gueltige E-Mail-Adresse ein.';
+            $base['message'] = 'Bitte geben Sie zuerst eine gültige E-Mail-Adresse ein.';
 
             return $base;
         }
@@ -594,7 +594,7 @@ function validate_discount_for_booking(
         (float) ($code['discount_value'] ?? 0)
     );
     if ($discount['discount'] <= 0) {
-        $base['message'] = 'Dieser Rabattcode ist ungueltig konfiguriert.';
+        $base['message'] = 'Dieser Rabattcode ist ungültig konfiguriert.';
 
         return $base;
     }
@@ -659,4 +659,3 @@ function format_event_date(string $date, string $dateEnd = ''): string {
 
     return $str;
 }
-

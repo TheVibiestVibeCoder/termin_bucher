@@ -32,7 +32,7 @@ foreach ($workshops as $w) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
-    flash('error', 'Ungueltige Sitzung.');
+    flash('error', 'Ungültige Sitzung.');
     redirect('discount-codes.php');
 }
 
@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare('DELETE FROM discount_codes WHERE id = :id');
         $stmt->bindValue(':id', $deleteId, SQLITE3_INTEGER);
         $stmt->execute();
-        flash('success', 'Rabattcode geloescht.');
+        flash('success', 'Rabattcode gelöscht.');
         redirect('discount-codes.php');
     }
 
@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!empty($invalidEmails)) {
-            $errors[] = 'Mindestens eine E-Mail in der Freigabeliste ist ungueltig.';
+            $errors[] = 'Mindestens eine E-Mail in der Freigabeliste ist ungültig.';
         }
 
         if (
@@ -402,7 +402,7 @@ $statusLabels = [
                     </div>
                     <div class="form-group">
                         <label for="label">Bezeichnung (optional)</label>
-                        <input type="text" id="label" name="label" placeholder="z.B. Fruehjahrsaktion"
+                        <input type="text" id="label" name="label" placeholder="z.B. Frühjahrsaktion"
                                value="<?= e((string) $formData['label']) ?>">
                     </div>
                 </div>
@@ -455,21 +455,21 @@ $statusLabels = [
 
                 <div class="discount-grid-2 discount-grid-align-start">
                     <div class="form-group">
-                        <label for="workshop_picker">Nur fuer bestimmte Workshops (optional)</label>
+                        <label for="workshop_picker">Nur für bestimmte Workshops (optional)</label>
                         <div class="discount-workshop-picker">
                             <div class="discount-workshop-picker-row">
                                 <select id="workshop_picker">
-                                    <option value="">Workshop auswaehlen ...</option>
+                                    <option value="">Workshop auswählen ...</option>
                                     <?php foreach ($workshops as $w): ?>
                                         <option value="<?= (int) $w['id'] ?>"><?= e((string) $w['title']) ?></option>
                                     <?php endforeach; ?>
                                 </select>
-                                <button type="button" class="btn-admin" id="add_workshop_btn">Hinzufuegen</button>
+                                <button type="button" class="btn-admin" id="add_workshop_btn">Hinzufügen</button>
                             </div>
 
                             <div class="discount-workshop-selected" id="selected-workshops">
                                 <?php if (empty($formData['allowed_workshop_ids'])): ?>
-                                    <div class="discount-workshop-empty">Leer = gilt fuer alle Workshops.</div>
+                                    <div class="discount-workshop-empty">Leer = gilt für alle Workshops.</div>
                                 <?php else: ?>
                                     <?php foreach ($formData['allowed_workshop_ids'] as $wid): ?>
                                         <?php $wid = (int) $wid; ?>
@@ -484,10 +484,10 @@ $statusLabels = [
                                 <?php endif; ?>
                             </div>
                         </div>
-                        <span class="discount-form-note">Leer lassen = gilt fuer alle Workshops.</span>
+                        <span class="discount-form-note">Leer lassen = gilt für alle Workshops.</span>
                     </div>
                     <div class="form-group">
-                        <label for="allowed_emails">Nur fuer bestimmte E-Mails (optional)</label>
+                        <label for="allowed_emails">Nur für bestimmte E-Mails (optional)</label>
                         <textarea id="allowed_emails" name="allowed_emails" rows="6"
                                   placeholder="max@example.com&#10;team@example.com"><?= e((string) $formData['allowed_emails']) ?></textarea>
                         <span class="discount-form-note">Eine E-Mail pro Zeile oder mit Komma getrennt.</span>
@@ -563,7 +563,7 @@ $statusLabels = [
                                 <td>
                                     <div><?= (int) $code['usage_total'] ?>x verwendet</div>
                                     <div style="font-size:0.75rem;color:var(--dim);">
-                                        bestaetigt: <?= (int) $code['usage_confirmed'] ?>
+                                        bestätigt: <?= (int) $code['usage_confirmed'] ?>
                                         <?php if ($remaining !== null): ?>
                                             - rest: <?= $remaining ?>
                                         <?php endif; ?>
@@ -585,10 +585,10 @@ $statusLabels = [
                                             <input type="hidden" name="toggle_discount_id" value="<?= (int) $code['id'] ?>">
                                             <button type="submit" class="btn-admin"><?= (int) $code['active'] === 1 ? 'Deaktivieren' : 'Aktivieren' ?></button>
                                         </form>
-                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Code wirklich loeschen?');">
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Code wirklich löschen?');">
                                             <?= csrf_field() ?>
                                             <input type="hidden" name="delete_discount_id" value="<?= (int) $code['id'] ?>">
-                                            <button type="submit" class="btn-admin btn-danger">Loeschen</button>
+                                            <button type="submit" class="btn-admin btn-danger">Löschen</button>
                                         </form>
                                     </div>
                                 </td>
@@ -633,7 +633,7 @@ $statusLabels = [
         if (!hasChips && !emptyHint) {
             const hint = document.createElement('div');
             hint.className = 'discount-workshop-empty';
-            hint.textContent = 'Leer = gilt fuer alle Workshops.';
+            hint.textContent = 'Leer = gilt für alle Workshops.';
             selectedWrap.appendChild(hint);
         }
 
@@ -695,4 +695,3 @@ $statusLabels = [
 <script src="../assets/site-ui.js"></script>
 </body>
 </html>
-

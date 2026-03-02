@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
     }
 
     if ($formData['capacity'] > 0 && $formData['min_participants'] > $formData['capacity']) {
-        $errors[] = 'Mindest-Teilnehmende darf die Kapazitaet nicht uebersteigen.';
+        $errors[] = 'Mindest-Teilnehmende darf die Kapazität nicht übersteigen.';
     }
     if (!empty($formData['event_date']) && !empty($formData['event_date_end'])) {
         $startTs = strtotime($formData['event_date']);

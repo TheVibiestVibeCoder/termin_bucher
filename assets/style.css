@@ -1,7 +1,7 @@
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   Disinfo Consulting â€“ Workshop Booking System
+/*
+   Disinfo Consulting - Workshop Booking System
    Shared Styles (extracted from mockup)
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+*/
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -158,7 +158,7 @@ html[data-theme="light"] {
     }
 }
 
-/* â”€â”€â”€ SKIP LINK â”€â”€â”€ */
+/* ─── SKIP LINK ─── */
 .skip-link {
     position: absolute; top: -100px; left: 1rem;
     background: #fff; color: #000;
@@ -168,7 +168,7 @@ html[data-theme="light"] {
 }
 .skip-link:focus { top: 1rem; }
 
-/* â”€â”€â”€ NAV â”€â”€â”€ */
+/* ─── NAV ─── */
 nav {
     position: fixed; top: 0; left: 0; width: 100%;
     padding: 1.25rem 0;
@@ -312,7 +312,7 @@ nav {
     }
 }
 
-/* â”€â”€â”€ HERO â”€â”€â”€ */
+/* ─── HERO ─── */
 #hero {
     min-height: 70vh; min-height: 70dvh;
     display: flex; align-items: center;
@@ -399,7 +399,7 @@ nav {
     .hero-stats { gap: 2rem; flex-wrap: wrap; }
 }
 
-/* â”€â”€â”€ SECTION SHARED â”€â”€â”€ */
+/* ─── SECTION SHARED ─── */
 .section {
     padding: clamp(5rem, 10vh, 8rem) 1.5rem;
 }
@@ -428,14 +428,14 @@ nav {
     margin-bottom: 3rem;
 }
 
-/* â”€â”€â”€ FADE-IN SCROLL â”€â”€â”€ */
+/* ─── FADE-IN SCROLL ─── */
 .fade-in {
     opacity: 0; transform: translateY(20px);
     transition: opacity 0.7s ease-out, transform 0.7s ease-out;
 }
 .fade-in.visible { opacity: 1; transform: translateY(0); }
 
-/* â”€â”€â”€ WORKSHOPS GRID â”€â”€â”€ */
+/* ─── WORKSHOPS GRID ─── */
 #workshops { background: var(--bg); }
 
 .filter-row {
@@ -594,7 +594,7 @@ nav {
     padding: 4px 10px; border-radius: 4px;
 }
 
-/* â”€â”€â”€ PRICE PILL â”€â”€â”€ */
+/* ─── PRICE PILL ─── */
 .price-pill {
     display: inline-flex; align-items: center; gap: 0.35rem;
     font-size: 0.88rem; font-weight: 600;
@@ -611,7 +611,7 @@ nav {
 }
 .price-pill-free { color: var(--muted); background: transparent; border-color: var(--border); }
 
-/* â”€â”€â”€ TYPE BADGE â”€â”€â”€ */
+/* ─── TYPE BADGE ─── */
 .type-badge {
     display: inline-flex; align-items: center; gap: 0.3rem;
     font-size: 0.65rem; font-weight: 700;
@@ -649,7 +649,7 @@ nav {
     min-height: 26px;
 }
 
-/* â”€â”€â”€ EVENT INFO (date / location) â”€â”€â”€ */
+/* ─── EVENT INFO (date / location) ─── */
 .event-info { margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 0.45rem; }
 .event-info-row {
     display: flex; align-items: flex-start; gap: 0.5rem;
@@ -657,7 +657,7 @@ nav {
 }
 .event-info-row svg { flex-shrink: 0; opacity: 0.55; margin-top: 1px; }
 
-/* â”€â”€â”€ MIN PARTICIPANTS NOTE â”€â”€â”€ */
+/* --- MIN PARTICIPANTS NOTE --- */
 .min-participants-note {
     display: flex; align-items: center; gap: 0.4rem;
     font-size: 0.78rem; color: var(--dim);
@@ -666,13 +666,13 @@ nav {
 }
 .min-participants-note svg { opacity: 0.5; flex-shrink: 0; }
 
-/* â”€â”€â”€ SEAT INDICATOR â”€â”€â”€ */
+/* --- SEAT INDICATOR --- */
 .seats-indicator {
     display: flex; align-items: center; gap: 0.5rem;
     margin-bottom: 1rem;
 }
 
-/* .seats-bar is the outer shell â€“ overflow:visible lets the marker dot poke out */
+/* .seats-bar is the outer shell - overflow:visible lets the marker dot poke out */
 .seats-bar {
     flex: 1; height: 4px;
     border-radius: 2px;
@@ -695,7 +695,7 @@ nav {
 .seats-bar-fill.high   { background: #e74c3c; }
 .seats-bar-fill.medium { background: #f39c12; }
 
-/* â”€â”€â”€ MIN-PARTICIPANTS THRESHOLD MARKER â”€â”€â”€ */
+/* ─── MIN-PARTICIPANTS THRESHOLD MARKER ─── */
 .seats-bar-marker {
     position: absolute;
     top: -5px; bottom: -5px;
@@ -738,7 +738,7 @@ nav {
     opacity: 0.85;
 }
 
-/* â”€â”€â”€ BELOW-MIN SWELLING ANIMATION â”€â”€â”€ */
+/* ─── BELOW-MIN SWELLING ANIMATION ─── */
 @keyframes fillAmberPulse {
     0%, 100% { opacity: 0.35; }
     50%       { opacity: 0.85; }
@@ -758,7 +758,7 @@ nav {
     font-size: 0.75rem; color: var(--muted); white-space: nowrap;
 }
 
-/* â”€â”€â”€ CTA SECTION â”€â”€â”€ */
+/* ─── CTA SECTION ─── */
 #cta-section {
     padding: clamp(5rem, 10vh, 8rem) 1.5rem;
     background: var(--bg-alt);
@@ -821,7 +821,7 @@ nav {
     .cta-btns { flex-direction: column; }
 }
 
-/* â”€â”€â”€ FOOTER â”€â”€â”€ */
+/* ─── FOOTER ─── */
 footer {
     background: var(--bg);
     border-top: 1px solid var(--border);
@@ -833,12 +833,12 @@ footer p { font-size: 0.8rem; color: var(--dim); }
 footer a { color: var(--muted); text-decoration: none; }
 footer a:hover { color: var(--text); }
 
-/* â”€â”€â”€ SCROLLBAR â”€â”€â”€ */
+/* ─── SCROLLBAR ─── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 99px; }
 
-/* â”€â”€â”€ FLASH MESSAGES â”€â”€â”€ */
+/* ─── FLASH MESSAGES ─── */
 .flash {
     padding: 14px 20px;
     border-radius: var(--radius);
@@ -857,7 +857,7 @@ footer a:hover { color: var(--text); }
     color: #e74c3c;
 }
 
-/* â”€â”€â”€ DETAIL PAGE â”€â”€â”€ */
+/* ─── DETAIL PAGE ─── */
 .detail-hero {
     padding: 120px 1.5rem 4rem;
     position: relative; overflow: hidden;
@@ -1412,7 +1412,7 @@ footer a:hover { color: var(--text); }
     padding: 2rem; margin-top: 1rem;
 }
 
-/* â”€â”€â”€ EVENT DETAILS PANEL (index.php cards â€“ open workshops) â”€â”€â”€ */
+/* --- EVENT DETAILS PANEL (index.php cards - open workshops) --- */
 .event-details-panel {
     background: var(--panel-bg);
     border: 1px solid var(--panel-border);
@@ -1481,7 +1481,7 @@ footer a:hover { color: var(--text); }
 }
 .min-p-badge svg { opacity: 0.8; }
 
-/* â”€â”€â”€ BOOKING MODE TOGGLE â”€â”€â”€ */
+/* ─── BOOKING MODE TOGGLE ─── */
 .booking-mode-toggle {
     display: flex;
     gap: 0;
@@ -1532,7 +1532,7 @@ footer a:hover { color: var(--text); }
 .participant-entry .form-group { margin-bottom: 0.75rem; }
 .participant-entry .form-group:last-child { margin-bottom: 0; }
 
-/* â”€â”€â”€ MOBILE CARD DESCRIPTION CLAMP â”€â”€â”€ */
+/* ─── MOBILE CARD DESCRIPTION CLAMP ─── */
 @media (max-width: 600px) {
     .workshop-card { padding: 1.75rem 1.25rem; }
 
@@ -1544,7 +1544,7 @@ footer a:hover { color: var(--text); }
     }
 }
 
-/* â”€â”€â”€ DETAIL PAGE: MOBILE COLLAPSIBLE DESCRIPTION â”€â”€â”€ */
+/* ─── DETAIL PAGE: MOBILE COLLAPSIBLE DESCRIPTION ─── */
 .detail-desc-wrap {
     position: relative;
     margin-bottom: 2rem;
@@ -1592,7 +1592,7 @@ footer a:hover { color: var(--text); }
     .detail-desc-toggle { display: none; }
 }
 
-/* â”€â”€â”€ DETAIL PAGE: OVERFLOW PREVENTION â”€â”€â”€ */
+/* ─── DETAIL PAGE: OVERFLOW PREVENTION ─── */
 /* Grid children must have min-width:0 or long words cause horizontal scroll */
 .detail-grid > * { min-width: 0; }
 
@@ -1632,7 +1632,7 @@ footer a:hover { color: var(--text); }
     margin-top: 4px;
 }
 
-/* â”€â”€â”€ DETAIL PAGE: MOBILE META GRID â”€â”€â”€ */
+/* ─── DETAIL PAGE: MOBILE META GRID ─── */
 @media (max-width: 900px) {
     /* Remove sticky from booking box so it just flows below on tablet/mobile */
     .booking-box { position: static; }
@@ -1670,7 +1670,7 @@ footer a:hover { color: var(--text); }
     .seats-indicator { margin-top: 6px; }
 }
 
-/* â”€â”€â”€ GENERAL MOBILE POLISH â”€â”€â”€ */
+/* ─── GENERAL MOBILE POLISH ─── */
 @media (max-width: 480px) {
     .hero-stats { gap: 1.5rem; }
     .stat-item .stat-num { font-size: 1.8rem; }
@@ -1686,4 +1686,3 @@ footer a:hover { color: var(--text); }
 
     .event-details-panel { padding: 0.75rem 0.875rem; }
 }
-

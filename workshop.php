@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['discount_preview'])) 
         http_response_code(400);
         echo json_encode([
             'ok' => false,
-            'message' => 'Sitzung ungueltig. Bitte Seite neu laden.',
+            'message' => 'Sitzung ungültig. Bitte Seite neu laden.',
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['discount_preview'])) 
             $previewMessage = 'Rabattcode angewendet.';
         } else {
             $previewOk = false;
-            $previewMessage = (string) ($validation['message'] ?? 'Rabattcode ungueltig.');
+            $previewMessage = (string) ($validation['message'] ?? 'Rabattcode ungültig.');
         }
     }
 
@@ -132,7 +132,7 @@ $discountFeedback = null;
 $discountContext = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if (!csrf_verify()) {
-        $errors[] = 'Ungueltige Sitzung. Bitte versuchen Sie es erneut.';
+        $errors[] = 'Ungültige Sitzung. Bitte versuchen Sie es erneut.';
     }
     if (!rate_limit('booking', 3)) {
         $errors[] = 'Zu viele Anfragen. Bitte warten Sie einen Moment.';
@@ -153,8 +153,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     }
 
     if (strlen($formData['name']) < 2) $errors[] = 'Bitte geben Sie Ihren Namen ein.';
-    if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gueltige E-Mail-Adresse ein.';
-    if ($formData['participants'] < 1 || $formData['participants'] > 50) $errors[] = 'Ungueltige Anzahl Teilnehmer:innen.';
+    if (!filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
+    if ($formData['participants'] < 1 || $formData['participants'] > 50) $errors[] = 'Ungültige Anzahl Teilnehmer:innen.';
 
     if (mb_strlen($formData['name']) > $maxLen['name']) $errors[] = 'Name ist zu lang.';
     if (mb_strlen($formData['email']) > $maxLen['email']) $errors[] = 'E-Mail-Adresse ist zu lang.';
@@ -165,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if ($formData['booking_mode'] === 'individual' && empty($errors)) {
         $expected = $formData['participants'];
         if (count($participantNames) !== $expected || count($participantEmails) !== $expected) {
-            $errors[] = 'Bitte fuellen Sie die Daten fuer alle Teilnehmer:innen aus.';
+            $errors[] = 'Bitte füllen Sie die Daten für alle Teilnehmer:innen aus.';
         } else {
             foreach ($participantNames as $i => $pn) {
                 if (strlen($pn) < 2) $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Bitte geben Sie einen Namen ein.';
@@ -173,14 +173,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 if (mb_strlen($pn) > $maxLen['name']) $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Name ist zu lang.';
                 if (mb_strlen($participantEmail) > $maxLen['email']) $errors[] = 'Teilnehmer:in ' . ($i+1) . ': E-Mail-Adresse ist zu lang.';
                 if (!filter_var($participantEmail, FILTER_VALIDATE_EMAIL)) {
-                    $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Ungueltige E-Mail-Adresse.';
+                    $errors[] = 'Teilnehmer:in ' . ($i+1) . ': Ungültige E-Mail-Adresse.';
                 }
             }
         }
     }
 
     if ($capacity > 0 && $formData['participants'] > $spotsLeft) {
-        $errors[] = "Leider sind nur noch {$spotsLeft} Plaetze verfuegbar.";
+        $errors[] = "Leider sind nur noch {$spotsLeft} Plätze verfügbar.";
     }
 
     $pricingSummary = calculate_booking_totals($price, (int) $formData['participants']);
@@ -200,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             $pricingSummary['discount'] = (float) $discountFeedback['discount'];
             $pricingSummary['total'] = (float) $discountFeedback['total'];
         } else {
-            $errors[] = $discountFeedback['message'] ?: 'Rabattcode ist ungueltig.';
+            $errors[] = $discountFeedback['message'] ?: 'Rabattcode ist ungültig.';
         }
     }
 
@@ -332,16 +332,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 $rollbackStmt = $db->prepare('DELETE FROM bookings WHERE id = :id');
                 $rollbackStmt->bindValue(':id', $bookingId, SQLITE3_INTEGER);
                 $rollbackStmt->execute();
-                $errors[] = 'Die Bestaetigungs-E-Mail konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
+                $errors[] = 'Die Bestätigungs-E-Mail konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
             } else {
-                flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestaetigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschliessen.');
+                flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschließen.');
                 redirect('workshop.php?slug=' . urlencode($slug));
             }
         }
     }
 }
 
-$discountHintText = 'Code wird beim Absenden final geprueft.';
+$discountHintText = 'Code wird beim Absenden final geprüft.';
 $discountHintClass = 'discount-code-hint';
 if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
     if ($discountFeedback['ok'] && is_array($discountFeedback['code'])) {
@@ -356,7 +356,7 @@ if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
             . ')';
         $discountHintClass = 'discount-code-hint discount-code-hint-ok';
     } else {
-        $discountHintText = (string) ($discountFeedback['message'] ?? 'Rabattcode ungueltig.');
+        $discountHintText = (string) ($discountFeedback['message'] ?? 'Rabattcode ungültig.');
         $discountHintClass = 'discount-code-hint discount-code-hint-error';
     }
 }?>
@@ -718,7 +718,7 @@ const emailInput = document.getElementById('email');
 const csrfTokenInput = document.querySelector('form input[name="_token"]');
 const discountPreviewUrl = <?= json_for_html('workshop.php?slug=' . rawurlencode($slug)) ?>;
 const currency = <?= json_for_html($currency) ?>;
-const defaultDiscountHint = 'Code wird beim Absenden final geprueft.';
+const defaultDiscountHint = 'Code wird beim Absenden final geprüft.';
 const symbols = { EUR: 'EUR', CHF: 'CHF', USD: 'USD' };
 
 let activeDiscount = <?= json_for_html(
@@ -844,7 +844,7 @@ async function previewDiscountCode() {
     payload.set('email', emailInput ? String(emailInput.value || '').trim() : '');
     payload.set('participants', String(parseInt(participantsSelect.value, 10) || 1));
 
-    setDiscountFeedback('Rabattcode wird geprueft ...', 'neutral');
+    setDiscountFeedback('Rabattcode wird geprüft ...', 'neutral');
 
     try {
         const response = await fetch(discountPreviewUrl, {
@@ -885,7 +885,7 @@ async function previewDiscountCode() {
         } else {
             activeDiscount = null;
             setDiscountFeedback(
-                data.message ? String(data.message) : 'Rabattcode ungueltig.',
+                data.message ? String(data.message) : 'Rabattcode ungültig.',
                 'error'
             );
         }
@@ -897,7 +897,7 @@ async function previewDiscountCode() {
         }
 
         activeDiscount = null;
-        setDiscountFeedback('Rabattcode konnte nicht geprueft werden. Bitte erneut versuchen.', 'error');
+        setDiscountFeedback('Rabattcode konnte nicht geprüft werden. Bitte erneut versuchen.', 'error');
         updatePriceSummary();
     }
 }
@@ -926,7 +926,7 @@ if (discountInput) {
 
         if (activeDiscount && normalizeCode(activeDiscount.code) !== normalizedCode) {
             activeDiscount = null;
-            setDiscountFeedback('Rabattcode wird nach Verlassen des Feldes geprueft.', 'neutral');
+            setDiscountFeedback('Rabattcode wird nach Verlassen des Feldes geprüft.', 'neutral');
             updatePriceSummary();
         }
     });
@@ -1050,4 +1050,3 @@ if (descToggle && descWrap) {
 
 </body>
 </html>
-

@@ -19,7 +19,7 @@ if (!$booking) {
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
-    $errors[] = 'Ungueltige Sitzung.';
+    $errors[] = 'Ungültige Sitzung.';
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
             $confirmedSum = (int) ($sumRow['confirmed_sum'] ?? 0);
 
             if (($confirmedSum + $participants) > $capacity) {
-                $errors[] = 'Kapazitaet ueberschritten. Buchung kann so nicht bestaetigt werden.';
+                $errors[] = 'Kapazität überschritten. Buchung kann so nicht bestätigt werden.';
             }
         }
     }
@@ -272,11 +272,3 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
 <script src="../assets/site-ui.js"></script>
 </body>
 </html>
-
-
-
-
-
-
-
-
