@@ -314,11 +314,20 @@ nav {
 
 /* ─── HERO ─── */
 #hero {
-    min-height: 70vh; min-height: 70dvh;
-    display: flex; align-items: center;
-    padding: 120px 1.5rem 5rem;
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    padding: clamp(96px, 14vh, 150px) 1.5rem clamp(2.25rem, 9vh, 6rem);
+    padding-top: max(96px, calc(env(safe-area-inset-top) + 72px));
     position: relative;
     overflow: hidden;
+}
+
+@supports (min-height: 100dvh) {
+    #hero {
+        min-height: 100dvh;
+    }
 }
 
 .hero-noise {

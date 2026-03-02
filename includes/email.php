@@ -413,12 +413,8 @@ function send_confirmation_email(
         <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
         <p style="color:#a0a0a0;line-height:1.7;">vielen Dank für Ihre Anmeldung zum Workshop:</p>
         <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
-        <p style="color:#a0a0a0;line-height:1.7;">Hier finden Sie alle Details zu Ihrer Anfrage:</p>
-        ' . $detailsBlock . '
-        ' . $participantsBlock . '
-        ' . $cancellationBlock . '
-        <p style="color:#a0a0a0;line-height:1.7;">Bitte bestätigen Sie Ihre Buchung, indem Sie auf den folgenden Link klicken:</p>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:28px 0 24px;">
+        <p style="color:#a0a0a0;line-height:1.7;">Bitte bestätigen Sie Ihre Buchung direkt über den folgenden Button:</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:20px 0 18px;">
             <tr>
                 <td align="left">
                     <a href="' . e($confirmUrl) . '" style="display:inline-block;max-width:100%;box-sizing:border-box;padding:14px 20px;background:#ffffff;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;line-height:1.35;word-break:break-word;">Buchung bestätigen &rarr;</a>
@@ -426,6 +422,10 @@ function send_confirmation_email(
             </tr>
         </table>
         <p style="color:#666;font-size:13px;line-height:1.5;">Dieser Link ist 48 Stunden gültig. Falls Sie diese Anmeldung nicht durchgeführt haben, können Sie diese E-Mail ignorieren.</p>
+        <p style="color:#a0a0a0;line-height:1.7;margin-top:20px;">Hier finden Sie alle Details zu Ihrer Anfrage:</p>
+        ' . $detailsBlock . '
+        ' . $participantsBlock . '
+        ' . $cancellationBlock . '
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
