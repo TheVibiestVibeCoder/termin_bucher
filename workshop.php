@@ -362,6 +362,10 @@ if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
 }
 
 $detailMetaItems = [];
+$mapsDirectionsUrl = '';
+if ($location !== '') {
+    $mapsDirectionsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' . rawurlencode($location) . '&travelmode=transit';
+}
 if ($isOpen && $eventDate) {
     $detailMetaItems[] = [
         'label' => 'Datum & Uhrzeit',
@@ -372,6 +376,7 @@ if ($isOpen && $location) {
     $detailMetaItems[] = [
         'label' => 'Veranstaltungsort',
         'value' => (string) $location,
+        'href' => $mapsDirectionsUrl,
     ];
 }
 $detailMetaItems[] = [
@@ -513,9 +518,17 @@ $hasMoreMetaItems = !empty($extraMetaItems);
 
                 <div class="detail-meta-grid detail-meta-grid-main">
                     <?php foreach ($primaryMetaItems as $metaItem): ?>
-                    <div class="detail-meta-item">
+                    <?php $metaHref = trim((string) ($metaItem['href'] ?? '')); ?>
+                    <div class="detail-meta-item<?= $metaHref !== '' ? ' detail-meta-item-link' : '' ?>">
+                        <?php if ($metaHref !== ''): ?>
+                        <a href="<?= e($metaHref) ?>" class="detail-meta-link detail-location-link" aria-label="Route mit Öffis zu dieser Adresse in Google Maps öffnen">
+                            <span class="label"><?= e($metaItem['label']) ?></span>
+                            <span class="value"><?= e($metaItem['value']) ?></span>
+                        </a>
+                        <?php else: ?>
                         <div class="label"><?= e($metaItem['label']) ?></div>
                         <div class="value"><?= e($metaItem['value']) ?></div>
+                        <?php endif; ?>
                     </div>
                     <?php endforeach; ?>
 
@@ -555,9 +568,17 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                         <div class="detail-meta-grid detail-meta-grid-overlay">
                             <?php foreach ($extraMetaItems as $metaItem): ?>
-                            <div class="detail-meta-item">
+                            <?php $metaHref = trim((string) ($metaItem['href'] ?? '')); ?>
+                            <div class="detail-meta-item<?= $metaHref !== '' ? ' detail-meta-item-link' : '' ?>">
+                                <?php if ($metaHref !== ''): ?>
+                                <a href="<?= e($metaHref) ?>" class="detail-meta-link detail-location-link" aria-label="Route mit Öffis zu dieser Adresse in Google Maps öffnen">
+                                    <span class="label"><?= e($metaItem['label']) ?></span>
+                                    <span class="value"><?= e($metaItem['value']) ?></span>
+                                </a>
+                                <?php else: ?>
                                 <div class="label"><?= e($metaItem['label']) ?></div>
                                 <div class="value"><?= e($metaItem['value']) ?></div>
+                                <?php endif; ?>
                             </div>
                             <?php endforeach; ?>
                         </div>
