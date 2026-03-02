@@ -359,7 +359,64 @@ if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
         $discountHintText = (string) ($discountFeedback['message'] ?? 'Rabattcode ungültig.');
         $discountHintClass = 'discount-code-hint discount-code-hint-error';
     }
-}?>
+}
+
+$detailMetaItems = [];
+$mapsDirectionsUrl = '';
+if ($location !== '') {
+    $mapsDirectionsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' . rawurlencode($location) . '&travelmode=transit';
+}
+if ($isOpen && $eventDate) {
+    $detailMetaItems[] = [
+        'label' => 'Datum & Uhrzeit',
+        'value' => format_event_date($eventDate, $eventDateEnd),
+    ];
+}
+if ($isOpen && $location) {
+    $detailMetaItems[] = [
+        'label' => 'Veranstaltungsort',
+        'value' => (string) $location,
+        'href' => $mapsDirectionsUrl,
+    ];
+}
+$detailMetaItems[] = [
+    'label' => !$isOpen ? 'Termin' : 'Terminart',
+    'value' => !$isOpen ? 'Auf Anfrage' : 'Fester Termin',
+];
+if ($isOpen && $minP > 0) {
+    $detailMetaItems[] = [
+        'label' => 'Status',
+        'value' => $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen',
+    ];
+}
+$detailMetaItems[] = [
+    'label' => 'Format',
+    'value' => (string) $workshop['format'],
+];
+$detailMetaItems[] = [
+    'label' => 'Dauer',
+    'value' => (string) $workshop['tag_label'],
+];
+if ($capacity > 0) {
+    $detailMetaItems[] = [
+        'label' => 'Kapazität',
+        'value' => $capacity . ' Plätze',
+    ];
+    $detailMetaItems[] = [
+        'label' => 'Verfügbar',
+        'value' => $isFull ? 'Ausgebucht' : ($spotsLeft . ' frei'),
+    ];
+}
+if ($minP > 0) {
+    $detailMetaItems[] = [
+        'label' => 'Mindest-Teilnehmende',
+        'value' => $minP . ' Personen',
+    ];
+}
+$primaryMetaItems = array_slice($detailMetaItems, 0, 3);
+$extraMetaItems = array_slice($detailMetaItems, 3);
+$hasMoreMetaItems = !empty($extraMetaItems);
+?>
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -459,61 +516,75 @@ if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
                 </div>
                 <?php endif; ?>
 
-                <div class="detail-meta-grid">
-                    <?php if ($isOpen && $eventDate): ?>
-                    <div class="detail-meta-item" style="grid-column:1/-1;">
-                        <div class="label">Datum &amp; Uhrzeit</div>
-                        <div class="value"><?= format_event_date($eventDate, $eventDateEnd) ?></div>
+                <div class="detail-meta-grid detail-meta-grid-main">
+                    <?php foreach ($primaryMetaItems as $metaItem): ?>
+                    <?php $metaHref = trim((string) ($metaItem['href'] ?? '')); ?>
+                    <div class="detail-meta-item<?= $metaHref !== '' ? ' detail-meta-item-link' : '' ?>">
+                        <?php if ($metaHref !== ''): ?>
+                        <a href="<?= e($metaHref) ?>" class="detail-meta-link detail-location-link" aria-label="Route mit Öffis zu dieser Adresse in Google Maps öffnen">
+                            <span class="label"><?= e($metaItem['label']) ?></span>
+                            <span class="value"><?= e($metaItem['value']) ?></span>
+                        </a>
+                        <?php else: ?>
+                        <div class="label"><?= e($metaItem['label']) ?></div>
+                        <div class="value"><?= e($metaItem['value']) ?></div>
+                        <?php endif; ?>
                     </div>
-                    <?php endif; ?>
-                    <?php if ($isOpen && $location): ?>
-                    <div class="detail-meta-item" style="grid-column:1/-1;">
-                        <div class="label">Veranstaltungsort</div>
-                        <div class="value"><?= e($location) ?></div>
-                    </div>
-                    <?php endif; ?>
-                    <?php if (!$isOpen): ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Termin</div>
-                        <div class="value">Auf Anfrage</div>
-                    </div>
-                    <?php else: ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Terminart</div>
-                        <div class="value">Fester Termin</div>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($isOpen && $minP > 0): ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Status</div>
-                        <div class="value"><?= $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen' ?></div>
-                    </div>
-                    <?php endif; ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Format</div>
-                        <div class="value"><?= e($workshop['format']) ?></div>
-                    </div>
-                    <div class="detail-meta-item">
-                        <div class="label">Dauer</div>
-                        <div class="value"><?= e($workshop['tag_label']) ?></div>
-                    </div>
-                    <?php if ($capacity > 0): ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Kapazität</div>
-                        <div class="value"><?= $capacity ?> Plätze</div>
-                    </div>
-                    <div class="detail-meta-item">
-                        <div class="label">Verfügbar</div>
-                        <div class="value"><?= $isFull ? 'Ausgebucht' : ($spotsLeft . ' frei') ?></div>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($minP > 0): ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Mindest-Teilnehmende</div>
-                        <div class="value"><?= $minP ?> Personen</div>
-                    </div>
+                    <?php endforeach; ?>
+
+                    <?php if ($hasMoreMetaItems): ?>
+                    <button
+                        type="button"
+                        id="detailMoreToggle"
+                        class="detail-meta-item detail-more-toggle"
+                        aria-expanded="false"
+                        aria-haspopup="dialog"
+                        aria-controls="detailMorePanel">
+                        <span class="detail-more-kicker">Mehr anzeigen</span>
+                        <span class="detail-more-title">Mehr Details</span>
+                        <span class="detail-more-hint">Klicken oder tippen</span>
+                    </button>
                     <?php endif; ?>
                 </div>
+                <?php if ($hasMoreMetaItems): ?>
+                <div class="detail-more-layer" id="detailMoreLayer" hidden>
+                    <div class="detail-more-backdrop" id="detailMoreBackdrop"></div>
+                    <section
+                        class="detail-more-panel"
+                        id="detailMorePanel"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Weitere Workshop-Details"
+                        tabindex="-1">
+                        <div class="detail-more-header">
+                            <h2 class="detail-more-heading">Weitere Details</h2>
+                            <button
+                                type="button"
+                                id="detailMoreClose"
+                                class="detail-more-close"
+                                aria-label="Mehr Details schließen">
+                                &times;
+                            </button>
+                        </div>
+                        <div class="detail-meta-grid detail-meta-grid-overlay">
+                            <?php foreach ($extraMetaItems as $metaItem): ?>
+                            <?php $metaHref = trim((string) ($metaItem['href'] ?? '')); ?>
+                            <div class="detail-meta-item<?= $metaHref !== '' ? ' detail-meta-item-link' : '' ?>">
+                                <?php if ($metaHref !== ''): ?>
+                                <a href="<?= e($metaHref) ?>" class="detail-meta-link detail-location-link" aria-label="Route mit Öffis zu dieser Adresse in Google Maps öffnen">
+                                    <span class="label"><?= e($metaItem['label']) ?></span>
+                                    <span class="value"><?= e($metaItem['value']) ?></span>
+                                </a>
+                                <?php else: ?>
+                                <div class="label"><?= e($metaItem['label']) ?></div>
+                                <div class="value"><?= e($metaItem['value']) ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+                </div>
+                <?php endif; ?>
 
                 <?php if ($minP > 0): ?>
                 <div class="min-participants-note" style="margin-bottom:1.5rem;">
@@ -1032,6 +1103,88 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     buildParticipantFields();
 })();
 
+// Detail "more details" interaction (click/tap)
+(function () {
+    const moreToggle = document.getElementById('detailMoreToggle');
+    const moreLayer = document.getElementById('detailMoreLayer');
+    const morePanel = document.getElementById('detailMorePanel');
+    const moreBackdrop = document.getElementById('detailMoreBackdrop');
+    const moreClose = document.getElementById('detailMoreClose');
+
+    if (!moreToggle || !moreLayer || !morePanel || !moreBackdrop || !moreClose) {
+        return;
+    }
+
+    let panelOpen = false;
+
+    function updateExpanded(expanded) {
+        moreToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+
+    function openPanel(focusPanel) {
+        if (panelOpen) {
+            return;
+        }
+
+        morePanel.style.left = '';
+        morePanel.style.top = '';
+        moreLayer.hidden = false;
+
+        window.requestAnimationFrame(() => {
+            moreLayer.classList.add('is-open');
+            updateExpanded(true);
+            if (focusPanel) {
+                morePanel.focus({ preventScroll: true });
+            }
+        });
+
+        panelOpen = true;
+    }
+
+    function closePanel() {
+        if (!panelOpen) {
+            return;
+        }
+
+        moreLayer.classList.remove('is-open');
+        updateExpanded(false);
+        panelOpen = false;
+
+        window.setTimeout(() => {
+            if (!panelOpen) {
+                moreLayer.hidden = true;
+                morePanel.style.left = '';
+                morePanel.style.top = '';
+            }
+        }, 280);
+    }
+
+    moreToggle.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (panelOpen) {
+            closePanel();
+            return;
+        }
+        openPanel(true);
+    });
+
+    moreBackdrop.addEventListener('click', () => {
+        closePanel();
+        moreToggle.focus({ preventScroll: true });
+    });
+
+    moreClose.addEventListener('click', () => {
+        closePanel();
+        moreToggle.focus({ preventScroll: true });
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && panelOpen) {
+            closePanel();
+            moreToggle.focus({ preventScroll: true });
+        }
+    });
+})();
 // Mobile description expand/collapse
 const descWrap = document.getElementById('detailDescWrap');
 const descToggle = document.getElementById('detailDescToggle');
