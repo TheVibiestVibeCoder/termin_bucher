@@ -262,8 +262,8 @@ $audienceLabels = [
 
 <footer>
     <p>&copy; <?= date('Y') ?> Disinfo Combat GmbH &nbsp;&middot;&nbsp;
-       <a href="https://disinfoconsulting.eu/impressum/">Impressum</a> &nbsp;&middot;&nbsp;
-       <a href="https://disinfoconsulting.eu/datenschutz/">Datenschutz</a>
+       <a href="impressum.php">Impressum</a> &nbsp;&middot;&nbsp;
+       <a href="datenschutz.php">Datenschutz</a>
     </p>
 </footer>
 

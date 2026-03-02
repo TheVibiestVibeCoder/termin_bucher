@@ -177,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
 
                     <p class="form-disclaimer">
                         Mit dem Absenden erklären Sie sich mit unserer
-                        <a href="https://disinfoconsulting.eu/datenschutz/" target="_blank">Datenschutzerklärung</a> einverstanden.
+                        <a href="datenschutz.php">Datenschutzerklärung</a> einverstanden.
                     </p>
                 </form>
             </div>
@@ -188,8 +188,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
 
 <footer>
     <p>&copy; <?= date('Y') ?> Disinfo Combat GmbH &nbsp;&middot;&nbsp;
-       <a href="https://disinfoconsulting.eu/impressum/">Impressum</a> &nbsp;&middot;&nbsp;
-       <a href="https://disinfoconsulting.eu/datenschutz/">Datenschutz</a>
+       <a href="impressum.php">Impressum</a> &nbsp;&middot;&nbsp;
+       <a href="datenschutz.php">Datenschutz</a>
     </p>
 </footer>
 

@@ -1126,6 +1126,77 @@ footer a:hover { color: var(--text); }
 }
 .form-disclaimer a { color: var(--muted); }
 
+/* --- LEGAL PAGES --- */
+.legal-page {
+    min-height: 100vh;
+    min-height: 100svh;
+    padding-bottom: clamp(2.5rem, 7vh, 5rem);
+}
+
+@supports (min-height: 100dvh) {
+    .legal-page {
+        min-height: 100dvh;
+    }
+}
+
+.legal-wrap {
+    max-width: 980px;
+}
+
+.legal-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: clamp(1.35rem, 2.6vw, 2.2rem);
+}
+
+.legal-eyebrow {
+    margin-bottom: 0.8rem;
+}
+
+.legal-title {
+    font-family: var(--font-h);
+    font-size: clamp(1.8rem, 3.4vw, 2.7rem);
+    font-weight: 400;
+    line-height: 1.15;
+    margin-bottom: 0.55rem;
+}
+
+.legal-intro {
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 1.5rem;
+}
+
+.legal-content h2 {
+    font-family: var(--font-h);
+    font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+    font-weight: 400;
+    margin: 1.4rem 0 0.55rem;
+}
+
+.legal-content p {
+    color: var(--muted);
+    line-height: 1.8;
+    margin-bottom: 0.95rem;
+}
+
+.legal-content a {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.legal-content a:hover {
+    color: var(--muted);
+}
+
+.legal-source {
+    margin-top: 1.2rem;
+    color: var(--dim);
+    font-size: 0.86rem;
+}
+
 /* Confirm page */
 .confirm-page {
     min-height: 100vh;
