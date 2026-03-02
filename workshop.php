@@ -359,7 +359,59 @@ if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
         $discountHintText = (string) ($discountFeedback['message'] ?? 'Rabattcode ungültig.');
         $discountHintClass = 'discount-code-hint discount-code-hint-error';
     }
-}?>
+}
+
+$detailMetaItems = [];
+if ($isOpen && $eventDate) {
+    $detailMetaItems[] = [
+        'label' => 'Datum & Uhrzeit',
+        'value' => format_event_date($eventDate, $eventDateEnd),
+    ];
+}
+if ($isOpen && $location) {
+    $detailMetaItems[] = [
+        'label' => 'Veranstaltungsort',
+        'value' => (string) $location,
+    ];
+}
+$detailMetaItems[] = [
+    'label' => !$isOpen ? 'Termin' : 'Terminart',
+    'value' => !$isOpen ? 'Auf Anfrage' : 'Fester Termin',
+];
+if ($isOpen && $minP > 0) {
+    $detailMetaItems[] = [
+        'label' => 'Status',
+        'value' => $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen',
+    ];
+}
+$detailMetaItems[] = [
+    'label' => 'Format',
+    'value' => (string) $workshop['format'],
+];
+$detailMetaItems[] = [
+    'label' => 'Dauer',
+    'value' => (string) $workshop['tag_label'],
+];
+if ($capacity > 0) {
+    $detailMetaItems[] = [
+        'label' => 'Kapazität',
+        'value' => $capacity . ' Plätze',
+    ];
+    $detailMetaItems[] = [
+        'label' => 'Verfügbar',
+        'value' => $isFull ? 'Ausgebucht' : ($spotsLeft . ' frei'),
+    ];
+}
+if ($minP > 0) {
+    $detailMetaItems[] = [
+        'label' => 'Mindest-Teilnehmende',
+        'value' => $minP . ' Personen',
+    ];
+}
+$primaryMetaItems = array_slice($detailMetaItems, 0, 3);
+$extraMetaItems = array_slice($detailMetaItems, 3);
+$hasMoreMetaItems = !empty($extraMetaItems);
+?>
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -459,61 +511,59 @@ if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
                 </div>
                 <?php endif; ?>
 
-                <div class="detail-meta-grid">
-                    <?php if ($isOpen && $eventDate): ?>
-                    <div class="detail-meta-item" style="grid-column:1/-1;">
-                        <div class="label">Datum &amp; Uhrzeit</div>
-                        <div class="value"><?= format_event_date($eventDate, $eventDateEnd) ?></div>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($isOpen && $location): ?>
-                    <div class="detail-meta-item" style="grid-column:1/-1;">
-                        <div class="label">Veranstaltungsort</div>
-                        <div class="value"><?= e($location) ?></div>
-                    </div>
-                    <?php endif; ?>
-                    <?php if (!$isOpen): ?>
+                <div class="detail-meta-grid detail-meta-grid-main">
+                    <?php foreach ($primaryMetaItems as $metaItem): ?>
                     <div class="detail-meta-item">
-                        <div class="label">Termin</div>
-                        <div class="value">Auf Anfrage</div>
+                        <div class="label"><?= e($metaItem['label']) ?></div>
+                        <div class="value"><?= e($metaItem['value']) ?></div>
                     </div>
-                    <?php else: ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Terminart</div>
-                        <div class="value">Fester Termin</div>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($isOpen && $minP > 0): ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Status</div>
-                        <div class="value"><?= $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen' ?></div>
-                    </div>
-                    <?php endif; ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Format</div>
-                        <div class="value"><?= e($workshop['format']) ?></div>
-                    </div>
-                    <div class="detail-meta-item">
-                        <div class="label">Dauer</div>
-                        <div class="value"><?= e($workshop['tag_label']) ?></div>
-                    </div>
-                    <?php if ($capacity > 0): ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Kapazität</div>
-                        <div class="value"><?= $capacity ?> Plätze</div>
-                    </div>
-                    <div class="detail-meta-item">
-                        <div class="label">Verfügbar</div>
-                        <div class="value"><?= $isFull ? 'Ausgebucht' : ($spotsLeft . ' frei') ?></div>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ($minP > 0): ?>
-                    <div class="detail-meta-item">
-                        <div class="label">Mindest-Teilnehmende</div>
-                        <div class="value"><?= $minP ?> Personen</div>
-                    </div>
+                    <?php endforeach; ?>
+
+                    <?php if ($hasMoreMetaItems): ?>
+                    <button
+                        type="button"
+                        id="detailMoreToggle"
+                        class="detail-meta-item detail-more-toggle"
+                        aria-expanded="false"
+                        aria-haspopup="dialog"
+                        aria-controls="detailMorePanel">
+                        <span class="detail-more-kicker">Mehr anzeigen</span>
+                        <span class="detail-more-title">Mehr Details</span>
+                        <span class="detail-more-hint">Hover oder tippen</span>
+                    </button>
                     <?php endif; ?>
                 </div>
+                <?php if ($hasMoreMetaItems): ?>
+                <div class="detail-more-layer" id="detailMoreLayer" hidden>
+                    <div class="detail-more-backdrop" id="detailMoreBackdrop"></div>
+                    <section
+                        class="detail-more-panel"
+                        id="detailMorePanel"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Weitere Workshop-Details"
+                        tabindex="-1">
+                        <div class="detail-more-header">
+                            <h2 class="detail-more-heading">Weitere Details</h2>
+                            <button
+                                type="button"
+                                id="detailMoreClose"
+                                class="detail-more-close"
+                                aria-label="Mehr Details schließen">
+                                &times;
+                            </button>
+                        </div>
+                        <div class="detail-meta-grid detail-meta-grid-overlay">
+                            <?php foreach ($extraMetaItems as $metaItem): ?>
+                            <div class="detail-meta-item">
+                                <div class="label"><?= e($metaItem['label']) ?></div>
+                                <div class="value"><?= e($metaItem['value']) ?></div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+                </div>
+                <?php endif; ?>
 
                 <?php if ($minP > 0): ?>
                 <div class="min-participants-note" style="margin-bottom:1.5rem;">
@@ -1030,6 +1080,178 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
     updateModeVisibility();
     buildParticipantFields();
+})();
+
+// Detail "more details" interaction (desktop hover + mobile tap)
+(function () {
+    const moreToggle = document.getElementById('detailMoreToggle');
+    const moreLayer = document.getElementById('detailMoreLayer');
+    const morePanel = document.getElementById('detailMorePanel');
+    const moreBackdrop = document.getElementById('detailMoreBackdrop');
+    const moreClose = document.getElementById('detailMoreClose');
+
+    if (!moreToggle || !moreLayer || !morePanel || !moreBackdrop || !moreClose) {
+        return;
+    }
+
+    const desktopHoverMedia = window.matchMedia('(hover: hover) and (pointer: fine)');
+    let closeTimer = null;
+    let panelOpen = false;
+
+    function isDesktopHover() {
+        return desktopHoverMedia.matches;
+    }
+
+    function clearCloseTimer() {
+        if (closeTimer !== null) {
+            window.clearTimeout(closeTimer);
+            closeTimer = null;
+        }
+    }
+
+    function updateExpanded(expanded) {
+        moreToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+
+    function positionPanel() {
+        if (!isDesktopHover()) {
+            morePanel.style.left = '';
+            morePanel.style.top = '';
+            return;
+        }
+
+        const triggerRect = moreToggle.getBoundingClientRect();
+        const panelRect = morePanel.getBoundingClientRect();
+        const gap = 14;
+        const minPadding = 16;
+
+        let left = triggerRect.left + window.scrollX;
+        let top = triggerRect.bottom + window.scrollY + gap;
+
+        const maxLeft = window.scrollX + window.innerWidth - panelRect.width - minPadding;
+        left = Math.max(window.scrollX + minPadding, Math.min(left, maxLeft));
+
+        const maxTop = window.scrollY + window.innerHeight - panelRect.height - minPadding;
+        if (top > maxTop) {
+            top = triggerRect.top + window.scrollY - panelRect.height - gap;
+        }
+        top = Math.max(window.scrollY + minPadding, top);
+
+        morePanel.style.left = `${left}px`;
+        morePanel.style.top = `${top}px`;
+    }
+
+    function openPanel(focusPanel) {
+        clearCloseTimer();
+        if (panelOpen) {
+            positionPanel();
+            return;
+        }
+
+        moreLayer.hidden = false;
+        window.requestAnimationFrame(() => {
+            moreLayer.classList.add('is-open');
+            positionPanel();
+            updateExpanded(true);
+            if (focusPanel) {
+                morePanel.focus({ preventScroll: true });
+            }
+        });
+        panelOpen = true;
+    }
+
+    function closePanel() {
+        if (!panelOpen) {
+            return;
+        }
+
+        clearCloseTimer();
+        moreLayer.classList.remove('is-open');
+        updateExpanded(false);
+        panelOpen = false;
+
+        window.setTimeout(() => {
+            if (!panelOpen) {
+                moreLayer.hidden = true;
+                morePanel.style.left = '';
+                morePanel.style.top = '';
+            }
+        }, 280);
+    }
+
+    function scheduleHoverClose() {
+        if (!isDesktopHover()) {
+            return;
+        }
+        clearCloseTimer();
+        closeTimer = window.setTimeout(closePanel, 120);
+    }
+
+    moreToggle.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (panelOpen) {
+            closePanel();
+            return;
+        }
+        openPanel(true);
+    });
+
+    moreToggle.addEventListener('mouseenter', () => {
+        if (isDesktopHover()) {
+            openPanel(false);
+        }
+    });
+    moreToggle.addEventListener('mouseleave', scheduleHoverClose);
+
+    morePanel.addEventListener('mouseenter', clearCloseTimer);
+    morePanel.addEventListener('mouseleave', scheduleHoverClose);
+
+    moreBackdrop.addEventListener('click', () => {
+        closePanel();
+        moreToggle.focus({ preventScroll: true });
+    });
+
+    moreClose.addEventListener('click', () => {
+        closePanel();
+        moreToggle.focus({ preventScroll: true });
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && panelOpen) {
+            closePanel();
+            moreToggle.focus({ preventScroll: true });
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        if (!panelOpen) {
+            return;
+        }
+        if (isDesktopHover()) {
+            positionPanel();
+            return;
+        }
+        morePanel.style.left = '';
+        morePanel.style.top = '';
+    });
+
+    window.addEventListener('scroll', () => {
+        if (panelOpen && isDesktopHover()) {
+            positionPanel();
+        }
+    }, { passive: true });
+
+    const onHoverModeChange = () => {
+        if (panelOpen) {
+            closePanel();
+        }
+    };
+
+    if (typeof desktopHoverMedia.addEventListener === 'function') {
+        desktopHoverMedia.addEventListener('change', onHoverModeChange);
+    } else if (typeof desktopHoverMedia.addListener === 'function') {
+        desktopHoverMedia.addListener(onHoverModeChange);
+    }
 })();
 
 // Mobile description expand/collapse
