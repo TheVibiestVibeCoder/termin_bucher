@@ -675,7 +675,7 @@ if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
 
                         <p class="form-disclaimer">
                             Mit dem Absenden erklären Sie sich mit unserer
-                            <a href="https://disinfoconsulting.eu/datenschutz/" target="_blank">Datenschutzerklärung</a> einverstanden.
+                            <a href="datenschutz.php">Datenschutzerklärung</a> einverstanden.
                             Sie erhalten eine Bestätigungs-E-Mail – erst danach ist Ihr Platz reserviert.
                         </p>
                     </form>
@@ -688,8 +688,8 @@ if ($formData['discount_code'] !== '' && is_array($discountFeedback)) {
 
 <footer>
     <p>&copy; <?= date('Y') ?> Disinfo Combat GmbH &nbsp;&middot;&nbsp;
-       <a href="https://disinfoconsulting.eu/impressum/">Impressum</a> &nbsp;&middot;&nbsp;
-       <a href="https://disinfoconsulting.eu/datenschutz/">Datenschutz</a>
+       <a href="impressum.php">Impressum</a> &nbsp;&middot;&nbsp;
+       <a href="datenschutz.php">Datenschutz</a>
     </p>
 </footer>
 
