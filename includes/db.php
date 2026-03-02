@@ -21,6 +21,9 @@ $db->exec("CREATE INDEX IF NOT EXISTS idx_discount_codes_active ON discount_code
 $db->exec("\nCREATE TABLE IF NOT EXISTS booking_participants (\n    id          INTEGER PRIMARY KEY AUTOINCREMENT,\n    booking_id  INTEGER NOT NULL,\n    name        TEXT    NOT NULL DEFAULT '',\n    email       TEXT    NOT NULL DEFAULT '',\n    FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE\n);\n");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bp_booking ON booking_participants(booking_id);");
 
+$db->exec("\nCREATE TABLE IF NOT EXISTS request_rate_limits (\n    rl_key       TEXT    NOT NULL,\n    client_id    TEXT    NOT NULL,\n    window_start INTEGER NOT NULL,\n    hits         INTEGER NOT NULL DEFAULT 0,\n    PRIMARY KEY (rl_key, client_id)\n);\n");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_request_rate_limits_window_start ON request_rate_limits(window_start);");
+
 // Migrations: add new columns to existing databases safely.
 function _col_exists(SQLite3 $db, string $table, string $col): bool {
     $res = $db->query("PRAGMA table_info(" . $db->escapeString($table) . ")");
@@ -84,3 +87,4 @@ foreach ($migrations as [$table, $col, $def]) {
 }
 
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_discount_code_id ON bookings(discount_code_id);");
+

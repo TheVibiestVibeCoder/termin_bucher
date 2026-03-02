@@ -48,13 +48,32 @@ if (!headers_sent()) {
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('X-XSS-Protection: 0');
     header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+    header('Cross-Origin-Opener-Policy: same-origin');
+    header('Cross-Origin-Resource-Policy: same-origin');
+    header('X-Permitted-Cross-Domain-Policies: none');
+
+    $csp = "default-src 'self'; "
+        . "base-uri 'self'; "
+        . "form-action 'self'; "
+        . "frame-ancestors 'self'; "
+        . "object-src 'none'; "
+        . "script-src 'self' 'unsafe-inline'; "
+        . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        . "font-src 'self' https://fonts.gstatic.com data:; "
+        . "img-src 'self' https: data:; "
+        . "connect-src 'self'";
+    header('Content-Security-Policy: ' . $csp);
 
     if (str_starts_with(strtolower(SITE_URL), 'https://')) {
         header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
     }
 
-    if (isset($_SERVER['REQUEST_URI']) && str_contains((string) $_SERVER['REQUEST_URI'], '/admin/')) {
+    $requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+    if ($requestUri !== '' && str_contains($requestUri, '/admin/')) {
         header('X-Robots-Tag: noindex, nofollow');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
     }
 }
 
@@ -85,3 +104,4 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // ── Helpers (always needed) ─────────────────────────────────────────────────
 require __DIR__ . '/functions.php';
+

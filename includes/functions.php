@@ -3,6 +3,24 @@
  * Shared helper functions.
  */
 
+function admin_password_is_insecure(string $password): bool {
+    $plain = strtolower(trim($password));
+    if ($plain === '') {
+        return true;
+    }
+
+    $knownWeak = [
+        'change_me_to_a_strong_password',
+        'changeme',
+        'change-me',
+        'password',
+        'admin',
+        '123456',
+    ];
+
+    return in_array($plain, $knownWeak, true);
+}
+
 function admin_password_configured(): bool {
     $hash = trim((string) ($_ENV['ADMIN_PASSWORD_HASH'] ?? ''));
     if ($hash !== '') {
@@ -12,7 +30,7 @@ function admin_password_configured(): bool {
         }
     }
 
-    return ADMIN_PASSWORD !== '';
+    return !admin_password_is_insecure(ADMIN_PASSWORD);
 }
 
 function verify_admin_password(string $password): bool {
@@ -24,7 +42,11 @@ function verify_admin_password(string $password): bool {
         }
     }
 
-    return ADMIN_PASSWORD !== '' && hash_equals(ADMIN_PASSWORD, $password);
+    if (admin_password_is_insecure(ADMIN_PASSWORD)) {
+        return false;
+    }
+
+    return hash_equals(ADMIN_PASSWORD, $password);
 }
 
 // CSRF
@@ -42,6 +64,9 @@ function csrf_field(): string {
 
 function csrf_verify(): bool {
     $token = $_POST['_token'] ?? '';
+    if (!is_string($token) || $token === '') {
+        return false;
+    }
 
     return hash_equals(csrf_token(), $token);
 }
@@ -125,8 +150,16 @@ function generate_token(): string {
     return bin2hex(random_bytes(32));
 }
 
-// Rate limiting (simple per-session)
-function rate_limit(string $key, int $maxPerMinute = 5): bool {
+function rate_limit_client_id(): string {
+    $ip = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP) !== false) {
+        return $ip;
+    }
+
+    return 'unknown';
+}
+
+function rate_limit_session_check(string $key, int $maxPerMinute): bool {
     $now = time();
     $windowKey = 'rl_' . $key;
     if (!isset($_SESSION[$windowKey])) {
@@ -140,6 +173,83 @@ function rate_limit(string $key, int $maxPerMinute = 5): bool {
     }
 
     $_SESSION[$windowKey][] = $now;
+
+    return true;
+}
+
+function rate_limit_db_check(string $key, string $clientId, int $maxPerMinute): ?bool {
+    $db = $GLOBALS['db'] ?? null;
+    if (!$db instanceof SQLite3) {
+        return null;
+    }
+
+    $now = time();
+    $windowStart = $now - 60;
+
+    try {
+        $cleanup = $db->prepare('DELETE FROM request_rate_limits WHERE window_start <= :cutoff');
+        $cleanup->bindValue(':cutoff', $windowStart, SQLITE3_INTEGER);
+        $cleanup->execute();
+
+        $select = $db->prepare('SELECT window_start, hits FROM request_rate_limits WHERE rl_key = :k AND client_id = :c LIMIT 1');
+        $select->bindValue(':k', $key, SQLITE3_TEXT);
+        $select->bindValue(':c', $clientId, SQLITE3_TEXT);
+        $row = $select->execute()->fetchArray(SQLITE3_ASSOC);
+
+        if (!$row) {
+            $insert = $db->prepare('INSERT INTO request_rate_limits (rl_key, client_id, window_start, hits) VALUES (:k, :c, :w, 1)');
+            $insert->bindValue(':k', $key, SQLITE3_TEXT);
+            $insert->bindValue(':c', $clientId, SQLITE3_TEXT);
+            $insert->bindValue(':w', $now, SQLITE3_INTEGER);
+            $insert->execute();
+
+            return true;
+        }
+
+        $currentWindowStart = (int) ($row['window_start'] ?? 0);
+        $currentHits = (int) ($row['hits'] ?? 0);
+
+        if ($currentWindowStart <= $windowStart) {
+            $reset = $db->prepare('UPDATE request_rate_limits SET window_start = :w, hits = 1 WHERE rl_key = :k AND client_id = :c');
+            $reset->bindValue(':w', $now, SQLITE3_INTEGER);
+            $reset->bindValue(':k', $key, SQLITE3_TEXT);
+            $reset->bindValue(':c', $clientId, SQLITE3_TEXT);
+            $reset->execute();
+
+            return true;
+        }
+
+        if ($currentHits >= $maxPerMinute) {
+            return false;
+        }
+
+        $increment = $db->prepare('UPDATE request_rate_limits SET hits = hits + 1 WHERE rl_key = :k AND client_id = :c');
+        $increment->bindValue(':k', $key, SQLITE3_TEXT);
+        $increment->bindValue(':c', $clientId, SQLITE3_TEXT);
+        $increment->execute();
+
+        return true;
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+// Rate limiting (session + IP-backed in SQLite)
+function rate_limit(string $key, int $maxPerMinute = 5): bool {
+    $key = strtolower(trim($key));
+    if ($key === '') {
+        $key = 'default';
+    }
+    $maxPerMinute = max(1, $maxPerMinute);
+
+    if (!rate_limit_session_check($key, $maxPerMinute)) {
+        return false;
+    }
+
+    $dbCheck = rate_limit_db_check($key, rate_limit_client_id(), $maxPerMinute);
+    if ($dbCheck === false) {
+        return false;
+    }
 
     return true;
 }
@@ -549,3 +659,4 @@ function format_event_date(string $date, string $dateEnd = ''): string {
 
     return $str;
 }
+

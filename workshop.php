@@ -41,6 +41,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['discount_preview'])) 
         exit;
     }
 
+    if (!rate_limit('discount_preview', 20)) {
+        http_response_code(429);
+        echo json_encode([
+            'ok' => false,
+            'message' => 'Zu viele Anfragen. Bitte kurz warten und erneut versuchen.',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     $previewParticipants = max(1, min(50, (int) ($_POST['participants'] ?? 1)));
     $previewEmail = trim((string) ($_POST['email'] ?? ''));
     $previewCode = normalize_discount_code((string) ($_POST['discount_code'] ?? ''));
@@ -1041,3 +1050,4 @@ if (descToggle && descWrap) {
 
 </body>
 </html>
+

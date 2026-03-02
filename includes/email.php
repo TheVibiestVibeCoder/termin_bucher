@@ -15,26 +15,23 @@ function sanitize_email_address(string $email): string {
 }
 
 function build_site_url(string $path = ''): string {
-    $base = SITE_URL;
-    if ($base === '') {
-        $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
-        $httpsServer    = strtolower((string) ($_SERVER['HTTPS'] ?? ''));
-        $isHttps        = ($httpsServer !== '' && $httpsServer !== 'off') || $forwardedProto === 'https';
-        $scheme         = $isHttps ? 'https' : 'http';
-        $host           = sanitize_mail_header_value((string) ($_SERVER['HTTP_HOST'] ?? ''));
-        if ($host !== '') {
-            $base = $scheme . '://' . $host;
-        }
-    }
+    $base = trim((string) SITE_URL);
 
     if ($path === '') {
         return $base;
     }
-    if ($base === '') {
+
+    // Never derive absolute links from Host headers.
+    if (preg_match('#^https?://#i', $path)) {
         return $path;
     }
 
-    return rtrim($base, '/') . '/' . ltrim($path, '/');
+    $normalizedPath = '/' . ltrim($path, '/');
+    if ($base === '') {
+        return $normalizedPath;
+    }
+
+    return rtrim($base, '/') . $normalizedPath;
 }
 
 function build_plain_text_email_body(string $htmlBody): string {
@@ -1261,6 +1258,7 @@ function send_custom_email(string $to, string $subject, string $messageText): bo
 
     return send_email($to, $subject, render_booking_email_shell($content));
 }
+
 
 
 
