@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['logout'])) {
     } else {
         flash('error', 'Ungültige Sitzung.');
     }
-    redirect('index.php');
+    redirect(admin_url());
 }
 
 // Handle login
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         if (verify_admin_password($password)) {
             session_regenerate_id(true);
             $_SESSION['admin_logged_in'] = true;
-            redirect('dashboard.php');
+            redirect(admin_url('dashboard'));
         } else {
             flash('error', 'Falsches Passwort.');
         }
@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
 // Already logged in?
 if (is_admin()) {
-    redirect('dashboard.php');
+    redirect(admin_url('dashboard'));
 }
 ?>
 <!DOCTYPE html>
@@ -92,7 +92,7 @@ if (is_admin()) {
         </form>
 
         <p style="text-align:center;margin-top:1.5rem;">
-            <a href="../index.php" style="color:var(--muted);font-size:0.85rem;text-decoration:none;">&larr; Zur&uuml;ck zur Website</a>
+            <a href="<?= e(app_url()) ?>" style="color:var(--muted);font-size:0.85rem;text-decoration:none;">&larr; Zur&uuml;ck zur Website</a>
         </p>
     </div>
 </div>

@@ -171,7 +171,7 @@ $msg = $messages[$status];
 
         <p><?= e($msg[1]) ?></p>
 
-        <a href="index.php" class="btn-primary" style="display:inline-block;text-decoration:none;margin-top:0.5rem;">&larr; Zurück zu den Workshops</a>
+        <a href="<?= e(app_url()) ?>" class="btn-primary" style="display:inline-block;text-decoration:none;margin-top:0.5rem;">&larr; Zurück zu den Workshops</a>
     </div>
 </div>
 

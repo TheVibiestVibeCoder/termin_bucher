@@ -148,7 +148,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                     <?php foreach ($revenueByWorkshop as $r): ?>
                     <tr>
                         <td style="color:var(--text);">
-                            <a href="bookings.php?workshop_id=<?= (int) $r['workshop_id'] ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
+                            <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $r['workshop_id']])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
                                 <?= e($r['title']) ?>
                             </a>
                         </td>
@@ -200,7 +200,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><?= e($b['email']) ?></td>
                         <td>
-                            <a href="bookings.php?workshop_id=<?= (int) $b['workshop_id'] ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
+                            <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $b['workshop_id']])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
                                 <?= e($b['workshop_title']) ?>
                             </a>
                         </td>

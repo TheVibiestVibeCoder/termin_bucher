@@ -10,7 +10,7 @@ if ($isEdit) {
     $workshop = get_workshop_by_id($db, $id);
     if (!$workshop) {
         flash('error', 'Workshop nicht gefunden.');
-        redirect('workshops.php');
+        redirect(admin_url('workshops'));
     }
 }
 
@@ -146,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
         $stmt->execute();
 
         flash('success', $isEdit ? 'Workshop aktualisiert.' : 'Workshop erstellt.');
-        redirect('workshops.php');
+        redirect(admin_url('workshops'));
     }
 }
 
@@ -226,7 +226,7 @@ function to_datetime_local(string $val): string {
     <div class="admin-main">
         <div class="admin-header">
             <h1><?= $isEdit ? 'Workshop bearbeiten' : 'Neuer Workshop' ?></h1>
-            <a href="workshops.php" class="btn-admin">&larr; Zurück</a>
+            <a href="<?= e(admin_url('workshops')) ?>" class="btn-admin">&larr; Zurück</a>
         </div>
 
         <?= render_flash() ?>

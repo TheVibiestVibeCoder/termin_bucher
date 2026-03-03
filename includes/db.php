@@ -24,6 +24,17 @@ $db->exec("CREATE INDEX IF NOT EXISTS idx_bp_booking ON booking_participants(boo
 $db->exec("\nCREATE TABLE IF NOT EXISTS request_rate_limits (\n    rl_key       TEXT    NOT NULL,\n    client_id    TEXT    NOT NULL,\n    window_start INTEGER NOT NULL,\n    hits         INTEGER NOT NULL DEFAULT 0,\n    PRIMARY KEY (rl_key, client_id)\n);\n");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_request_rate_limits_window_start ON request_rate_limits(window_start);");
 
+$db->exec("\nCREATE TABLE IF NOT EXISTS invoice_circles (\n    id           INTEGER PRIMARY KEY AUTOINCREMENT,\n    circle_code  TEXT    NOT NULL UNIQUE,\n    circle_label TEXT    NOT NULL,\n    prefix       TEXT    NOT NULL DEFAULT 'WS',\n    year         INTEGER NOT NULL DEFAULT 0,\n    next_number  INTEGER NOT NULL DEFAULT 1,\n    active       INTEGER NOT NULL DEFAULT 1,\n    created_at   DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at   DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_invoice_circles_active ON invoice_circles(active);");
+
+$db->exec("\nCREATE TABLE IF NOT EXISTS invoice_counter_audit_log (\n    id                   INTEGER PRIMARY KEY AUTOINCREMENT,\n    circle_id            INTEGER NOT NULL,\n    previous_next_number INTEGER NOT NULL,\n    new_next_number      INTEGER NOT NULL,\n    reason               TEXT    NOT NULL,\n    changed_by           TEXT    NOT NULL DEFAULT 'admin',\n    changed_at           DATETIME NOT NULL DEFAULT (datetime('now')),\n    FOREIGN KEY (circle_id) REFERENCES invoice_circles(id) ON DELETE RESTRICT\n);\n");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_invoice_counter_audit_circle ON invoice_counter_audit_log(circle_id, changed_at DESC);");
+
+$db->exec("\nCREATE TABLE IF NOT EXISTS invoices (\n    id                     INTEGER PRIMARY KEY AUTOINCREMENT,\n    workshop_id            INTEGER NOT NULL,\n    booking_id             INTEGER NOT NULL UNIQUE,\n    circle_id              INTEGER NOT NULL,\n    invoice_number         INTEGER NOT NULL,\n    invoice_number_display TEXT    NOT NULL,\n    recipient_name         TEXT    NOT NULL DEFAULT '',\n    recipient_email        TEXT    NOT NULL DEFAULT '',\n    send_status            TEXT    NOT NULL DEFAULT 'issued',\n    issued_at              DATETIME NOT NULL DEFAULT (datetime('now')),\n    sent_at                DATETIME,\n    line_items_json        TEXT    NOT NULL DEFAULT '',\n    payload_json           TEXT    NOT NULL DEFAULT '',\n    FOREIGN KEY (workshop_id) REFERENCES workshops(id) ON DELETE RESTRICT,\n    FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE RESTRICT,\n    FOREIGN KEY (circle_id) REFERENCES invoice_circles(id) ON DELETE RESTRICT,\n    UNIQUE (circle_id, invoice_number),\n    UNIQUE (invoice_number_display)\n);\n");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_invoices_workshop ON invoices(workshop_id);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_invoices_circle ON invoices(circle_id);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_invoices_send_status ON invoices(send_status);");
+
 // Migrations: add new columns to existing databases safely.
 function _col_exists(SQLite3 $db, string $table, string $col): bool {
     $res = $db->query("PRAGMA table_info(" . $db->escapeString($table) . ")");

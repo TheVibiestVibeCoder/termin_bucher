@@ -116,8 +116,7 @@ function is_admin(): bool {
 
 function require_admin(): void {
     if (!is_admin()) {
-        header('Location: index.php');
-        exit;
+        redirect(admin_url());
     }
 }
 
@@ -260,6 +259,54 @@ function redirect(string $url): never {
     exit;
 }
 
+function normalize_route_path(string $path): string {
+    $path = trim($path);
+    if ($path === '') {
+        return '';
+    }
+
+    $queryPos = strpos($path, '?');
+    if ($queryPos !== false) {
+        $path = substr($path, 0, $queryPos);
+    }
+
+    $path = trim($path, "/ \t\n\r\0\x0B");
+    if ($path === '') {
+        return '';
+    }
+
+    if (str_ends_with(strtolower($path), '.php')) {
+        $path = substr($path, 0, -4);
+    }
+
+    return $path === 'index' ? '' : $path;
+}
+
+function app_url(string $path = '', array $query = []): string {
+    $normalized = normalize_route_path($path);
+    $url = $normalized === '' ? '/' : '/' . $normalized . '/';
+
+    if (!empty($query)) {
+        $query = array_filter($query, static fn($value) => $value !== null);
+        if (!empty($query)) {
+            $url .= '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+        }
+    }
+
+    return $url;
+}
+
+function admin_url(string $path = '', array $query = []): string {
+    $normalized = normalize_route_path($path);
+    if ($normalized === '' || $normalized === 'admin') {
+        return app_url('admin', $query);
+    }
+    if (str_starts_with($normalized, 'admin/')) {
+        return app_url($normalized, $query);
+    }
+
+    return app_url('admin/' . $normalized, $query);
+}
 function json_for_html(mixed $value): string {
     $json = json_encode(
         $value,

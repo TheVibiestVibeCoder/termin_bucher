@@ -5,7 +5,7 @@ require_admin();
 $id = (int) ($_GET['id'] ?? 0);
 if (!$id) {
     flash('error', 'Keine Buchungs-ID angegeben.');
-    redirect('bookings.php');
+    redirect(admin_url('bookings'));
 }
 
 $stmt = $db->prepare('SELECT b.*, w.title AS workshop_title, w.id AS workshop_id, w.price_netto AS workshop_price_netto, w.price_currency AS workshop_currency FROM bookings b JOIN workshops w ON b.workshop_id = w.id WHERE b.id = :id');
@@ -14,7 +14,7 @@ $booking = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
 if (!$booking) {
     flash('error', 'Buchung nicht gefunden.');
-    redirect('bookings.php');
+    redirect(admin_url('bookings'));
 }
 $errors = [];
 
@@ -104,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         $upd->execute();
 
         flash('success', 'Buchung gespeichert.');
-        redirect('booking-edit.php?id=' . $id);
+        redirect(admin_url('booking-edit', ['id' => $id]));
     }
 
     // Repopulate booking array with submitted values for re-display
@@ -264,7 +264,7 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
 
             <div style="display:flex;gap:0.75rem;margin-top:0.5rem;">
                 <button type="submit" class="btn-admin btn-success">Speichern</button>
-                <a href="bookings.php?workshop_id=<?= $booking['workshop_id'] ?>" class="btn-admin">Abbrechen</a>
+                <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $booking['workshop_id']])) ?>" class="btn-admin">Abbrechen</a>
             </div>
         </form>
     </div>

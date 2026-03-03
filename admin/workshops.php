@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
         $stmt->execute();
         flash('success', 'Workshop gelöscht.');
     }
-    redirect('workshops.php');
+    redirect(admin_url('workshops'));
 }
 
 // Handle toggle active
@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_id'])) {
         $stmt->execute();
         flash('success', 'Status aktualisiert.');
     }
-    redirect('workshops.php');
+    redirect(admin_url('workshops'));
 }
 
 // Fetch all workshops
@@ -63,13 +63,13 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <div class="admin-main">
         <div class="admin-header">
             <h1>Workshops</h1>
-            <a href="workshop-edit.php" class="btn-admin">+ Neuer Workshop</a>
+            <a href="<?= e(admin_url('workshop-edit')) ?>" class="btn-admin">+ Neuer Workshop</a>
         </div>
 
         <?= render_flash() ?>
 
         <?php if (empty($workshops)): ?>
-            <p style="color:var(--muted);">Noch keine Workshops vorhanden. <a href="workshop-edit.php" style="color:var(--text);">Jetzt erstellen</a></p>
+            <p style="color:var(--muted);">Noch keine Workshops vorhanden. <a href="<?= e(admin_url('workshop-edit')) ?>" style="color:var(--text);">Jetzt erstellen</a></p>
         <?php else: ?>
             <div class="admin-table-scroll">
             <table class="admin-table">
@@ -106,8 +106,8 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                         <td><?= (int) $w['sort_order'] ?></td>
                         <td>
                             <div class="admin-actions">
-                                <a href="workshop-edit.php?id=<?= $w['id'] ?>" class="btn-admin">Bearbeiten</a>
-                                <a href="bookings.php?workshop_id=<?= $w['id'] ?>" class="btn-admin">Buchungen</a>
+                                <a href="<?= e(admin_url('workshop-edit', ['id' => (int) $w['id']])) ?>" class="btn-admin">Bearbeiten</a>
+                                <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $w['id']])) ?>" class="btn-admin">Buchungen</a>
                                 <form method="POST" style="display:inline;">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="toggle_id" value="<?= $w['id'] ?>">

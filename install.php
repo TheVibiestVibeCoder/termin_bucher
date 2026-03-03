@@ -12,7 +12,7 @@ require __DIR__ . '/includes/config.php';
 // If accessed via browser, require admin login
 if (php_sapi_name() !== 'cli') {
     if (!is_admin()) {
-        die('Please log in to admin first, then visit this page. <a href="admin/index.php">Login</a>');
+        die('Please log in to admin first, then visit this page. <a href="/admin/">Login</a>');
     }
 }
 
@@ -23,7 +23,7 @@ if ($count > 0) {
     if (php_sapi_name() === 'cli') {
         echo $msg;
     } else {
-        echo "<p>{$msg}</p><p><a href='admin/workshops.php'>Go to admin</a></p>";
+        echo "<p>{$msg}</p><p><a href='/admin/workshops/'>Go to admin</a></p>";
     }
     exit;
 }
@@ -130,5 +130,5 @@ if (php_sapi_name() === 'cli') {
 } else {
     echo "<p style='font-family:sans-serif;padding:2rem;'>{$msg}<br><br>";
     echo "<strong>IMPORTANT:</strong> Delete this file (install.php) for security.<br><br>";
-    echo "<a href='index.php'>View site</a> &nbsp;|&nbsp; <a href='admin/dashboard.php'>Admin dashboard</a></p>";
+    echo "<a href='/'>View site</a> &nbsp;|&nbsp; <a href='/admin/dashboard/'>Admin dashboard</a></p>";
 }

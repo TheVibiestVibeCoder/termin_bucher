@@ -8,12 +8,12 @@ $workshop = null;
 if ($workshopId) {
     $workshop = get_workshop_by_id($db, $workshopId);
 }
-$returnUrl = 'bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : '');
+$returnUrl = admin_url('bookings', $workshopId ? ['workshop_id' => $workshopId] : []);
 
 if ($workshopId && (string) ($_GET['export_participants'] ?? '') === '1') {
     if (!$workshop) {
         flash('error', 'Workshop nicht gefunden.');
-        redirect('bookings.php');
+        redirect(admin_url('bookings'));
     }
 
     $rows = [];
@@ -666,7 +666,7 @@ if ($workshop) {
         .workshop-actions-buttons {
             display: grid;
             width: 100%;
-            grid-template-columns: repeat(3, minmax(170px, 1fr));
+            grid-template-columns: repeat(2, minmax(170px, 1fr));
             gap: 0.65rem;
         }
         .workshop-action-btn {
@@ -694,17 +694,20 @@ if ($workshop) {
             border-color: rgba(52, 152, 219, 0.38);
         }
         .workshop-action-icon {
-            width: 26px;
-            height: 26px;
+            width: 28px;
+            height: 28px;
             border-radius: 999px;
             border: 1px solid currentColor;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.68rem;
-            font-weight: 700;
             flex-shrink: 0;
-            margin-top: 1px;
+            margin-top: 0;
+        }
+        .workshop-action-icon svg {
+            width: 14px;
+            height: 14px;
+            display: block;
         }
         .workshop-action-copy {
             min-width: 0;
@@ -845,26 +848,20 @@ if ($workshop) {
             <div class="workshop-actions-copy">
                 <div class="workshop-actions-title">Workshop-Aktionen</div>
                 <div class="workshop-actions-note">
-                    Alle drei Aktionen arbeiten mit bestaetigten Buchungen dieses Workshops und sind bewusst getrennt.
+                    Die Aktionen arbeiten mit bestaetigten Buchungen dieses Workshops. Rechnungen verwalten Sie im Reiter "Rechnungen".
                 </div>
             </div>
             <div class="workshop-actions-buttons">
-                <button type="button" class="btn-admin workshop-action-btn action-rechnung" onclick="openRechnungModal()">
-                    <span class="workshop-action-icon">EUR</span>
-                    <span class="workshop-action-copy">
-                        <span class="workshop-action-label">Rechnungen senden</span>
-                        <span class="workshop-action-sub">Pro Buchung eine individuelle Rechnung verschicken.</span>
-                    </span>
-                </button>
+
                 <button type="button" class="btn-admin workshop-action-btn action-email" onclick="openBulkEmailModal()">
-                    <span class="workshop-action-icon">@</span>
+                    <span class="workshop-action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a4 4 0 1 0 4 0V8"/><path d="M12 20c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8"/></svg></span>
                     <span class="workshop-action-copy">
                         <span class="workshop-action-label">E-Mail an alle</span>
                         <span class="workshop-action-sub">Eine Sammelnachricht an alle bestaetigten Kontakte senden.</span>
                     </span>
                 </button>
-                <a href="bookings.php?workshop_id=<?= (int) $workshop['id'] ?>&amp;export_participants=1" class="btn-admin workshop-action-btn action-export">
-                    <span class="workshop-action-icon">XLS</span>
+                <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $workshop['id'], 'export_participants' => 1])) ?>" class="btn-admin workshop-action-btn action-export">
+                    <span class="workshop-action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 16 2 2 4-4"/></svg></span>
                     <span class="workshop-action-copy">
                         <span class="workshop-action-label">Teilnehmerliste exportieren</span>
                         <span class="workshop-action-sub">Namen und E-Mail-Adressen als Excel-Datei herunterladen.</span>
@@ -938,7 +935,7 @@ if ($workshop) {
                         <td style="white-space:nowrap;"><?= e(date('d.m.Y H:i', strtotime($b['created_at']))) ?></td>
                         <td>
                             <div class="admin-actions">
-                                <a href="booking-edit.php?id=<?= $b['id'] ?>" class="btn-admin" title="Bearbeiten">Bearbeiten</a>
+                                <a href="<?= e(admin_url('booking-edit', ['id' => (int) $b['id']])) ?>" class="btn-admin" title="Bearbeiten">Bearbeiten</a>
 
                                 <?php if (!$b['confirmed']): ?>
                                 <form method="POST" style="display:inline;">

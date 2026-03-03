@@ -403,7 +403,7 @@ function send_confirmation_email(
     array $workshop = [],
     array $participants = []
 ): bool {
-    $confirmUrl = build_site_url('/confirm.php?token=' . urlencode($token));
+    $confirmUrl = build_site_url(app_url('confirm', ['token' => $token]));
     if (!isset($workshop['title']) || trim((string) $workshop['title']) === '') {
         $workshop['title'] = $workshopTitle;
     }
