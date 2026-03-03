@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require __DIR__ . '/../includes/config.php';
 require __DIR__ . '/../includes/email.php';
 require_admin();
@@ -10,7 +10,7 @@ if ($workshopId) {
 }
 $returnUrl = 'bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : '');
 
-if ($workshopId && isset($_GET['export_participants'])) {
+if ($workshopId && (string) ($_GET['export_participants'] ?? '') === '1') {
     if (!$workshop) {
         flash('error', 'Workshop nicht gefunden.');
         redirect('bookings.php');
