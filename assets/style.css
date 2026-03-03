@@ -2724,3 +2724,108 @@ footer a:hover { color: var(--text); }
 .group-admin-card-head .status-badge {
     min-width: 74px;
 }
+
+/* --- GROUPS MOBILE AUTOSAVE FIXES --- */
+.group-admin-auto-save-note {
+    margin: 0;
+    color: var(--dim);
+    font-size: 0.82rem;
+}
+
+.group-auto-add-hint {
+    margin: 0;
+    color: var(--dim);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.group-assignment-item {
+    grid-template-areas: 'drag title badge buttons';
+    grid-template-columns: 28px minmax(0, 1fr) auto auto;
+    min-width: 0;
+}
+.group-assignment-drag {
+    grid-area: drag;
+}
+.group-assignment-title {
+    grid-area: title;
+    min-width: 0;
+}
+.group-assignment-item .status-badge {
+    grid-area: badge;
+    justify-self: start;
+}
+.group-assignment-buttons {
+    grid-area: buttons;
+    align-self: center;
+}
+.group-assignment-buttons .btn-admin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+@media (max-width: 980px) {
+    .group-admin-card-head {
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+
+    .group-admin-add-row {
+        grid-template-columns: 1fr;
+        gap: 0.4rem;
+    }
+
+    .group-auto-add-hint {
+        white-space: normal;
+    }
+
+    .group-assignment-item {
+        grid-template-areas:
+            'title badge'
+            'buttons buttons';
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.45rem;
+    }
+
+    .group-assignment-drag {
+        display: none;
+    }
+
+    .group-assignment-buttons {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 640px) {
+    .group-admin-inline-actions {
+        width: 100%;
+    }
+
+    .group-assignment-item {
+        grid-template-areas:
+            'title'
+            'badge'
+            'buttons';
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .group-assignment-item .status-badge {
+        justify-self: start;
+    }
+
+    .group-assignment-buttons {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.35rem;
+    }
+
+    .group-assignment-buttons .btn-admin {
+        width: 100%;
+        min-width: 0;
+        min-height: 40px;
+        padding: 0;
+    }
+}

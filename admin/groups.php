@@ -50,7 +50,7 @@ function workshop_exists(SQLite3 $db, int $workshopId): bool {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
-        flash('error', 'Ungueltige Sitzung.');
+        flash('error', 'Ungültige Sitzung.');
         redirect(admin_url('groups'));
     }
 
@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $active = isset($_POST['active']) ? 1 : 0;
 
         if ($groupId <= 0 || !workshop_group_exists($db, $groupId) || mb_strlen($name) < 2) {
-            flash('error', 'Gruppendaten sind ungueltig.');
+            flash('error', 'Gruppendaten sind ungültig.');
             redirect(admin_url('groups'));
         }
 
@@ -119,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $db->prepare('DELETE FROM workshop_groups WHERE id = :id');
             $stmt->bindValue(':id', $groupId, SQLITE3_INTEGER);
             $stmt->execute();
-            flash('success', 'Gruppe geloescht.');
+            flash('success', 'Gruppe gelöscht.');
         }
         redirect(admin_url('groups'));
     }
@@ -129,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $workshopId = (int) ($_POST['workshop_id'] ?? 0);
 
         if ($groupId <= 0 || $workshopId <= 0) {
-            flash('error', 'Bitte Gruppe und Workshop auswaehlen.');
+            flash('error', 'Bitte Gruppe und Workshop auswählen.');
             redirect(admin_url('groups'));
         }
         if (!workshop_group_exists($db, $groupId) || !workshop_exists($db, $workshopId)) {
@@ -157,7 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ins->bindValue(':sort', $nextSortOrder, SQLITE3_INTEGER);
         $ins->execute();
 
-        flash('success', 'Workshop zur Gruppe hinzugefuegt.');
+        flash('success', 'Workshop zur Gruppe hinzugefügt.');
         redirect(admin_url('groups'));
     }
 
@@ -337,7 +337,7 @@ if (!empty($groups)) {
             <div class="group-admin-modal-panel" role="dialog" aria-modal="true" aria-labelledby="groupCreateModalTitle">
                 <button type="button" class="group-admin-modal-close btn-admin" aria-label="Dialog schliessen" data-modal-close="groupCreateModal">&times;</button>
                 <h2 id="groupCreateModalTitle">Neue Gruppe</h2>
-                <p>Workshops koennen in mehreren Gruppen gleichzeitig erscheinen. Gruppen werden auf der Startseite in ihrer Reihenfolge angezeigt.</p>
+                <p>Workshops k&ouml;nnen in mehreren Gruppen gleichzeitig erscheinen. Gruppen werden auf der Startseite in ihrer Reihenfolge angezeigt.</p>
 
                 <form method="POST" class="group-admin-create-form">
                     <?= csrf_field() ?>
@@ -365,7 +365,7 @@ if (!empty($groups)) {
                     </div>
                     <div class="form-group">
                         <label for="new_group_description">Kurzbeschreibung (optional)</label>
-                        <textarea id="new_group_description" name="description" rows="2" placeholder="Kurzer Untertitel fuer die Gruppensektion auf der Startseite"></textarea>
+                        <textarea id="new_group_description" name="description" rows="2" placeholder="Kurzer Untertitel f&uuml;r die Gruppensektion auf der Startseite"></textarea>
                     </div>
                     <button type="submit" class="btn-admin btn-success">Gruppe erstellen</button>
                 </form>
@@ -433,11 +433,11 @@ if (!empty($groups)) {
                                     </div>
                                 </form>
 
-                                <form method="POST" class="group-admin-delete-form" onsubmit="return confirm('Gruppe wirklich loeschen?')">
+                                <form method="POST" class="group-admin-delete-form" onsubmit="return confirm('Gruppe wirklich l&ouml;schen?')">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="action" value="delete_group">
                                     <input type="hidden" name="group_id" value="<?= $groupId ?>">
-                                    <button type="submit" class="btn-admin btn-danger">Gruppe loeschen</button>
+                                    <button type="submit" class="btn-admin btn-danger">Gruppe l&ouml;schen</button>
                                 </form>
                             </div>
                         </details>
@@ -456,7 +456,7 @@ if (!empty($groups)) {
                             <div class="group-admin-add-row">
                                 <div class="group-select-wrap">
                                     <select name="workshop_id" required>
-                                        <option value="">Workshop auswaehlen...</option>
+                                        <option value="">Workshop ausw&auml;hlen...</option>
                                         <?php foreach ($workshops as $workshop): ?>
                                             <?php $wid = (int) $workshop['id']; ?>
                                             <option value="<?= $wid ?>" <?= isset($assignmentIds[$wid]) ? 'disabled' : '' ?>>
@@ -466,7 +466,7 @@ if (!empty($groups)) {
                                     </select>
                                     <span class="group-select-icon" aria-hidden="true">&#9662;</span>
                                 </div>
-                                <button type="submit" class="btn-admin">Hinzufuegen</button>
+                                <p class="group-auto-add-hint">Wird direkt hinzugef&uuml;gt</p>
                             </div>
                         </form>
 
@@ -499,7 +499,7 @@ if (!empty($groups)) {
                             </ul>
 
                             <div class="group-admin-inline-actions">
-                                <button type="submit" class="btn-admin btn-success">Aenderungen speichern</button>
+                                <p class="group-admin-auto-save-note">&Auml;nderungen werden automatisch gespeichert.</p>
                             </div>
                         </form>
                     </section>
@@ -616,6 +616,23 @@ if (!empty($groups)) {
         });
     }
 
+    function submitFormOnce(form) {
+        if (!form || form.dataset.submitting === '1') {
+            return;
+        }
+        form.dataset.submitting = '1';
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+        } else {
+            form.submit();
+        }
+    }
+
+    function syncAndSubmitForList(list) {
+        syncAllStates();
+        submitFormOnce(list ? list.closest('[data-group-order-form]') : null);
+    }
+
     function getDragAfterElement(list, y) {
         var draggableElements = Array.prototype.slice.call(list.querySelectorAll('.group-assignment-item:not(.dragging)'));
 
@@ -630,6 +647,23 @@ if (!empty($groups)) {
 
         return closest.element;
     }
+
+    document.querySelectorAll(".group-admin-add-form select[name='workshop_id']").forEach(function (select) {
+        select.addEventListener('change', function () {
+            var value = parseInt(select.value || '0', 10);
+            if (value <= 0) {
+                return;
+            }
+
+            var option = select.options[select.selectedIndex];
+            if (option && option.disabled) {
+                return;
+            }
+
+            var form = select.closest('form');
+            submitFormOnce(form);
+        });
+    });
 
     var draggedItem = null;
     document.querySelectorAll('[data-assignment-list]').forEach(function (list) {
@@ -666,13 +700,20 @@ if (!empty($groups)) {
             }
         });
 
-        list.addEventListener('dragleave', function () {
-            list.classList.remove('is-dragover');
+        list.addEventListener('dragleave', function (event) {
+            if (!list.contains(event.relatedTarget)) {
+                list.classList.remove('is-dragover');
+            }
         });
 
-        list.addEventListener('drop', function () {
+        list.addEventListener('drop', function (event) {
+            event.preventDefault();
             list.classList.remove('is-dragover');
-            syncAllStates();
+            if (draggedItem) {
+                draggedItem.classList.remove('dragging');
+            }
+            syncAndSubmitForList(list);
+            draggedItem = null;
         });
 
         list.addEventListener('dragend', function () {
@@ -701,7 +742,7 @@ if (!empty($groups)) {
                 if (prev && prev.classList.contains('group-assignment-item')) {
                     list.insertBefore(item, prev);
                 }
-                syncAllStates();
+                syncAndSubmitForList(list);
                 return;
             }
             if (move === 'down') {
@@ -709,13 +750,13 @@ if (!empty($groups)) {
                 if (next && next.classList.contains('group-assignment-item')) {
                     list.insertBefore(next, item);
                 }
-                syncAllStates();
+                syncAndSubmitForList(list);
                 return;
             }
 
             if (button.getAttribute('data-remove') === '1') {
                 item.remove();
-                syncAllStates();
+                syncAndSubmitForList(list);
             }
         });
     });
@@ -733,5 +774,6 @@ if (!empty($groups)) {
 
 </body>
 </html>
+
 
 
