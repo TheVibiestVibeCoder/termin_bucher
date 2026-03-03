@@ -285,43 +285,50 @@ if (!empty($groups)) {
     <div class="admin-main">
         <div class="admin-header">
             <h1>Workshop-Gruppen</h1>
+            <button type="button" class="btn-admin btn-success" data-modal-open="groupCreateModal">+ Neue Gruppe</button>
         </div>
 
         <?= render_flash() ?>
 
-        <section class="group-admin-create">
-            <h2>Neue Gruppe</h2>
-            <p>Workshops koennen in mehreren Gruppen gleichzeitig erscheinen. Gruppen werden auf der Startseite in ihrer Reihenfolge angezeigt.</p>
-            <form method="POST" class="group-admin-create-form">
-                <?= csrf_field() ?>
-                <input type="hidden" name="action" value="create_group">
-                <div class="group-admin-grid group-admin-grid-4">
-                    <div class="form-group">
-                        <label for="new_group_name">Gruppenname *</label>
-                        <input id="new_group_name" type="text" name="name" required placeholder="z.B. Basismodule">
+        <div class="group-admin-modal" id="groupCreateModal" aria-hidden="true">
+            <div class="group-admin-modal-backdrop" data-modal-close="groupCreateModal"></div>
+            <div class="group-admin-modal-panel" role="dialog" aria-modal="true" aria-labelledby="groupCreateModalTitle">
+                <button type="button" class="group-admin-modal-close btn-admin" aria-label="Dialog schliessen" data-modal-close="groupCreateModal">&times;</button>
+                <h2 id="groupCreateModalTitle">Neue Gruppe</h2>
+                <p>Workshops koennen in mehreren Gruppen gleichzeitig erscheinen. Gruppen werden auf der Startseite in ihrer Reihenfolge angezeigt.</p>
+
+                <form method="POST" class="group-admin-create-form">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="create_group">
+                    <div class="group-admin-grid group-admin-grid-4">
+                        <div class="form-group">
+                            <label for="new_group_name">Gruppenname *</label>
+                            <input id="new_group_name" type="text" name="name" required placeholder="z.B. Basismodule">
+                        </div>
+                        <div class="form-group">
+                            <label for="new_group_slug">Slug (optional)</label>
+                            <input id="new_group_slug" type="text" name="slug" placeholder="wird automatisch erzeugt">
+                        </div>
+                        <div class="form-group">
+                            <label for="new_group_sort">Reihenfolge (optional)</label>
+                            <input id="new_group_sort" type="number" name="sort_order" placeholder="auto">
+                        </div>
+                        <div class="form-group group-admin-checkbox-wrap">
+                            <label class="group-switch" for="new_group_active">
+                                <input id="new_group_active" type="checkbox" name="active" value="1" checked>
+                                <span class="group-switch-ui" aria-hidden="true"></span>
+                                <span class="group-switch-label">Aktiv auf Startseite</span>
+                            </label>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label for="new_group_slug">Slug (optional)</label>
-                        <input id="new_group_slug" type="text" name="slug" placeholder="wird automatisch erzeugt">
+                        <label for="new_group_description">Kurzbeschreibung (optional)</label>
+                        <textarea id="new_group_description" name="description" rows="2" placeholder="Kurzer Untertitel fuer die Gruppensektion auf der Startseite"></textarea>
                     </div>
-                    <div class="form-group">
-                        <label for="new_group_sort">Reihenfolge (optional)</label>
-                        <input id="new_group_sort" type="number" name="sort_order" placeholder="auto">
-                    </div>
-                    <div class="form-group group-admin-checkbox-wrap">
-                        <label>
-                            <input type="checkbox" name="active" value="1" checked>
-                            Aktiv auf Startseite
-                        </label>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="new_group_description">Kurzbeschreibung (optional)</label>
-                    <textarea id="new_group_description" name="description" rows="2" placeholder="Kurzer Untertitel fuer die Gruppensektion auf der Startseite"></textarea>
-                </div>
-                <button type="submit" class="btn-admin btn-success">Gruppe erstellen</button>
-            </form>
-        </section>
+                    <button type="submit" class="btn-admin btn-success">Gruppe erstellen</button>
+                </form>
+            </div>
+        </div>
 
         <?php if (empty($groups)): ?>
             <div class="group-admin-empty">Noch keine Gruppen vorhanden.</div>
@@ -343,46 +350,55 @@ if (!empty($groups)) {
                             </span>
                         </div>
 
-                        <form method="POST" class="group-admin-meta-form">
-                            <?= csrf_field() ?>
-                            <input type="hidden" name="action" value="update_group">
-                            <input type="hidden" name="group_id" value="<?= $groupId ?>">
+                        <details class="group-admin-details">
+                            <summary class="group-admin-details-summary">
+                                Gruppen-Details bearbeiten
+                                <span class="group-admin-details-hint">eingeklappt</span>
+                            </summary>
+                            <div class="group-admin-details-content">
+                                <form method="POST" class="group-admin-meta-form">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="action" value="update_group">
+                                    <input type="hidden" name="group_id" value="<?= $groupId ?>">
 
-                            <div class="group-admin-grid group-admin-grid-4">
-                                <div class="form-group">
-                                    <label for="group_name_<?= $groupId ?>">Name</label>
-                                    <input id="group_name_<?= $groupId ?>" type="text" name="name" required value="<?= e($group['name']) ?>">
-                                </div>
-                                <div class="form-group">
-                                    <label for="group_slug_<?= $groupId ?>">Slug</label>
-                                    <input id="group_slug_<?= $groupId ?>" type="text" name="slug" value="<?= e($group['slug']) ?>">
-                                </div>
-                                <div class="form-group">
-                                    <label for="group_sort_<?= $groupId ?>">Reihenfolge</label>
-                                    <input id="group_sort_<?= $groupId ?>" type="number" name="sort_order" value="<?= (int) $group['sort_order'] ?>">
-                                </div>
-                                <div class="form-group group-admin-checkbox-wrap">
-                                    <label>
-                                        <input type="checkbox" name="active" value="1" <?= (int) $group['active'] ? 'checked' : '' ?>>
-                                        Aktiv auf Startseite
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="group_desc_<?= $groupId ?>">Kurzbeschreibung</label>
-                                <textarea id="group_desc_<?= $groupId ?>" name="description" rows="2"><?= e($group['description']) ?></textarea>
-                            </div>
-                            <div class="group-admin-inline-actions">
-                                <button type="submit" class="btn-admin btn-success">Gruppendaten speichern</button>
-                            </div>
-                        </form>
+                                    <div class="group-admin-grid group-admin-grid-4">
+                                        <div class="form-group">
+                                            <label for="group_name_<?= $groupId ?>">Name</label>
+                                            <input id="group_name_<?= $groupId ?>" type="text" name="name" required value="<?= e($group['name']) ?>">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="group_slug_<?= $groupId ?>">Slug</label>
+                                            <input id="group_slug_<?= $groupId ?>" type="text" name="slug" value="<?= e($group['slug']) ?>">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="group_sort_<?= $groupId ?>">Reihenfolge</label>
+                                            <input id="group_sort_<?= $groupId ?>" type="number" name="sort_order" value="<?= (int) $group['sort_order'] ?>">
+                                        </div>
+                                        <div class="form-group group-admin-checkbox-wrap">
+                                            <label class="group-switch" for="group_active_<?= $groupId ?>">
+                                                <input id="group_active_<?= $groupId ?>" type="checkbox" name="active" value="1" <?= (int) $group['active'] ? 'checked' : '' ?>>
+                                                <span class="group-switch-ui" aria-hidden="true"></span>
+                                                <span class="group-switch-label">Aktiv auf Startseite</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="group_desc_<?= $groupId ?>">Kurzbeschreibung</label>
+                                        <textarea id="group_desc_<?= $groupId ?>" name="description" rows="2"><?= e($group['description']) ?></textarea>
+                                    </div>
+                                    <div class="group-admin-inline-actions">
+                                        <button type="submit" class="btn-admin btn-success">Gruppendaten speichern</button>
+                                    </div>
+                                </form>
 
-                        <form method="POST" class="group-admin-delete-form" onsubmit="return confirm('Gruppe wirklich loeschen?')">
-                            <?= csrf_field() ?>
-                            <input type="hidden" name="action" value="delete_group">
-                            <input type="hidden" name="group_id" value="<?= $groupId ?>">
-                            <button type="submit" class="btn-admin btn-danger">Gruppe loeschen</button>
-                        </form>
+                                <form method="POST" class="group-admin-delete-form" onsubmit="return confirm('Gruppe wirklich loeschen?')">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="action" value="delete_group">
+                                    <input type="hidden" name="group_id" value="<?= $groupId ?>">
+                                    <button type="submit" class="btn-admin btn-danger">Gruppe loeschen</button>
+                                </form>
+                            </div>
+                        </details>
 
                         <div class="group-admin-divider"></div>
 
@@ -396,26 +412,29 @@ if (!empty($groups)) {
                             <input type="hidden" name="action" value="add_assignment">
                             <input type="hidden" name="group_id" value="<?= $groupId ?>">
                             <div class="group-admin-add-row">
-                                <select name="workshop_id" required>
-                                    <option value="">Workshop auswaehlen...</option>
-                                    <?php foreach ($workshops as $workshop): ?>
-                                        <?php $wid = (int) $workshop['id']; ?>
-                                        <option value="<?= $wid ?>" <?= isset($assignmentIds[$wid]) ? 'disabled' : '' ?>>
-                                            <?= e($workshop['title']) ?><?= (int) $workshop['active'] ? '' : ' (inaktiv)' ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
+                                <div class="group-select-wrap">
+                                    <select name="workshop_id" required>
+                                        <option value="">Workshop auswaehlen...</option>
+                                        <?php foreach ($workshops as $workshop): ?>
+                                            <?php $wid = (int) $workshop['id']; ?>
+                                            <option value="<?= $wid ?>" <?= isset($assignmentIds[$wid]) ? 'disabled' : '' ?>>
+                                                <?= e($workshop['title']) ?><?= (int) $workshop['active'] ? '' : ' (inaktiv)' ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <span class="group-select-icon" aria-hidden="true">&#9662;</span>
+                                </div>
                                 <button type="submit" class="btn-admin">Hinzufuegen</button>
                             </div>
                         </form>
 
-                        <form method="POST" class="group-admin-order-form" data-group-order-form>
+                        <form method="POST" class="group-admin-order-form group-drag-shell" data-group-order-form>
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="save_assignments">
                             <input type="hidden" name="group_id" value="<?= $groupId ?>">
                             <input type="hidden" name="ordered_workshop_ids" value='<?= e(json_encode(array_map(static fn(array $row): int => (int) $row['workshop_id'], $group['assignments']))) ?>' data-order-input>
 
-                            <ul class="group-assignment-list" data-assignment-list>
+                            <ul class="group-assignment-list group-assignment-dropzone" data-assignment-list>
                                 <?php foreach ($group['assignments'] as $assignment): ?>
                                     <?php $wid = (int) $assignment['workshop_id']; ?>
                                     <li class="group-assignment-item" draggable="true" data-workshop-id="<?= $wid ?>">
@@ -449,6 +468,56 @@ if (!empty($groups)) {
 
 <script>
 (function () {
+    function setModalState(modal, open) {
+        if (!modal) {
+            return;
+        }
+        modal.classList.toggle('is-open', open);
+        modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+        document.body.classList.toggle('group-modal-open', open);
+    }
+
+    function closeModal(modal) {
+        setModalState(modal, false);
+    }
+
+    function openModal(modal) {
+        setModalState(modal, true);
+        var firstInput = modal.querySelector('input, textarea, select, button');
+        if (firstInput) {
+            firstInput.focus();
+        }
+    }
+
+    document.querySelectorAll('[data-modal-open]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var modalId = btn.getAttribute('data-modal-open');
+            if (!modalId) {
+                return;
+            }
+            openModal(document.getElementById(modalId));
+        });
+    });
+
+    document.querySelectorAll('[data-modal-close]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var modalId = btn.getAttribute('data-modal-close');
+            if (!modalId) {
+                return;
+            }
+            closeModal(document.getElementById(modalId));
+        });
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') {
+            return;
+        }
+        document.querySelectorAll('.group-admin-modal.is-open').forEach(function (modal) {
+            closeModal(modal);
+        });
+    });
+
     function syncOrder(form) {
         var list = form.querySelector('[data-assignment-list]');
         var input = form.querySelector('[data-order-input]');
@@ -495,6 +564,7 @@ if (!empty($groups)) {
         var draggedItem = null;
 
         list.addEventListener('dragstart', function (event) {
+            list.classList.add('is-dragover');
             var item = event.target.closest('.group-assignment-item');
             if (!item) {
                 return;
@@ -508,6 +578,7 @@ if (!empty($groups)) {
         });
 
         list.addEventListener('dragend', function () {
+            list.classList.remove('is-dragover');
             if (draggedItem) {
                 draggedItem.classList.remove('dragging');
                 draggedItem = null;
@@ -520,12 +591,21 @@ if (!empty($groups)) {
                 return;
             }
             event.preventDefault();
+            list.classList.add('is-dragover');
             var afterElement = getDragAfterElement(list, event.clientY);
             if (afterElement === null) {
                 list.appendChild(draggedItem);
             } else {
                 list.insertBefore(draggedItem, afterElement);
             }
+        });
+
+        list.addEventListener('dragleave', function () {
+            list.classList.remove('is-dragover');
+        });
+
+        list.addEventListener('drop', function () {
+            list.classList.remove('is-dragover');
         });
 
         list.addEventListener('click', function (event) {
