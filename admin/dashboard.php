@@ -73,9 +73,9 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
 </head>
-<body>
+<body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 <div class="admin-layout">
 
@@ -133,7 +133,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
             </div>
 
             <!-- Per-workshop revenue breakdown -->
-            <div style="overflow-x:auto;margin-bottom:2.5rem;">
+            <div class="admin-table-scroll" style="margin-bottom:2.5rem;">
             <table class="admin-table">
                 <thead>
                     <tr>
@@ -148,7 +148,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                     <?php foreach ($revenueByWorkshop as $r): ?>
                     <tr>
                         <td style="color:var(--text);">
-                            <a href="bookings.php?workshop_id=<?= (int) $r['workshop_id'] ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
+                            <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $r['workshop_id']])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
                                 <?= e($r['title']) ?>
                             </a>
                         </td>
@@ -173,7 +173,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
         <?php if (empty($recentBookings)): ?>
             <p style="color:var(--muted);">Noch keine Buchungen vorhanden.</p>
         <?php else: ?>
-            <div style="overflow-x:auto;">
+            <div class="admin-table-scroll">
             <table class="admin-table">
                 <thead>
                     <tr>
@@ -200,7 +200,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><?= e($b['email']) ?></td>
                         <td>
-                            <a href="bookings.php?workshop_id=<?= (int) $b['workshop_id'] ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
+                            <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $b['workshop_id']])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
                                 <?= e($b['workshop_title']) ?>
                             </a>
                         </td>
@@ -228,7 +228,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
         <?php endif; ?>
     </div>
 </div>
-<script src="../assets/site-ui.js"></script>
+<script src="/assets/site-ui.js"></script>
 </body>
 </html>
 

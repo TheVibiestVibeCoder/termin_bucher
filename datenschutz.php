@@ -22,7 +22,7 @@ require __DIR__ . '/includes/config.php';
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
 
@@ -30,7 +30,7 @@ require __DIR__ . '/includes/config.php';
 
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
-        <a href="index.php" class="nav-logo" aria-label="Disinfo Consulting Workshops – Startseite">
+        <a href="<?= e(app_url()) ?>" class="nav-logo" aria-label="Disinfo Consulting Workshops – Startseite">
             <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/02/Gemini_Generated_Image_vjal0gvjal0gvjal-scaled.png"
                  alt="Disinfo Consulting" height="30">
         </a>
@@ -39,7 +39,7 @@ require __DIR__ . '/includes/config.php';
         </button>
         <ul class="nav-links" id="nav-links" role="list">
             <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">&#9790;</button></li>
-            <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
+            <li><a href="<?= e(app_url('kontakt')) ?>" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
 </nav>
@@ -49,7 +49,7 @@ require __DIR__ . '/includes/config.php';
     <div class="hero-noise"></div>
     <div class="hero-spotlight"></div>
     <div class="container legal-wrap" style="position:relative;z-index:2;">
-        <a href="index.php" class="detail-back">&larr; Zur Startseite</a>
+        <a href="<?= e(app_url()) ?>" class="detail-back">&larr; Zur Startseite</a>
 
         <article class="legal-card">
             <span class="hero-eyebrow legal-eyebrow">Rechtliches</span>
@@ -83,8 +83,8 @@ require __DIR__ . '/includes/config.php';
 
 <footer>
     <p>&copy; <?= date('Y') ?> Disinfo Combat GmbH &nbsp;&middot;&nbsp;
-       <a href="impressum.php">Impressum</a> &nbsp;&middot;&nbsp;
-       <a href="datenschutz.php">Datenschutz</a>
+       <a href="<?= e(app_url('impressum')) ?>">Impressum</a> &nbsp;&middot;&nbsp;
+       <a href="<?= e(app_url('datenschutz')) ?>">Datenschutz</a>
     </p>
 </footer>
 
@@ -97,6 +97,6 @@ burger.addEventListener('click', () => {
 });
 </script>
 
-<script src="assets/site-ui.js"></script>
+<script src="/assets/site-ui.js"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@ if ($isEdit) {
     $workshop = get_workshop_by_id($db, $id);
     if (!$workshop) {
         flash('error', 'Workshop nicht gefunden.');
-        redirect('workshops.php');
+        redirect(admin_url('workshops'));
     }
 }
 
@@ -146,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
         $stmt->execute();
 
         flash('success', $isEdit ? 'Workshop aktualisiert.' : 'Workshop erstellt.');
-        redirect('workshops.php');
+        redirect(admin_url('workshops'));
     }
 }
 
@@ -177,7 +177,7 @@ function to_datetime_local(string $val): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
     <style>
         .type-toggle {
             display: flex; gap: 0; margin-bottom: 2rem;
@@ -217,7 +217,7 @@ function to_datetime_local(string $val): string {
         }
     </style>
 </head>
-<body>
+<body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 <div class="admin-layout">
 
@@ -226,7 +226,7 @@ function to_datetime_local(string $val): string {
     <div class="admin-main">
         <div class="admin-header">
             <h1><?= $isEdit ? 'Workshop bearbeiten' : 'Neuer Workshop' ?></h1>
-            <a href="workshops.php" class="btn-admin">&larr; Zurück</a>
+            <a href="<?= e(admin_url('workshops')) ?>" class="btn-admin">&larr; Zurück</a>
         </div>
 
         <?= render_flash() ?>
@@ -477,7 +477,7 @@ document.getElementById('price_currency').addEventListener('change', function ()
 });
 </script>
 
-<script src="../assets/site-ui.js"></script>
+<script src="/assets/site-ui.js"></script>
 
 </body>
 </html>

@@ -2,23 +2,16 @@
     const root = document.documentElement;
     const body = document.body;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const mobileQuery = window.matchMedia("(max-width: 768px)");
-
     const getCurrentTheme = () => (root.getAttribute("data-theme") === "light" ? "light" : "dark");
 
-    const getToggleLabel = (theme, mobile) => {
-        if (mobile) {
-            return theme === "light" ? "Dark Modus" : "Light Modus";
-        }
-        return theme === "light" ? "\u2600" : "\u263E";
-    };
+    const getToggleLabel = (theme) => (theme === "light" ? "\u2600" : "\u263E");
 
     const getToggleHint = (theme) => (theme === "light" ? "Zum Dark Mode wechseln" : "Zum Light Mode wechseln");
 
     const updateToggle = (theme) => {
         const toggle = document.querySelector("#themeToggle");
         if (!toggle) return;
-        toggle.textContent = getToggleLabel(theme, mobileQuery.matches);
+        toggle.textContent = getToggleLabel(theme);
         toggle.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
         const hint = getToggleHint(theme);
         toggle.setAttribute("aria-label", hint);
@@ -63,13 +56,6 @@
             const y = rect.top + rect.height / 2;
             applyTheme(nextTheme, true, x, y);
         });
-
-        const onMobileChange = () => updateToggle(getCurrentTheme());
-        if (typeof mobileQuery.addEventListener === "function") {
-            mobileQuery.addEventListener("change", onMobileChange);
-        } else if (typeof mobileQuery.addListener === "function") {
-            mobileQuery.addListener(onMobileChange);
-        }
     }
 
     if (!body.classList.contains("page-loaded")) {

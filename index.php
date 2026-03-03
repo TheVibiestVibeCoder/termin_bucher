@@ -45,7 +45,7 @@ $audienceLabels = [
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
 
@@ -62,7 +62,7 @@ $audienceLabels = [
         </button>
         <ul class="nav-links" id="nav-links" role="list">
             <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">&#9790;</button></li>
-            <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
+            <li><a href="<?= e(app_url('kontakt')) ?>" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
 </nav>
@@ -240,7 +240,7 @@ $audienceLabels = [
                         <span class="aud-tag"><?= e($al) ?></span>
                     <?php endforeach; ?>
                 </div>
-                <a href="workshop.php?slug=<?= e($w['slug']) ?>" class="btn-book">Details &amp; Buchen &rarr;</a>
+                <a href="<?= e(app_url('workshop', ['slug' => (string) $w['slug']])) ?>" class="btn-book">Details &amp; Buchen &rarr;</a>
             </article>
             <?php endforeach; ?>
         </div>
@@ -254,7 +254,7 @@ $audienceLabels = [
             Kein Workshop passt exakt? Kontaktieren Sie uns für ein individuelles Konzept – wir entwickeln auch vollständig maßgeschneiderte Formate.
         </p>
         <div class="cta-btns fade-in" style="transition-delay:0.2s">
-            <a href="kontakt.php" class="btn-primary">Kontakt aufnehmen</a>
+            <a href="<?= e(app_url('kontakt')) ?>" class="btn-primary">Kontakt aufnehmen</a>
         </div>
     </div>
 </section>
@@ -262,8 +262,8 @@ $audienceLabels = [
 
 <footer>
     <p>&copy; <?= date('Y') ?> Disinfo Combat GmbH &nbsp;&middot;&nbsp;
-       <a href="impressum.php">Impressum</a> &nbsp;&middot;&nbsp;
-       <a href="datenschutz.php">Datenschutz</a>
+       <a href="<?= e(app_url('impressum')) ?>">Impressum</a> &nbsp;&middot;&nbsp;
+       <a href="<?= e(app_url('datenschutz')) ?>">Datenschutz</a>
     </p>
 </footer>
 
@@ -296,7 +296,7 @@ filterBtns.forEach(btn => {
     });
 });
 </script>
-<script src="assets/site-ui.js"></script>
+<script src="/assets/site-ui.js"></script>
 
 </body>
 </html>

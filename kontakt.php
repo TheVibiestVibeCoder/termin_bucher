@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
     // Honeypot anti-spam check
     if (!empty($_POST['website'])) {
         // Silent redirect for bots
-        redirect('kontakt.php');
+        redirect(app_url('kontakt'));
     }
 
     if (!rate_limit('contact', 3)) {
@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
             $errors[] = 'Ihre Nachricht konnte aktuell nicht zugestellt werden. Bitte versuchen Sie es erneut.';
         } else {
             flash('success', 'Vielen Dank! Ihre Nachricht wurde gesendet. Wir melden uns so bald wie möglich.');
-            redirect('kontakt.php');
+            redirect(app_url('kontakt'));
         }
     }
 }
@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
 
@@ -109,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
         </button>
         <ul class="nav-links" id="nav-links" role="list">
             <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">&#9790;</button></li>
-            <li><a href="kontakt.php" class="nav-cta active">Kontakt</a></li>
+            <li><a href="<?= e(app_url('kontakt')) ?>" class="nav-cta active">Kontakt</a></li>
         </ul>
     </div>
 </nav>
@@ -120,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
     <div class="hero-spotlight"></div>
     <div class="container" style="position:relative;z-index:2;padding-top:6rem;padding-bottom:4rem;">
 
-        <a href="index.php" class="detail-back">&larr; Alle Workshops</a>
+        <a href="<?= e(app_url()) ?>" class="detail-back">&larr; Alle Workshops</a>
 
         <?= render_flash() ?>
 
@@ -142,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
             <?php endif; ?>
 
             <div class="booking-box" style="position:static;">
-                <form method="POST" action="kontakt.php">
+                <form method="POST" action="<?= e(app_url('kontakt')) ?>">
                     <?= csrf_field() ?>
                     <input type="hidden" name="contact_submit" value="1">
 
@@ -177,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
 
                     <p class="form-disclaimer">
                         Mit dem Absenden erklären Sie sich mit unserer
-                        <a href="datenschutz.php">Datenschutzerklärung</a> einverstanden.
+                        <a href="<?= e(app_url('datenschutz')) ?>">Datenschutzerklärung</a> einverstanden.
                     </p>
                 </form>
             </div>
@@ -188,8 +188,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
 
 <footer>
     <p>&copy; <?= date('Y') ?> Disinfo Combat GmbH &nbsp;&middot;&nbsp;
-       <a href="impressum.php">Impressum</a> &nbsp;&middot;&nbsp;
-       <a href="datenschutz.php">Datenschutz</a>
+       <a href="<?= e(app_url('impressum')) ?>">Impressum</a> &nbsp;&middot;&nbsp;
+       <a href="<?= e(app_url('datenschutz')) ?>">Datenschutz</a>
     </p>
 </footer>
 
@@ -202,7 +202,7 @@ burger.addEventListener('click', () => {
 });
 </script>
 
-<script src="assets/site-ui.js"></script>
+<script src="/assets/site-ui.js"></script>
 
 </body>
 </html>

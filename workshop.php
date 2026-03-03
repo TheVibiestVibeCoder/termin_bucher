@@ -3,12 +3,12 @@ require __DIR__ . '/includes/config.php';
 require __DIR__ . '/includes/email.php';
 
 $slug = trim($_GET['slug'] ?? '');
-if (!$slug) redirect('index.php');
+if (!$slug) redirect(app_url());
 
 $workshop = get_workshop_by_slug($db, $slug);
 if (!$workshop) {
     http_response_code(404);
-    redirect('index.php');
+    redirect(app_url());
 }
 
 $booked       = count_confirmed_bookings($db, $workshop['id']);
@@ -335,7 +335,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 $errors[] = 'Die Bestätigungs-E-Mail konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
             } else {
                 flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschließen.');
-                redirect('workshop.php?slug=' . urlencode($slug));
+                redirect(app_url('workshop', ['slug' => $slug]));
             }
         }
     }
@@ -438,7 +438,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
 
@@ -455,7 +455,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
         </button>
         <ul class="nav-links" id="nav-links" role="list">
             <li><button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false">&#9790;</button></li>
-            <li><a href="kontakt.php" class="nav-cta">Kontakt</a></li>
+            <li><a href="<?= e(app_url('kontakt')) ?>" class="nav-cta">Kontakt</a></li>
         </ul>
     </div>
 </nav>
@@ -466,7 +466,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
     <div class="hero-spotlight"></div>
     <div class="container" style="position:relative;z-index:2;">
 
-        <a href="index.php" class="detail-back">&larr; Alle Workshops</a>
+        <a href="<?= e(app_url()) ?>" class="detail-back">&larr; Alle Workshops</a>
 
         <?= render_flash() ?>
 
@@ -626,7 +626,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                 <?php if ($isFull): ?>
                     <h3>Ausgebucht</h3>
                     <p style="color:var(--muted);line-height:1.7;">Dieser Workshop ist leider voll ausgebucht. Kontaktieren Sie uns für Alternativtermine.</p>
-                    <a href="kontakt.php" class="btn-submit" style="margin-top:1.5rem;display:block;text-align:center;text-decoration:none;">Kontakt aufnehmen</a>
+                    <a href="<?= e(app_url('kontakt')) ?>" class="btn-submit" style="margin-top:1.5rem;display:block;text-align:center;text-decoration:none;">Kontakt aufnehmen</a>
                 <?php else: ?>
                     <h3>Platz buchen</h3>
 
@@ -649,7 +649,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                     <?php endif; ?>
 
-                    <form method="POST" action="workshop.php?slug=<?= e($slug) ?>">
+                    <form method="POST" action="<?= e(app_url('workshop', ['slug' => (string) $slug])) ?>">
                         <?= csrf_field() ?>
                         <input type="hidden" name="book" value="1">
 
@@ -746,7 +746,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
 
                         <p class="form-disclaimer">
                             Mit dem Absenden erklären Sie sich mit unserer
-                            <a href="datenschutz.php">Datenschutzerklärung</a> einverstanden.
+                            <a href="<?= e(app_url('datenschutz')) ?>">Datenschutzerklärung</a> einverstanden.
                             Sie erhalten eine Bestätigungs-E-Mail – erst danach ist Ihr Platz reserviert.
                         </p>
                     </form>
@@ -759,8 +759,8 @@ $hasMoreMetaItems = !empty($extraMetaItems);
 
 <footer>
     <p>&copy; <?= date('Y') ?> Disinfo Combat GmbH &nbsp;&middot;&nbsp;
-       <a href="impressum.php">Impressum</a> &nbsp;&middot;&nbsp;
-       <a href="datenschutz.php">Datenschutz</a>
+       <a href="<?= e(app_url('impressum')) ?>">Impressum</a> &nbsp;&middot;&nbsp;
+       <a href="<?= e(app_url('datenschutz')) ?>">Datenschutz</a>
     </p>
 </footer>
 
@@ -787,7 +787,7 @@ const discountInput = document.getElementById('discount_code');
 const discountFeedbackEl = document.getElementById('discount-feedback');
 const emailInput = document.getElementById('email');
 const csrfTokenInput = document.querySelector('form input[name="_token"]');
-const discountPreviewUrl = <?= json_for_html('workshop.php?slug=' . rawurlencode($slug)) ?>;
+const discountPreviewUrl = <?= json_for_html(app_url('workshop', ['slug' => (string) $slug])) ?>;
 const currency = <?= json_for_html($currency) ?>;
 const defaultDiscountHint = 'Code wird beim Absenden final geprüft.';
 const symbols = { EUR: 'EUR', CHF: 'CHF', USD: 'USD' };
@@ -1199,7 +1199,7 @@ if (descToggle && descWrap) {
 }
 </script>
 
-<script src="assets/site-ui.js"></script>
+<script src="/assets/site-ui.js"></script>
 
 </body>
 </html>

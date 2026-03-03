@@ -144,7 +144,7 @@ $msg = $messages[$status];
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
@@ -171,11 +171,11 @@ $msg = $messages[$status];
 
         <p><?= e($msg[1]) ?></p>
 
-        <a href="index.php" class="btn-primary" style="display:inline-block;text-decoration:none;margin-top:0.5rem;">&larr; Zurück zu den Workshops</a>
+        <a href="<?= e(app_url()) ?>" class="btn-primary" style="display:inline-block;text-decoration:none;margin-top:0.5rem;">&larr; Zurück zu den Workshops</a>
     </div>
 </div>
 
-<script src="assets/site-ui.js"></script>
+<script src="/assets/site-ui.js"></script>
 
 </body>
 </html>

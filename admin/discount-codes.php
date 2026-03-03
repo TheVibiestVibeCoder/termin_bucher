@@ -33,7 +33,7 @@ foreach ($workshops as $w) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
     flash('error', 'Ungültige Sitzung.');
-    redirect('discount-codes.php');
+    redirect(admin_url('discount-codes'));
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bindValue(':id', $deleteId, SQLITE3_INTEGER);
         $stmt->execute();
         flash('success', 'Rabattcode gelöscht.');
-        redirect('discount-codes.php');
+        redirect(admin_url('discount-codes'));
     }
 
     if (isset($_POST['toggle_discount_id'])) {
@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bindValue(':id', $toggleId, SQLITE3_INTEGER);
         $stmt->execute();
         flash('success', 'Status aktualisiert.');
-        redirect('discount-codes.php');
+        redirect(admin_url('discount-codes'));
     }
 
     if (isset($_POST['save_discount'])) {
@@ -188,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
 
                 flash('success', $formData['id'] > 0 ? 'Rabattcode aktualisiert.' : 'Rabattcode erstellt.');
-                redirect('discount-codes.php');
+                redirect(admin_url('discount-codes'));
             } catch (Throwable $e) {
                 if (str_contains(strtolower($e->getMessage()), 'unique')) {
                     $errors[] = 'Dieser Code existiert bereits.';
@@ -264,7 +264,7 @@ $statusLabels = [
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
     <style>
         .discount-form-card {
             background: var(--surface);
@@ -361,7 +361,7 @@ $statusLabels = [
         }
     </style>
 </head>
-<body>
+<body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 <div class="admin-layout">
 
@@ -371,7 +371,7 @@ $statusLabels = [
         <div class="admin-header">
             <h1>Rabattcodes</h1>
             <?php if ((int) $formData['id'] > 0): ?>
-                <a href="discount-codes.php" class="btn-admin">+ Neuer Code</a>
+                <a href="<?= e(admin_url('discount-codes')) ?>" class="btn-admin">+ Neuer Code</a>
             <?php endif; ?>
         </div>
 
@@ -502,7 +502,7 @@ $statusLabels = [
                 <div class="discount-form-actions">
                     <button type="submit" class="btn-admin btn-success">Speichern</button>
                     <?php if ((int) $formData['id'] > 0): ?>
-                        <a href="discount-codes.php" class="btn-admin">Abbrechen</a>
+                        <a href="<?= e(admin_url('discount-codes')) ?>" class="btn-admin">Abbrechen</a>
                     <?php endif; ?>
                 </div>
             </form>
@@ -511,7 +511,7 @@ $statusLabels = [
         <?php if (empty($codes)): ?>
             <p style="color:var(--muted);">Noch keine Rabattcodes vorhanden.</p>
         <?php else: ?>
-            <div style="overflow-x:auto;">
+            <div class="admin-table-scroll">
                 <table class="admin-table">
                     <thead>
                         <tr>
@@ -579,7 +579,7 @@ $statusLabels = [
                                 </td>
                                 <td>
                                     <div class="admin-actions">
-                                        <a href="discount-codes.php?edit=<?= (int) $code['id'] ?>" class="btn-admin">Bearbeiten</a>
+                                        <a href="<?= e(admin_url('discount-codes', ['edit' => (int) $code['id']])) ?>" class="btn-admin">Bearbeiten</a>
                                         <form method="POST" style="display:inline;">
                                             <?= csrf_field() ?>
                                             <input type="hidden" name="toggle_discount_id" value="<?= (int) $code['id'] ?>">
@@ -692,6 +692,6 @@ $statusLabels = [
     ensureEmptyHint();
 })();
 </script>
-<script src="../assets/site-ui.js"></script>
+<script src="/assets/site-ui.js"></script>
 </body>
 </html>
