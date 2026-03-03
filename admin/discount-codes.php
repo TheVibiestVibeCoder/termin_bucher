@@ -361,7 +361,7 @@ $statusLabels = [
         }
     </style>
 </head>
-<body>
+<body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 <div class="admin-layout">
 
@@ -511,7 +511,7 @@ $statusLabels = [
         <?php if (empty($codes)): ?>
             <p style="color:var(--muted);">Noch keine Rabattcodes vorhanden.</p>
         <?php else: ?>
-            <div style="overflow-x:auto;">
+            <div class="admin-table-scroll">
                 <table class="admin-table">
                     <thead>
                         <tr>

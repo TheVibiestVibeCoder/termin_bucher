@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require __DIR__ . '/../includes/config.php';
 require __DIR__ . '/../includes/email.php';
 require_admin();
@@ -9,6 +9,159 @@ if ($workshopId) {
     $workshop = get_workshop_by_id($db, $workshopId);
 }
 $returnUrl = 'bookings.php' . ($workshopId ? "?workshop_id={$workshopId}" : '');
+
+if ($workshopId && isset($_GET['export_participants'])) {
+    if (!$workshop) {
+        flash('error', 'Workshop nicht gefunden.');
+        redirect('bookings.php');
+    }
+
+    $rows = [];
+    $rowKeys = [];
+
+    $participantStmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid ORDER BY id ASC');
+    $bookingStmt = $db->prepare('
+        SELECT
+            id,
+            name,
+            email,
+            participants,
+            booking_mode,
+            confirmed_at,
+            created_at
+        FROM bookings
+        WHERE workshop_id = :wid AND confirmed = 1
+        ORDER BY confirmed_at ASC, created_at ASC
+    ');
+    $bookingStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    $bookingRes = $bookingStmt->execute();
+
+    $appendRow = static function (
+        array &$targetRows,
+        array &$targetKeys,
+        int $bookingId,
+        string $role,
+        string $name,
+        string $email,
+        int $participants,
+        string $bookingMode,
+        string $confirmedAt
+    ): void {
+        $name = trim($name);
+        $email = trim($email);
+        if ($name === '' && $email === '') {
+            return;
+        }
+
+        $dedupeKey = $bookingId . '|' . strtolower($name) . '|' . strtolower($email) . '|' . strtolower($role);
+        if (isset($targetKeys[$dedupeKey])) {
+            return;
+        }
+        $targetKeys[$dedupeKey] = true;
+
+        $targetRows[] = [
+            'booking_id' => $bookingId,
+            'role' => $role,
+            'name' => $name,
+            'email' => $email,
+            'participants' => $participants,
+            'booking_type' => $participants <= 1 ? 'Einzelbuchung' : 'Gruppenbuchung',
+            'booking_mode' => $bookingMode,
+            'confirmed_at' => $confirmedAt,
+        ];
+    };
+
+    while ($booking = $bookingRes->fetchArray(SQLITE3_ASSOC)) {
+        $bookingId = (int) ($booking['id'] ?? 0);
+        $participants = max(1, (int) ($booking['participants'] ?? 1));
+        $bookingMode = (string) ($booking['booking_mode'] ?? 'group');
+        $confirmedAt = trim((string) ($booking['confirmed_at'] ?? $booking['created_at'] ?? ''));
+
+        $appendRow(
+            $rows,
+            $rowKeys,
+            $bookingId,
+            'Buchende Person',
+            (string) ($booking['name'] ?? ''),
+            (string) ($booking['email'] ?? ''),
+            $participants,
+            $bookingMode,
+            $confirmedAt
+        );
+
+        $participantStmt->bindValue(':bid', $bookingId, SQLITE3_INTEGER);
+        $pRes = $participantStmt->execute();
+        while ($participant = $pRes->fetchArray(SQLITE3_ASSOC)) {
+            $appendRow(
+                $rows,
+                $rowKeys,
+                $bookingId,
+                'Teilnehmer:in',
+                (string) ($participant['name'] ?? ''),
+                (string) ($participant['email'] ?? ''),
+                $participants,
+                $bookingMode,
+                $confirmedAt
+            );
+        }
+    }
+
+    $slugPart = trim((string) ($workshop['slug'] ?? ''));
+    if ($slugPart === '') {
+        $slugPart = preg_replace('/[^a-z0-9]+/i', '-', strtolower((string) ($workshop['title'] ?? 'workshop')));
+    }
+    $slugPart = trim((string) $slugPart, '-');
+    if ($slugPart === '') {
+        $slugPart = 'workshop';
+    }
+
+    $filename = 'teilnehmerliste-' . $slugPart . '-' . date('Ymd-His') . '.xls';
+    $tableCell = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0, no-cache, no-store, must-revalidate');
+    header('Pragma: public');
+
+    echo "\xEF\xBB\xBF";
+    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>';
+    echo '<table border="1" cellspacing="0" cellpadding="6">';
+    echo '<tr>';
+    echo '<th>Workshop</th>';
+    echo '<th>Buchungs-ID</th>';
+    echo '<th>Rolle</th>';
+    echo '<th>Name</th>';
+    echo '<th>E-Mail</th>';
+    echo '<th>Buchungsart</th>';
+    echo '<th>Teilnehmer laut Buchung</th>';
+    echo '<th>Bestaetigt am</th>';
+    echo '</tr>';
+
+    if (empty($rows)) {
+        echo '<tr>';
+        echo '<td>' . $tableCell((string) ($workshop['title'] ?? '')) . '</td>';
+        echo '<td></td><td></td><td></td><td></td><td></td><td></td>';
+        echo '<td>Keine bestaetigten Buchungen vorhanden.</td>';
+        echo '</tr>';
+    } else {
+        foreach ($rows as $row) {
+            echo '<tr>';
+            echo '<td>' . $tableCell((string) ($workshop['title'] ?? '')) . '</td>';
+            echo '<td>' . $tableCell((string) $row['booking_id']) . '</td>';
+            echo '<td>' . $tableCell((string) $row['role']) . '</td>';
+            echo '<td>' . $tableCell((string) $row['name']) . '</td>';
+            echo '<td>' . $tableCell((string) $row['email']) . '</td>';
+            echo '<td>' . $tableCell((string) $row['booking_type']) . '</td>';
+            echo '<td>' . $tableCell((string) $row['participants']) . '</td>';
+            echo '<td>' . $tableCell((string) $row['confirmed_at']) . '</td>';
+            echo '</tr>';
+        }
+    }
+
+    echo '</table></body></html>';
+    exit;
+}
+
 
 // -- Handle actions ----------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
@@ -496,9 +649,167 @@ if ($workshop) {
                 flex: 1;
             }
         }
+
+
+        .workshop-actions {
+            padding: 1rem;
+            display: grid;
+            gap: 1rem;
+        }
+        .workshop-actions-copy {
+            min-width: 0;
+            flex: 1;
+        }
+        .workshop-actions-note {
+            line-height: 1.4;
+        }
+        .workshop-actions-buttons {
+            display: grid;
+            width: 100%;
+            grid-template-columns: repeat(3, minmax(170px, 1fr));
+            gap: 0.65rem;
+        }
+        .workshop-action-btn {
+            width: 100%;
+            min-height: 78px;
+            justify-content: flex-start;
+            align-items: flex-start;
+            text-align: left;
+            padding: 0.8rem 0.9rem;
+            gap: 0.65rem;
+            background: var(--surface-soft);
+            color: var(--text);
+            border-color: var(--border);
+        }
+        .workshop-action-btn:hover {
+            transform: translateY(-1px);
+        }
+        .workshop-action-btn.action-rechnung {
+            border-color: rgba(46, 204, 113, 0.35);
+        }
+        .workshop-action-btn.action-email {
+            border-color: rgba(245, 166, 35, 0.38);
+        }
+        .workshop-action-btn.action-export {
+            border-color: rgba(52, 152, 219, 0.38);
+        }
+        .workshop-action-icon {
+            width: 26px;
+            height: 26px;
+            border-radius: 999px;
+            border: 1px solid currentColor;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.68rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .workshop-action-copy {
+            min-width: 0;
+        }
+        .workshop-action-label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text);
+            line-height: 1.2;
+            margin-bottom: 0.18rem;
+        }
+        .workshop-action-sub {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--dim);
+            line-height: 1.35;
+        }
+        .modal-btn-row {
+            display: flex;
+            gap: 0.75rem;
+        }
+        .modal-btn-row .btn-submit {
+            flex: 1;
+        }
+        .rechnung-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid var(--border);
+            padding-top: 1.1rem;
+            margin-top: 0.6rem;
+            gap: 0.65rem;
+            flex-wrap: wrap;
+        }
+        .rechnung-toolbar-actions {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
+        .rechnung-toolbar-actions .btn-admin {
+            min-height: 30px;
+            padding-inline: 10px;
+            font-size: 0.72rem;
+        }
+        .admin-table-scroll {
+            margin-bottom: 0;
+        }
+
+        @media (max-width: 980px) {
+            .workshop-actions-buttons {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 700px) {
+            .email-modal-overlay {
+                padding: 0.55rem;
+            }
+            .email-modal,
+            .rechnung-modal {
+                padding: 1.1rem;
+                max-height: calc(100vh - 1.1rem);
+            }
+            .rechnung-grid-2 {
+                grid-template-columns: 1fr;
+            }
+            .rechnung-card-header {
+                padding: 0.6rem 0.75rem;
+            }
+            .rechnung-card-summary {
+                white-space: normal;
+                line-height: 1.35;
+            }
+            .booking-filter-form .btn-admin {
+                width: 100%;
+            }
+            .workshop-actions-buttons {
+                width: 100%;
+                grid-template-columns: 1fr;
+            }
+            .workshop-action-btn {
+                min-height: 72px;
+            }
+            .modal-btn-row {
+                flex-direction: column;
+            }
+            .modal-btn-row .btn-admin,
+            .modal-btn-row .btn-submit {
+                width: 100%;
+            }
+            .rechnung-toolbar {
+                align-items: stretch;
+            }
+            .rechnung-toolbar-actions {
+                width: 100%;
+            }
+            .rechnung-toolbar-actions .btn-admin {
+                flex: 1;
+            }
+        }
+
     </style>
 </head>
-<body>
+<body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 <div class="admin-layout">
 
@@ -534,12 +845,31 @@ if ($workshop) {
             <div class="workshop-actions-copy">
                 <div class="workshop-actions-title">Workshop-Aktionen</div>
                 <div class="workshop-actions-note">
-                    Rechnungserstellung und Sammelmail werden als Pop-up geöffnet und bleiben damit kompakt.
+                    Alle drei Aktionen arbeiten mit bestaetigten Buchungen dieses Workshops und sind bewusst getrennt.
                 </div>
             </div>
             <div class="workshop-actions-buttons">
-                <button type="button" class="btn-admin btn-success" onclick="openRechnungModal()">Rechnung senden</button>
-                <button type="button" class="btn-admin" onclick="openBulkEmailModal()">E-Mail an alle</button>
+                <button type="button" class="btn-admin workshop-action-btn action-rechnung" onclick="openRechnungModal()">
+                    <span class="workshop-action-icon">EUR</span>
+                    <span class="workshop-action-copy">
+                        <span class="workshop-action-label">Rechnungen senden</span>
+                        <span class="workshop-action-sub">Pro Buchung eine individuelle Rechnung verschicken.</span>
+                    </span>
+                </button>
+                <button type="button" class="btn-admin workshop-action-btn action-email" onclick="openBulkEmailModal()">
+                    <span class="workshop-action-icon">@</span>
+                    <span class="workshop-action-copy">
+                        <span class="workshop-action-label">E-Mail an alle</span>
+                        <span class="workshop-action-sub">Eine Sammelnachricht an alle bestaetigten Kontakte senden.</span>
+                    </span>
+                </button>
+                <a href="bookings.php?workshop_id=<?= (int) $workshop['id'] ?>&amp;export_participants=1" class="btn-admin workshop-action-btn action-export">
+                    <span class="workshop-action-icon">XLS</span>
+                    <span class="workshop-action-copy">
+                        <span class="workshop-action-label">Teilnehmerliste exportieren</span>
+                        <span class="workshop-action-sub">Namen und E-Mail-Adressen als Excel-Datei herunterladen.</span>
+                    </span>
+                </a>
             </div>
         </div>
         <?php endif; ?>
@@ -548,7 +878,7 @@ if ($workshop) {
             <p style="color:var(--muted);">Keine Buchungen gefunden.</p>
         <?php else: ?>
             <p style="color:var(--dim);font-size:0.85rem;margin-bottom:1rem;"><?= count($bookings) ?> Buchung(en)</p>
-            <div style="overflow-x:auto;">
+            <div class="admin-table-scroll">
             <table class="admin-table">
                 <thead>
                     <tr>
@@ -671,8 +1001,8 @@ if ($workshop) {
                 <label for="email_message">Nachricht</label>
                 <textarea id="email_message" name="email_message" rows="6" required placeholder="Ihre Nachricht..."></textarea>
             </div>
-            <div style="display:flex;gap:0.75rem;">
-                <button type="submit" class="btn-submit" style="flex:1;">Senden</button>
+            <div class="modal-btn-row">
+                <button type="submit" class="btn-submit">Senden</button>
                 <button type="button" class="btn-admin" onclick="closeEmailModal()">Abbrechen</button>
             </div>
         </form>
@@ -711,8 +1041,8 @@ if ($workshop) {
                 <label for="bulk_message">Nachricht</label>
                 <textarea id="bulk_message" name="bulk_message" rows="6" required placeholder="Ihre Nachricht an alle Teilnehmer:innen..."></textarea>
             </div>
-            <div style="display:flex;gap:0.75rem;">
-                <button type="submit" class="btn-submit" style="flex:1;"
+            <div class="modal-btn-row">
+                <button type="submit" class="btn-submit"
                         onclick='return confirm(<?= json_for_html("E-Mail an alle bestätigten Teilnehmer:innen von \\\"{$workshop['title']}\\\" senden?") ?>)'>
                     An alle senden &rarr;
                 </button>
@@ -805,21 +1135,18 @@ if ($workshop) {
         </div>
 
         <!-- -- Pro-Buchung-Karten ---------------------------------------- -->
-        <div style="display:flex;align-items:center;justify-content:space-between;
-                    border-top:1px solid var(--border);padding-top:1.1rem;margin-top:0.6rem;">
+        <div class="rechnung-toolbar">
             <div class="rechnung-section-label" style="margin:0;">
                 Empfänger
                 <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0;">
                     (<?= count($confirmedBookingsForRechnung) ?> bestätigt)
                 </span>
             </div>
-            <div style="display:flex;gap:0.4rem;">
-                <button type="button" onclick="rcSelectAll(true)"
-                        style="font-size:0.72rem;padding:3px 10px;background:var(--surface-soft);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;">
+            <div class="rechnung-toolbar-actions">
+                <button type="button" class="btn-admin" onclick="rcSelectAll(true)">
                     Alle
                 </button>
-                <button type="button" onclick="rcSelectAll(false)"
-                        style="font-size:0.72rem;padding:3px 10px;background:var(--surface-soft);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;">
+                <button type="button" class="btn-admin" onclick="rcSelectAll(false)">
                     Keine
                 </button>
             </div>
@@ -898,8 +1225,8 @@ if ($workshop) {
         </div>
         <?php endforeach; ?>
 
-        <div style="display:flex;gap:0.75rem;margin-top:1.25rem;">
-            <button type="submit" class="btn-submit" style="flex:1;">
+        <div class="modal-btn-row" style="margin-top:1.25rem;">
+            <button type="submit" class="btn-submit">
                 Rechnungen senden &rarr;
             </button>
             <button type="button" class="btn-admin" onclick="closeRechnungModal()">Abbrechen</button>
@@ -1001,3 +1328,4 @@ document.addEventListener('keydown', function(e) {
 
 </body>
 </html>
+

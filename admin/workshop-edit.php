@@ -217,7 +217,7 @@ function to_datetime_local(string $val): string {
         }
     </style>
 </head>
-<body>
+<body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
 <div class="admin-layout">
 

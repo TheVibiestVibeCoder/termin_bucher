@@ -177,14 +177,19 @@ function render_booking_email_shell(string $innerHtml): string {
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;background:#060606;">
             <tr>
                 <td align="center" style="padding:14px 10px;">
-                    <div style="font-family:Arial,sans-serif;max-width:640px;width:100%;margin:0 auto;background:#0d0d0d;color:#ffffff;padding:24px 16px;border-radius:10px;line-height:1.6;overflow-wrap:anywhere;word-wrap:break-word;word-break:break-word;">
-                        ' . $innerHtml . '
-                    </div>
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;max-width:640px;margin:0 auto;">
+                        <tr>
+                            <td style="font-family:Arial,sans-serif;background:#0d0d0d;color:#ffffff;padding:24px 16px;border-radius:10px;line-height:1.6;overflow-wrap:anywhere;word-wrap:break-word;word-break:break-word;box-sizing:border-box;width:100%;max-width:100%;">
+                                ' . $innerHtml . '
+                            </td>
+                        </tr>
+                    </table>
                 </td>
             </tr>
         </table>
     </div>';
 }
+
 
 /**
  * Build one details row for email tables.
@@ -274,10 +279,8 @@ function render_booking_details_block(array $booking = [], array $workshop = [])
     }
 
     $rows[] = email_details_row('Teilnehmer:innen', (string) $participants);
-    $rows[] = email_details_row(
-        'Buchungsart',
-        $bookingMode === 'individual' ? 'Einzelanmeldung' : 'Gruppenanmeldung'
-    );
+    $bookingTypeLabel = $participants <= 1 ? 'Einzelbuchung' : 'Gruppenbuchung';
+    $rows[] = email_details_row('Buchungsart', $bookingTypeLabel);
 
     if ($pricePerPersonBooked > 0) {
         $rows[] = email_details_row('Preis pro Person (netto)', e(format_price($pricePerPersonBooked, $currency)));
@@ -329,11 +332,11 @@ function render_booking_details_block(array $booking = [], array $workshop = [])
     }
 
     return '
-        <div style="margin:22px 0;padding:15px 14px;border:1px solid #222;border-radius:8px;background:rgba(255,255,255,0.02);">
+        <div style="margin:22px 0;padding:15px 14px;border:1px solid #222;border-radius:8px;background:rgba(255,255,255,0.02);box-sizing:border-box;max-width:100%;">
             <div style="font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#777;margin-bottom:8px;">
                 Buchungsdetails
             </div>
-            <table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.5;">
+            <table role="presentation" style="width:100%;max-width:100%;table-layout:fixed;border-collapse:collapse;font-size:14px;line-height:1.5;">
                 ' . implode('', $rows) . '
             </table>
         </div>';
@@ -1190,7 +1193,7 @@ function send_rechnung_email(string $to, array $d): bool {
     }
 
     $html = '
-<div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;padding:50px 40px;color:#000;background:#fff;line-height:1.65;font-size:14px;">
+<div style="font-family:Arial,sans-serif;max-width:680px;width:100%;box-sizing:border-box;margin:0 auto;padding:32px 22px;color:#000;background:#fff;line-height:1.65;font-size:14px;overflow-wrap:anywhere;word-break:break-word;">
 
   <div style="margin-bottom:48px;">
     <strong>' . e((string) ($d['empfaenger'] ?? '')) . '</strong><br>
