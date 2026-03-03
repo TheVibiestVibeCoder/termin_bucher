@@ -2176,3 +2176,245 @@ footer a:hover { color: var(--text); }
         grid-template-columns: 1fr;
     }
 }
+
+/* --- WORKSHOP GROUP SECTIONS --- */
+.workshop-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+.workshop-group-section {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--surface-soft) 0%, var(--surface) 100%);
+    padding: clamp(1rem, 2.4vw, 1.4rem);
+}
+.workshop-group-section[hidden] {
+    display: none !important;
+}
+.workshop-group-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 1.15rem;
+    padding-bottom: 0.95rem;
+    border-bottom: 1px solid var(--border);
+}
+.workshop-group-title {
+    font-family: var(--font-h);
+    font-size: clamp(1.3rem, 2.1vw, 1.8rem);
+    font-weight: 400;
+    line-height: 1.18;
+}
+.workshop-group-sub {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.55;
+    max-width: 68ch;
+}
+.workshop-group-grid {
+    gap: 1.35rem;
+}
+
+/* --- ADMIN GROUP MANAGEMENT --- */
+.group-admin-create {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1.25rem;
+}
+.group-admin-create h2 {
+    font-family: var(--font-h);
+    font-size: 1.35rem;
+    font-weight: 400;
+    margin-bottom: 0.35rem;
+}
+.group-admin-create p {
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin-bottom: 1rem;
+}
+.group-admin-create-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+.group-admin-grid {
+    display: grid;
+    gap: 0.85rem;
+}
+.group-admin-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.group-admin-checkbox-wrap {
+    display: flex;
+    align-items: flex-end;
+}
+.group-admin-checkbox-wrap label {
+    display: inline-flex;
+    gap: 0.55rem;
+    align-items: center;
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin-bottom: 0.4rem;
+}
+.group-admin-checkbox-wrap input[type="checkbox"] {
+    width: auto;
+}
+.group-admin-empty {
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+.group-admin-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.group-admin-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+}
+.group-admin-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.9rem;
+}
+.group-admin-card-head h2 {
+    font-family: var(--font-h);
+    font-size: 1.25rem;
+    font-weight: 400;
+}
+.group-admin-meta-form,
+.group-admin-order-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+.group-admin-inline-actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+.group-admin-delete-form {
+    margin-top: 0.65rem;
+}
+.group-admin-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 1rem 0;
+}
+.group-admin-assignment-head {
+    margin-bottom: 0.7rem;
+}
+.group-admin-assignment-head h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+}
+.group-admin-assignment-head p {
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+.group-admin-add-form {
+    margin-bottom: 0.8rem;
+}
+.group-admin-add-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.55rem;
+    align-items: center;
+}
+.group-admin-add-row select {
+    width: 100%;
+}
+.group-assignment-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.group-assignment-empty {
+    color: var(--dim);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 0.7rem;
+    font-size: 0.85rem;
+}
+.group-assignment-item {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto auto;
+    gap: 0.55rem;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem 0.55rem;
+    background: var(--surface-soft);
+}
+.group-assignment-item.dragging {
+    opacity: 0.55;
+}
+.group-assignment-drag {
+    cursor: grab;
+    color: var(--dim);
+    text-align: center;
+    font-size: 0.95rem;
+    line-height: 1;
+    user-select: none;
+}
+.group-assignment-title {
+    color: var(--text);
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+}
+.group-assignment-buttons {
+    display: inline-flex;
+    gap: 0.3rem;
+}
+.group-assignment-buttons .btn-admin {
+    width: 34px;
+    min-width: 34px;
+    padding: 6px;
+}
+
+@media (max-width: 900px) {
+    .group-admin-grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .group-assignment-item {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.45rem;
+    }
+    .group-assignment-drag {
+        display: none;
+    }
+    .group-assignment-buttons {
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 640px) {
+    .workshop-group-section {
+        padding: 0.85rem;
+    }
+    .workshop-group-head {
+        margin-bottom: 0.9rem;
+        padding-bottom: 0.75rem;
+    }
+    .group-admin-grid-4,
+    .group-admin-add-row {
+        grid-template-columns: 1fr;
+    }
+    .group-admin-inline-actions .btn-admin,
+    .group-admin-delete-form .btn-admin,
+    .group-admin-add-row .btn-admin {
+        width: 100%;
+    }
+}

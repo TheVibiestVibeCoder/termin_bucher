@@ -1,18 +1,28 @@
 <?php
 require __DIR__ . '/includes/config.php';
 
+$bookedByWorkshop = [];
+$bookedRes = $db->query('SELECT workshop_id, COALESCE(SUM(participants), 0) AS booked FROM bookings WHERE confirmed = 1 GROUP BY workshop_id');
+while ($row = $bookedRes->fetchArray(SQLITE3_ASSOC)) {
+    $bookedByWorkshop[(int) $row['workshop_id']] = (int) $row['booked'];
+}
+
 $result = $db->query('SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order ASC, id ASC');
 $workshops = [];
+$workshopsById = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-    $row['booked'] = count_confirmed_bookings($db, $row['id']);
+    $row['booked'] = $bookedByWorkshop[(int) $row['id']] ?? 0;
     $workshops[] = $row;
+    $workshopsById[(int) $row['id']] = $row;
 }
 
 $allAudiences = [];
 foreach ($workshops as $w) {
     foreach (explode(',', $w['audiences']) as $a) {
         $a = trim($a);
-        if ($a) $allAudiences[$a] = true;
+        if ($a !== '') {
+            $allAudiences[$a] = true;
+        }
     }
 }
 $allAudiences = array_keys($allAudiences);
@@ -23,6 +33,67 @@ $audienceLabels = [
     'verwaltung'  => 'Verwaltung',
     'bildung'     => 'Bildung',
 ];
+
+$groupRows = [];
+$groupRes = $db->query('SELECT id, name, description, sort_order FROM workshop_groups WHERE active = 1 ORDER BY sort_order ASC, id ASC');
+while ($group = $groupRes->fetchArray(SQLITE3_ASSOC)) {
+    $groupRows[(int) $group['id']] = [
+        'id' => (int) $group['id'],
+        'name' => (string) $group['name'],
+        'description' => (string) ($group['description'] ?? ''),
+        'workshops' => [],
+    ];
+}
+
+$assignedWorkshopIds = [];
+if (!empty($groupRows)) {
+    $mapRes = $db->query('SELECT m.group_id, m.workshop_id FROM workshop_group_workshops m JOIN workshop_groups g ON g.id = m.group_id AND g.active = 1 JOIN workshops w ON w.id = m.workshop_id AND w.active = 1 ORDER BY g.sort_order ASC, g.id ASC, m.sort_order ASC, w.sort_order ASC, w.id ASC');
+    while ($map = $mapRes->fetchArray(SQLITE3_ASSOC)) {
+        $groupId = (int) ($map['group_id'] ?? 0);
+        $workshopId = (int) ($map['workshop_id'] ?? 0);
+        if (!isset($groupRows[$groupId], $workshopsById[$workshopId])) {
+            continue;
+        }
+        $groupRows[$groupId]['workshops'][] = $workshopsById[$workshopId];
+        $assignedWorkshopIds[$workshopId] = true;
+    }
+}
+
+$workshopSections = [];
+foreach ($groupRows as $group) {
+    if (empty($group['workshops'])) {
+        continue;
+    }
+    $workshopSections[] = [
+        'key' => 'group-' . $group['id'],
+        'title' => $group['name'],
+        'description' => $group['description'],
+        'workshops' => $group['workshops'],
+    ];
+}
+
+$ungroupedWorkshops = [];
+foreach ($workshops as $workshopRow) {
+    if (!isset($assignedWorkshopIds[(int) $workshopRow['id']])) {
+        $ungroupedWorkshops[] = $workshopRow;
+    }
+}
+
+if (empty($workshopSections)) {
+    $workshopSections[] = [
+        'key' => 'all-workshops',
+        'title' => 'Alle Workshops',
+        'description' => '',
+        'workshops' => $workshops,
+    ];
+} elseif (!empty($ungroupedWorkshops)) {
+    $workshopSections[] = [
+        'key' => 'ungrouped-workshops',
+        'title' => 'Weitere Workshops',
+        'description' => '',
+        'workshops' => $ungroupedWorkshops,
+    ];
+}
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -41,7 +112,7 @@ $audienceLabels = [
         } catch (e) {}
     })();
     </script>
-    <meta name="description" content="Praktische Workshops zu Desinformation, FIMI-Abwehr und Medienkompetenz – für Unternehmen, NGOs und öffentliche Einrichtungen.">
+    <meta name="description" content="Praktische Workshops zu Desinformation, FIMI-Abwehr und Medienkompetenz &ndash; f&uuml;r Unternehmen, NGOs und &ouml;ffentliche Einrichtungen.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -53,11 +124,11 @@ $audienceLabels = [
 
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
-        <a href="https://workshops.disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting Workshops – Startseite">
+        <a href="https://workshops.disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting Workshops &ndash; Startseite">
             <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/02/Gemini_Generated_Image_vjal0gvjal0gvjal-scaled.png"
                  alt="Disinfo Consulting" height="30">
         </a>
-        <button class="nav-burger" aria-label="Navigation öffnen" aria-expanded="false" id="burger">
+        <button class="nav-burger" aria-label="Navigation &ouml;ffnen" aria-expanded="false" id="burger">
             <span></span><span></span><span></span>
         </button>
         <ul class="nav-links" id="nav-links" role="list">
@@ -71,10 +142,10 @@ $audienceLabels = [
     <div class="hero-noise"></div>
     <div class="hero-spotlight"></div>
     <div class="hero-content">
-        <span class="hero-eyebrow">Disinfo Consulting – Workshops</span>
-        <h1 class="hero-h1">Kompetenz, die schützt.<br>Wissen, das wirkt.</h1>
+        <span class="hero-eyebrow">Disinfo Consulting &ndash; Workshops</span>
+        <h1 class="hero-h1">Kompetenz, die sch&uuml;tzt.<br>Wissen, das wirkt.</h1>
         <p class="hero-p">
-            Praktische Workshops zur Abwehr von Informationsmanipulation – maßgeschneidert für Unternehmen, NGOs und öffentliche Einrichtungen. Von Experten mit echter operativer Erfahrung.
+            Praktische Workshops zur Abwehr von Informationsmanipulation &ndash; ma&szlig;geschneidert f&uuml;r Unternehmen, NGOs und &ouml;ffentliche Einrichtungen. Von Experten mit echter operativer Erfahrung.
         </p>
     </div>
 </section>
@@ -83,8 +154,8 @@ $audienceLabels = [
 <section id="workshops" class="section">
     <div class="container">
         <span class="section-eyebrow fade-in">Unser Angebot</span>
-        <h2 class="section-title fade-in">Wählen Sie Ihr Format.</h2>
-        <p class="section-sub fade-in">Alle Workshops sind auf Deutsch oder Englisch buchbar und können auf Ihre Organisation angepasst werden.</p>
+        <h2 class="section-title fade-in">W&auml;hlen Sie Ihr Format.</h2>
+        <p class="section-sub fade-in">Alle Workshops sind auf Deutsch oder Englisch buchbar und k&ouml;nnen auf Ihre Organisation angepasst werden.</p>
 
         <div class="filter-row fade-in" role="group" aria-label="Workshop-Filter">
             <button class="filter-btn active" data-filter="all">Alle</button>
@@ -93,155 +164,169 @@ $audienceLabels = [
             <?php endforeach; ?>
         </div>
 
-        <div class="workshops-grid" id="workshopGrid">
-            <?php foreach ($workshops as $i => $w):
-                $booked       = $w['booked'];
-                $capacity     = (int) $w['capacity'];
-                $spotsLeft    = $capacity > 0 ? max(0, $capacity - $booked) : null;
-                $fillPct      = ($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0;
-                $fillClass    = ($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : '');
-                $audLabels    = array_filter(array_map('trim', explode(',', $w['audience_labels'])));
-                $isOpen       = ($w['workshop_type'] ?? 'auf_anfrage') === 'open';
-                $price        = (float) ($w['price_netto'] ?? 0);
-                $currency     = $w['price_currency'] ?? 'EUR';
-                $minP         = (int) ($w['min_participants'] ?? 0);
-                $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
-                $belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
-                $aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
-                $isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
-                $eventDate    = $w['event_date']     ?? '';
-                $eventDateEnd = $w['event_date_end'] ?? '';
-                $location     = $w['location']       ?? '';
-            ?>
-            <article class="workshop-card <?= $w['featured'] ? 'featured' : '' ?> fade-in"
-                     data-audiences="<?= e($w['audiences']) ?>"
-                     style="transition-delay:<?= $i * 0.1 ?>s">
-                <?php if ($w['featured']): ?>
-                    <div class="featured-badge">Empfohlen</div>
-                <?php endif; ?>
-
-                <div class="badge-row badge-row-card">
-                    <?php if ($isOpen): ?>
-                        <?php if ($isGuaranteed): ?>
-                            <span class="type-badge type-badge-confirmed"><span class="badge-dot"></span>Findet statt</span>
-                        <?php elseif ($minP > 0): ?>
-                            <span class="type-badge type-badge-open-pending"><span class="badge-dot"></span>Mindestanzahl offen</span>
-                        <?php else: ?>
-                            <span class="type-badge type-badge-open"><span class="badge-dot"></span>Anmeldung offen</span>
+        <div class="workshop-groups" id="workshopGroups">
+            <?php $cardDelayIndex = 0; ?>
+            <?php foreach ($workshopSections as $section): ?>
+                <section class="workshop-group-section fade-in" data-group-section="<?= e($section['key']) ?>">
+                    <header class="workshop-group-head">
+                        <h3 class="workshop-group-title"><?= e($section['title']) ?></h3>
+                        <?php if (trim((string) ($section['description'] ?? '')) !== ''): ?>
+                            <p class="workshop-group-sub"><?= e((string) $section['description']) ?></p>
                         <?php endif; ?>
-                    <?php else: ?>
-                        <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
-                    <?php endif; ?>
-                    <div class="card-tag"><span class="card-tag-dot"></span><?= e($w['tag_label']) ?></div>
-                </div>
+                    </header>
 
-                <h3 class="card-h3"><?= e($w['title']) ?></h3>
-                <?php
-                    $cardDesc = trim($w['description_short'] ?? '');
-                    if (!$cardDesc) {
-                        $cardDesc = mb_substr(strip_tags($w['description']), 0, 155);
-                        if (mb_strlen($w['description']) > 155) $cardDesc .= '…';
-                    }
-                ?>
-                <p class="card-main-text"><?= e($cardDesc) ?></p>
+                    <div class="workshops-grid workshop-group-grid">
+                        <?php foreach ($section['workshops'] as $w):
+                            $booked       = $w['booked'];
+                            $capacity     = (int) $w['capacity'];
+                            $spotsLeft    = $capacity > 0 ? max(0, $capacity - $booked) : null;
+                            $fillPct      = ($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0;
+                            $fillClass    = ($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : '');
+                            $audLabels    = array_filter(array_map('trim', explode(',', $w['audience_labels'])));
+                            $isOpen       = ($w['workshop_type'] ?? 'auf_anfrage') === 'open';
+                            $price        = (float) ($w['price_netto'] ?? 0);
+                            $currency     = $w['price_currency'] ?? 'EUR';
+                            $minP         = (int) ($w['min_participants'] ?? 0);
+                            $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
+                            $belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
+                            $aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
+                            $isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
+                            $eventDate    = $w['event_date']     ?? '';
+                            $eventDateEnd = $w['event_date_end'] ?? '';
+                            $location     = $w['location']       ?? '';
+                        ?>
+                        <article class="workshop-card <?= $w['featured'] ? 'featured' : '' ?> fade-in"
+                                 data-audiences="<?= e($w['audiences']) ?>"
+                                 style="transition-delay:<?= ($cardDelayIndex++) * 0.08 ?>s">
+                            <?php if ($w['featured']): ?>
+                                <div class="featured-badge">Empfohlen</div>
+                            <?php endif; ?>
 
-                <?php if ($isOpen && $eventDate): ?>
-                <div class="event-details-panel">
-                    <div class="event-details-row">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        <span><?= format_event_date($eventDate, $eventDateEnd) ?></span>
+                            <div class="badge-row badge-row-card">
+                                <?php if ($isOpen): ?>
+                                    <?php if ($isGuaranteed): ?>
+                                        <span class="type-badge type-badge-confirmed"><span class="badge-dot"></span>Findet statt</span>
+                                    <?php elseif ($minP > 0): ?>
+                                        <span class="type-badge type-badge-open-pending"><span class="badge-dot"></span>Mindestanzahl offen</span>
+                                    <?php else: ?>
+                                        <span class="type-badge type-badge-open"><span class="badge-dot"></span>Anmeldung offen</span>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
+                                <?php endif; ?>
+                                <div class="card-tag"><span class="card-tag-dot"></span><?= e($w['tag_label']) ?></div>
+                            </div>
+
+                            <h3 class="card-h3"><?= e($w['title']) ?></h3>
+                            <?php
+                                $cardDesc = trim($w['description_short'] ?? '');
+                                if (!$cardDesc) {
+                                    $cardDesc = mb_substr(strip_tags($w['description']), 0, 155);
+                                    if (mb_strlen($w['description']) > 155) $cardDesc .= '...';
+                                }
+                            ?>
+                            <p class="card-main-text"><?= e($cardDesc) ?></p>
+
+                            <?php if ($isOpen && $eventDate): ?>
+                            <div class="event-details-panel">
+                                <div class="event-details-row">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                    <span><?= format_event_date($eventDate, $eventDateEnd) ?></span>
+                                </div>
+                                <?php if ($location): ?>
+                                <div class="event-details-row">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                    <span><?= e($location) ?></span>
+                                </div>
+                                <?php endif; ?>
+                                <div class="event-details-price-row">
+                                    <?php if ($price > 0): ?>
+                                        <span class="event-price-main">
+                                            <?= e(format_price($price, $currency)) ?>
+                                            <span class="event-price-label">&nbsp;/ Person &middot; netto</span>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="event-price-main event-price-onrequest">Preis auf Anfrage</span>
+                                    <?php endif; ?>
+                                    <?php if ($minP > 0): ?>
+                                        <span class="min-p-badge">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                                            min. <?= $minP ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <?php else: ?>
+                            <?php if ($price > 0): ?>
+                                <div class="price-pill">
+                                    <span><?= e(format_price($price, $currency)) ?></span>
+                                    <span class="price-label">/ Person &middot; netto</span>
+                                </div>
+                            <?php else: ?>
+                                <div class="price-pill price-pill-free">Preis auf Anfrage</div>
+                            <?php endif; ?>
+                            <?php endif; ?>
+
+                            <div class="card-meta">
+                                <?php if ($isOpen): ?>
+                                <span class="meta-pill">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
+                                    Fester Termin
+                                </span>
+                                <?php endif; ?>
+                                <?php if ($capacity > 0): ?>
+                                <span class="meta-pill">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                                    <?= $capacity ?> Pl&auml;tze
+                                </span>
+                                <?php endif; ?>
+                                <span class="meta-pill">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                    <?= e($w['format']) ?>
+                                </span>
+                            </div>
+
+                            <?php if ($minP > 0): ?>
+                            <div class="min-participants-note">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                <?php if ($isOpen): ?>
+                                    <?= $isGuaranteed ? 'Mindestanzahl erreicht: findet statt.' : 'Findet statt ab ' . $minP . ' Teilnehmer:innen.' ?>
+                                <?php else: ?>
+                                    Mindestens <?= $minP ?> Teilnehmende erforderlich
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
+
+                            <?php if ($capacity > 0): ?>
+                            <div class="seats-indicator <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
+                                 style="margin-top:1rem;"
+                                 <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
+                                <div class="seats-bar">
+                                    <div class="seats-bar-track">
+                                        <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                                    </div>
+                                    <?php if ($minP > 0 && $capacity > 0): ?>
+                                    <div class="seats-bar-marker" style="left:<?= $minPct ?>%">
+                                        <span class="seats-bar-marker-label">min <?= $minP ?></span>
+                                    </div>
+                                    <?php endif; ?>
+                                </div>
+                                <span class="seats-text"><?= $spotsLeft ?> / <?= $capacity ?> frei</span>
+                            </div>
+                            <?php endif; ?>
+
+                            <div class="card-divider" style="margin-top:1.25rem;"></div>
+                            <p class="card-audience">Zielgruppen</p>
+                            <div class="card-audience-tags">
+                                <?php foreach ($audLabels as $al): ?>
+                                    <span class="aud-tag"><?= e($al) ?></span>
+                                <?php endforeach; ?>
+                            </div>
+                            <a href="<?= e(app_url('workshop', ['slug' => (string) $w['slug']])) ?>" class="btn-book">Details &amp; Buchen &rarr;</a>
+                        </article>
+                        <?php endforeach; ?>
                     </div>
-                    <?php if ($location): ?>
-                    <div class="event-details-row">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        <span><?= e($location) ?></span>
-                    </div>
-                    <?php endif; ?>
-                    <div class="event-details-price-row">
-                        <?php if ($price > 0): ?>
-                            <span class="event-price-main">
-                                <?= e(format_price($price, $currency)) ?>
-                                <span class="event-price-label">&nbsp;/ Person &middot; netto</span>
-                            </span>
-                        <?php else: ?>
-                            <span class="event-price-main event-price-onrequest">Preis auf Anfrage</span>
-                        <?php endif; ?>
-                        <?php if ($minP > 0): ?>
-                            <span class="min-p-badge">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                                min. <?= $minP ?>
-                            </span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <?php else: ?>
-                <?php if ($price > 0): ?>
-                    <div class="price-pill">
-                        <span><?= e(format_price($price, $currency)) ?></span>
-                        <span class="price-label">/ Person &middot; netto</span>
-                    </div>
-                <?php else: ?>
-                    <div class="price-pill price-pill-free">Preis auf Anfrage</div>
-                <?php endif; ?>
-                <?php endif; ?>
-
-                <div class="card-meta">
-                    <?php if ($isOpen): ?>
-                    <span class="meta-pill">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
-                        Fester Termin
-                    </span>
-                    <?php endif; ?>
-                    <?php if ($capacity > 0): ?>
-                    <span class="meta-pill">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                        <?= $capacity ?> Plätze
-                    </span>
-                    <?php endif; ?>
-                    <span class="meta-pill">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        <?= e($w['format']) ?>
-                    </span>
-                </div>
-
-                <?php if ($minP > 0): ?>
-                <div class="min-participants-note">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    <?php if ($isOpen): ?>
-                        <?= $isGuaranteed ? 'Mindestanzahl erreicht: findet statt.' : 'Findet statt ab ' . $minP . ' Teilnehmer:innen.' ?>
-                    <?php else: ?>
-                        Mindestens <?= $minP ?> Teilnehmende erforderlich
-                    <?php endif; ?>
-                </div>
-                <?php endif; ?>
-
-                <?php if ($capacity > 0): ?>
-                <div class="seats-indicator <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
-                     style="margin-top:1rem;"
-                     <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
-                    <div class="seats-bar">
-                        <div class="seats-bar-track">
-                            <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
-                        </div>
-                        <?php if ($minP > 0 && $capacity > 0): ?>
-                        <div class="seats-bar-marker" style="left:<?= $minPct ?>%">
-                            <span class="seats-bar-marker-label">min <?= $minP ?></span>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                    <span class="seats-text"><?= $spotsLeft ?> / <?= $capacity ?> frei</span>
-                </div>
-                <?php endif; ?>
-
-                <div class="card-divider" style="margin-top:1.25rem;"></div>
-                <p class="card-audience">Zielgruppen</p>
-                <div class="card-audience-tags">
-                    <?php foreach ($audLabels as $al): ?>
-                        <span class="aud-tag"><?= e($al) ?></span>
-                    <?php endforeach; ?>
-                </div>
-                <a href="<?= e(app_url('workshop', ['slug' => (string) $w['slug']])) ?>" class="btn-book">Details &amp; Buchen &rarr;</a>
-            </article>
+                </section>
             <?php endforeach; ?>
         </div>
     </div>
@@ -249,9 +334,9 @@ $audienceLabels = [
 
 <section id="cta-section">
     <div class="container">
-        <h2 class="cta-h2 fade-in">Bereit für den nächsten Schritt?</h2>
+        <h2 class="cta-h2 fade-in">Bereit f&uuml;r den n&auml;chsten Schritt?</h2>
         <p class="cta-sub fade-in" style="transition-delay:0.1s">
-            Kein Workshop passt exakt? Kontaktieren Sie uns für ein individuelles Konzept – wir entwickeln auch vollständig maßgeschneiderte Formate.
+            Kein Workshop passt exakt? Kontaktieren Sie uns f&uuml;r ein individuelles Konzept &ndash; wir entwickeln auch vollst&auml;ndig ma&szlig;geschneiderte Formate.
         </p>
         <div class="cta-btns fade-in" style="transition-delay:0.2s">
             <a href="<?= e(app_url('kontakt')) ?>" class="btn-primary">Kontakt aufnehmen</a>
@@ -283,20 +368,37 @@ const observer = new IntersectionObserver((entries) => {
 document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
 const filterBtns = document.querySelectorAll('.filter-btn');
-const cards = document.querySelectorAll('#workshopGrid .workshop-card');
+const cards = document.querySelectorAll('.workshop-group-section .workshop-card');
+const groupSections = document.querySelectorAll('[data-group-section]');
+
+const applyFilter = (filter) => {
+    cards.forEach(card => {
+        const audiences = (card.dataset.audiences || '')
+            .split(',')
+            .map(v => v.trim())
+            .filter(Boolean);
+        const show = filter === 'all' || audiences.includes(filter);
+        card.hidden = !show;
+    });
+
+    groupSections.forEach(section => {
+        const visibleCards = section.querySelectorAll('.workshop-card:not([hidden])').length;
+        section.hidden = visibleCards === 0;
+    });
+};
+
 filterBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         filterBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        const f = btn.dataset.filter;
-        cards.forEach(card => {
-            const show = f === 'all' || (card.dataset.audiences || '').includes(f);
-            card.style.display = show ? '' : 'none';
-        });
+        applyFilter(btn.dataset.filter || 'all');
     });
 });
+
+applyFilter('all');
 </script>
 <script src="/assets/site-ui.js"></script>
 
 </body>
 </html>
+
