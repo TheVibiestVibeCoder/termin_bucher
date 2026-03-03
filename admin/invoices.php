@@ -53,7 +53,7 @@ if (!$defaultCircle) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
-    flash('error', 'Ungueltige Sitzung.');
+    flash('error', 'Ungültige Sitzung.');
     redirect_invoices($selectedWorkshopId, $selectedCircleId);
 }
 
@@ -106,11 +106,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reason = trim((string) ($_POST['adjust_reason'] ?? ''));
 
         if ($adjustCircleId <= 0) {
-            flash('error', 'Bitte einen Rechnungskreis waehlen.');
+            flash('error', 'Bitte einen Rechnungskreis wählen.');
             redirect_invoices($selectedWorkshopId, $selectedCircleId);
         }
         if ($reason === '') {
-            flash('error', 'Begruendung ist verpflichtend.');
+            flash('error', 'Begründung ist verpflichtend.');
             redirect_invoices($selectedWorkshopId, $adjustCircleId);
         }
 
@@ -129,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $maxIssued = (int) ($maxIssuedStmt->execute()->fetchArray(SQLITE3_ASSOC)['max_number'] ?? 0);
 
         if ($newNext <= $maxIssued) {
-            flash('error', 'Neue Startnummer muss groesser als die hoechste bereits vergebene Nummer sein (' . $maxIssued . ').');
+            flash('error', 'Neue Startnummer muss größer als die höchste bereits vergebene Nummer sein (' . $maxIssued . ').');
             redirect_invoices($selectedWorkshopId, $adjustCircleId);
         }
 
@@ -169,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_invoices($selectedWorkshopId, $adjustCircleId);
         }
 
-        flash('success', 'Counter aktualisiert: ' . $oldNext . ' -> ' . $newNext . '. Aenderung wurde im Audit-Log gespeichert.');
+        flash('success', 'Counter aktualisiert: ' . $oldNext . ' -> ' . $newNext . '. Änderung wurde im Audit-Log gespeichert.');
         redirect_invoices($selectedWorkshopId, $adjustCircleId);
     }
 
@@ -210,7 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $selectedCards = $_POST['r_booking_selected'] ?? [];
         if (!is_array($selectedCards) || empty($selectedCards)) {
-            flash('error', 'Bitte mindestens eine Buchung auswaehlen.');
+            flash('error', 'Bitte mindestens eine Buchung auswählen.');
             redirect_invoices($postWorkshopId, $postCircleId);
         }
 
@@ -301,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $recipientEmail = trim((string) ($_POST['r_booking_kontakt_email'][$idx] ?? ''));
                 if (!filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
-                    $warnings[] = 'Buchung #' . $bookingId . ': ungueltige Empfaenger-E-Mail, uebersprungen.';
+                    $warnings[] = 'Buchung #' . $bookingId . ': ungültige Empfänger-E-Mail, übersprungen.';
                     continue;
                 }
 
@@ -309,7 +309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $bookingFetchStmt->bindValue(':wid', $postWorkshopId, SQLITE3_INTEGER);
                 $bookingRow = $bookingFetchStmt->execute()->fetchArray(SQLITE3_ASSOC);
                 if (!$bookingRow) {
-                    $warnings[] = 'Buchung #' . $bookingId . ' nicht bestaetigt oder nicht gefunden, uebersprungen.';
+                    $warnings[] = 'Buchung #' . $bookingId . ' nicht bestätigt oder nicht gefunden, übersprungen.';
                     continue;
                 }
 
@@ -417,7 +417,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($queue)) {
-            flash('error', 'Keine Rechnungen erstellt. Bitte Auswahl pruefen.');
+            flash('error', 'Keine Rechnungen erstellt. Bitte Auswahl prüfen.');
         } else {
             $summary = 'Rechnungen finalisiert: ' . count($queue) . ', versendet: ' . $sent . ', fehlgeschlagen: ' . $failed . '.';
             flash($failed > 0 ? 'error' : 'success', $summary);
@@ -794,7 +794,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                         </div>
                         <div class="invoice-circle-meta">
                             Code: <?= e((string) $circleRow['circle_code']) ?>
-                            &nbsp;|&nbsp; Naechste Nummer: <strong><?= (int) $circleRow['next_number'] ?></strong>
+                            &nbsp;|&nbsp; Nächste Nummer: <strong><?= (int) $circleRow['next_number'] ?></strong>
                             &nbsp;|&nbsp; Finalisiert: <?= (int) $circleRow['issued_count'] ?>
                         </div>
                     </div>
@@ -828,8 +828,8 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
             <section class="invoice-card">
                 <h2>Counter manuell anpassen</h2>
                 <p class="invoice-card-note">
-                    Jede manuelle Counter-Aenderung verlangt eine Begruendung und landet unveraenderbar im Audit-Log.
-                    Finalisierte Nummern bleiben gesperrt und koennen nicht wiederverwendet werden.
+                    Jede manuelle Counter-Änderung verlangt eine Begründung und landet unveränderbar im Audit-Log.
+                    Finalisierte Nummern bleiben gesperrt und können nicht wiederverwendet werden.
                 </p>
 
                 <form method="POST">
@@ -845,23 +845,23 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                                     data-max="<?= (int) $circleRow['max_issued_number'] ?>"
                                     <?= (int) $circleRow['id'] === (int) $selectedCircleId ? 'selected' : '' ?>
                                 >
-                                    <?= e((string) $circleRow['circle_label']) ?> (naechste: <?= (int) $circleRow['next_number'] ?>)
+                                    <?= e((string) $circleRow['circle_label']) ?> (nächste: <?= (int) $circleRow['next_number'] ?>)
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="invoice-form-grid2">
                         <div class="form-group" style="margin-bottom:0;">
-                            <label>Neue naechste Nummer</label>
+                            <label>Neue nächste Nummer</label>
                             <input type="number" name="adjust_new_next" id="adjustNewNext" min="1" value="<?= (int) ($selectedCircle['next_number'] ?? 1) ?>" required>
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
-                            <label>Hoechste vergebene Nummer</label>
+                            <label>Höchste vergebene Nummer</label>
                             <input type="text" id="adjustMaxIssued" value="<?= (int) ($selectedCircle['max_issued_number'] ?? 0) ?>" readonly>
                         </div>
                     </div>
                     <div class="form-group" style="margin-top:0.65rem;">
-                        <label>Begruendung (pflicht)</label>
+                        <label>Begründung (pflicht)</label>
                         <textarea name="adjust_reason" rows="3" required placeholder="Warum wird der Counter angepasst?"></textarea>
                     </div>
                     <div class="invoice-submit-row">
@@ -882,7 +882,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                     <div class="form-group">
                         <label for="workshopSelect">Workshop</label>
                         <select id="workshopSelect" name="workshop_id">
-                            <option value="0">Workshop waehlen</option>
+                            <option value="0">Workshop wählen</option>
                             <?php foreach ($workshops as $ws): ?>
                                 <option value="<?= (int) $ws['id'] ?>" <?= $selectedWorkshopId === (int) $ws['id'] ? 'selected' : '' ?>>
                                     <?= e((string) $ws['title']) ?>
@@ -895,7 +895,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                         <select id="circleSelect" name="circle_id">
                             <?php foreach ($invoiceCircles as $circleRow): ?>
                                 <option value="<?= (int) $circleRow['id'] ?>" <?= (int) $circleRow['id'] === (int) $selectedCircleId ? 'selected' : '' ?>>
-                                    <?= e((string) $circleRow['circle_label']) ?> (naechste: <?= (int) $circleRow['next_number'] ?>)
+                                    <?= e((string) $circleRow['circle_label']) ?> (nächste: <?= (int) $circleRow['next_number'] ?>)
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -907,7 +907,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
             </div>
 
             <?php if (!$selectedWorkshop || !$selectedCircle): ?>
-                <p style="color:var(--dim);font-size:0.85rem;">Bitte Workshop und Rechnungskreis waehlen.</p>
+                <p style="color:var(--dim);font-size:0.85rem;">Bitte Workshop und Rechnungskreis wählen.</p>
             <?php else: ?>
                 <form method="POST" id="invoiceSendForm">
                     <?= csrf_field() ?>
@@ -928,7 +928,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                     </div>
 
                     <div class="form-group" style="margin-bottom:0.65rem;">
-                        <label>Fuer (Leistungsbeschreibung)</label>
+                        <label>Für (Leistungsbeschreibung)</label>
                         <input type="text" name="r_fuer_text" value="die Abhaltung des Workshops" required>
                     </div>
                     <div class="invoice-form-grid2" style="margin-bottom:0.65rem;">
@@ -970,11 +970,11 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                     </div>
 
                     <div class="invoice-section-title">
-                        Empfaenger (<?= count($confirmedBookingsForInvoices) ?> bestaetigt)
+                        Empfänger (<?= count($confirmedBookingsForInvoices) ?> bestätigt)
                     </div>
 
                     <?php if (empty($confirmedBookingsForInvoices)): ?>
-                        <p style="color:var(--dim);font-size:0.85rem;">Keine bestaetigten Buchungen fuer diesen Workshop.</p>
+                        <p style="color:var(--dim);font-size:0.85rem;">Keine bestätigten Buchungen für diesen Workshop.</p>
                     <?php else: ?>
                         <div class="invoice-booking-list" id="invoiceBookingList" data-circle-label="<?= e((string) $selectedCircle['circle_label']) ?>" data-circle-next="<?= (int) $selectedCircle['next_number'] ?>">
                             <?php foreach ($confirmedBookingsForInvoices as $idx => $bookingRow): ?>
@@ -1002,7 +1002,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                                                 <?php if ($organization !== '' && $organization !== $name): ?>
                                                     <span class="invoice-booking-sub"> - <?= e($name) ?></span>
                                                 <?php endif; ?>
-                                                <span class="invoice-booking-sub"> � <?= e($email) ?></span>
+                                                <span class="invoice-booking-sub"> · <?= e($email) ?></span>
                                             </span>
                                         </label>
 
@@ -1122,7 +1122,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
         <section class="invoice-card invoice-log-wrap">
             <h2>Counter Audit-Log (immutable)</h2>
             <?php if (empty($auditRows)): ?>
-                <p style="color:var(--dim);font-size:0.85rem;">Noch keine Counter-Aenderungen protokolliert.</p>
+                <p style="color:var(--dim);font-size:0.85rem;">Noch keine Counter-Änderungen protokolliert.</p>
             <?php else: ?>
                 <div class="admin-table-scroll">
                 <table class="admin-table">
@@ -1132,7 +1132,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                             <th>Kreis</th>
                             <th>Von</th>
                             <th>Auf</th>
-                            <th>Begruendung</th>
+                            <th>Begründung</th>
                             <th>Durch</th>
                         </tr>
                     </thead>
