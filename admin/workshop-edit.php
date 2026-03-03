@@ -177,7 +177,7 @@ function to_datetime_local(string $val): string {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
     <style>
         .type-toggle {
             display: flex; gap: 0; margin-bottom: 2rem;
@@ -477,7 +477,7 @@ document.getElementById('price_currency').addEventListener('change', function ()
 });
 </script>
 
-<script src="../assets/site-ui.js"></script>
+<script src="/assets/site-ui.js"></script>
 
 </body>
 </html>
