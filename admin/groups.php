@@ -164,9 +164,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save_assignments') {
         $groupId = (int) ($_POST['group_id'] ?? 0);
         $orderedRaw = (string) ($_POST['ordered_workshop_ids'] ?? '[]');
+        $boardRaw = (string) ($_POST['board_state_json'] ?? '');
+
         $decoded = json_decode($orderedRaw, true);
         $orderedIds = [];
-
         if (is_array($decoded)) {
             foreach ($decoded as $wid) {
                 $wid = (int) $wid;
@@ -177,11 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $orderedIds = array_keys($orderedIds);
 
-        if ($groupId <= 0) {
-            flash('error', 'Gruppe nicht gefunden.');
-            redirect(admin_url('groups'));
-        }
-        if (!workshop_group_exists($db, $groupId)) {
+        if ($groupId <= 0 || !workshop_group_exists($db, $groupId)) {
             flash('error', 'Gruppe nicht gefunden.');
             redirect(admin_url('groups'));
         }
@@ -190,32 +187,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $deleteStmt = $db->prepare('DELETE FROM workshop_group_workshops WHERE group_id = :gid');
         $insertStmt = $db->prepare('INSERT INTO workshop_group_workshops (group_id, workshop_id, sort_order) VALUES (:gid, :wid, :sort)');
 
+        $normalizedBoard = [];
+        if ($boardRaw !== '') {
+            $decodedBoard = json_decode($boardRaw, true);
+            if (is_array($decodedBoard)) {
+                foreach ($decodedBoard as $rawGroupId => $rawWorkshopIds) {
+                    $boardGroupId = (int) $rawGroupId;
+                    if ($boardGroupId <= 0 || !workshop_group_exists($db, $boardGroupId)) {
+                        continue;
+                    }
+                    $ids = [];
+                    if (is_array($rawWorkshopIds)) {
+                        foreach ($rawWorkshopIds as $wid) {
+                            $wid = (int) $wid;
+                            if ($wid > 0) {
+                                $ids[$wid] = true;
+                            }
+                        }
+                    }
+                    $normalizedBoard[$boardGroupId] = array_keys($ids);
+                }
+            }
+        }
+
         $inTx = false;
         try {
             $db->exec('BEGIN IMMEDIATE');
             $inTx = true;
 
-            $deleteStmt->bindValue(':gid', $groupId, SQLITE3_INTEGER);
-            $deleteStmt->execute();
+            if (!empty($normalizedBoard)) {
+                foreach ($normalizedBoard as $boardGroupId => $ids) {
+                    $deleteStmt->bindValue(':gid', $boardGroupId, SQLITE3_INTEGER);
+                    $deleteStmt->execute();
 
-            $sortOrder = 10;
-            foreach ($orderedIds as $wid) {
-                $workshopExistsStmt->bindValue(':wid', $wid, SQLITE3_INTEGER);
-                $exists = $workshopExistsStmt->execute()->fetchArray(SQLITE3_ASSOC);
-                if (!$exists) {
-                    continue;
+                    $sortOrder = 10;
+                    foreach ($ids as $wid) {
+                        $workshopExistsStmt->bindValue(':wid', $wid, SQLITE3_INTEGER);
+                        $exists = $workshopExistsStmt->execute()->fetchArray(SQLITE3_ASSOC);
+                        if (!$exists) {
+                            continue;
+                        }
+
+                        $insertStmt->bindValue(':gid', $boardGroupId, SQLITE3_INTEGER);
+                        $insertStmt->bindValue(':wid', $wid, SQLITE3_INTEGER);
+                        $insertStmt->bindValue(':sort', $sortOrder, SQLITE3_INTEGER);
+                        $insertStmt->execute();
+                        $sortOrder += 10;
+                    }
                 }
+                flash('success', 'Gruppenzuordnung gespeichert.');
+            } else {
+                $deleteStmt->bindValue(':gid', $groupId, SQLITE3_INTEGER);
+                $deleteStmt->execute();
 
-                $insertStmt->bindValue(':gid', $groupId, SQLITE3_INTEGER);
-                $insertStmt->bindValue(':wid', $wid, SQLITE3_INTEGER);
-                $insertStmt->bindValue(':sort', $sortOrder, SQLITE3_INTEGER);
-                $insertStmt->execute();
-                $sortOrder += 10;
+                $sortOrder = 10;
+                foreach ($orderedIds as $wid) {
+                    $workshopExistsStmt->bindValue(':wid', $wid, SQLITE3_INTEGER);
+                    $exists = $workshopExistsStmt->execute()->fetchArray(SQLITE3_ASSOC);
+                    if (!$exists) {
+                        continue;
+                    }
+
+                    $insertStmt->bindValue(':gid', $groupId, SQLITE3_INTEGER);
+                    $insertStmt->bindValue(':wid', $wid, SQLITE3_INTEGER);
+                    $insertStmt->bindValue(':sort', $sortOrder, SQLITE3_INTEGER);
+                    $insertStmt->execute();
+                    $sortOrder += 10;
+                }
+                flash('success', 'Reihenfolge gespeichert.');
             }
 
             $db->exec('COMMIT');
             $inTx = false;
-            flash('success', 'Reihenfolge gespeichert.');
         } catch (Throwable $e) {
             if ($inTx) {
                 $db->exec('ROLLBACK');
@@ -225,7 +268,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         redirect(admin_url('groups'));
     }
-
     flash('error', 'Aktion nicht erkannt.');
     redirect(admin_url('groups'));
 }
@@ -428,13 +470,14 @@ if (!empty($groups)) {
                             </div>
                         </form>
 
-                        <form method="POST" class="group-admin-order-form group-drag-shell" data-group-order-form>
+                        <form method="POST" class="group-admin-order-form group-drag-shell" data-group-order-form data-group-id="<?= $groupId ?>">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="save_assignments">
                             <input type="hidden" name="group_id" value="<?= $groupId ?>">
                             <input type="hidden" name="ordered_workshop_ids" value='<?= e(json_encode(array_map(static fn(array $row): int => (int) $row['workshop_id'], $group['assignments']))) ?>' data-order-input>
+                            <input type="hidden" name="board_state_json" value="{}" data-board-input>
 
-                            <ul class="group-assignment-list group-assignment-dropzone" data-assignment-list>
+                            <ul class="group-assignment-list group-assignment-dropzone" data-assignment-list data-group-id="<?= $groupId ?>">
                                 <?php foreach ($group['assignments'] as $assignment): ?>
                                     <?php $wid = (int) $assignment['workshop_id']; ?>
                                     <li class="group-assignment-item" draggable="true" data-workshop-id="<?= $wid ?>">
@@ -456,7 +499,7 @@ if (!empty($groups)) {
                             </ul>
 
                             <div class="group-admin-inline-actions">
-                                <button type="submit" class="btn-admin btn-success">Reihenfolge speichern</button>
+                                <button type="submit" class="btn-admin btn-success">Aenderungen speichern</button>
                             </div>
                         </form>
                     </section>
@@ -518,26 +561,59 @@ if (!empty($groups)) {
         });
     });
 
-    function syncOrder(form) {
-        var list = form.querySelector('[data-assignment-list]');
-        var input = form.querySelector('[data-order-input]');
-        var emptyState = form.querySelector('[data-empty-state]');
-        if (!list || !input) {
-            return;
-        }
-
+    function getIdsFromList(list) {
         var ids = [];
+        if (!list) {
+            return ids;
+        }
         list.querySelectorAll('.group-assignment-item').forEach(function (item) {
             var wid = parseInt(item.getAttribute('data-workshop-id') || '0', 10);
             if (wid > 0) {
                 ids.push(wid);
             }
         });
+        return ids;
+    }
 
-        input.value = JSON.stringify(ids);
-        if (emptyState) {
-            emptyState.hidden = ids.length !== 0;
+    function updateEmptyState(list) {
+        var emptyState = list ? list.querySelector('[data-empty-state]') : null;
+        if (!emptyState) {
+            return;
         }
+        emptyState.hidden = getIdsFromList(list).length !== 0;
+    }
+
+    function buildBoardState() {
+        var board = {};
+        document.querySelectorAll('[data-group-order-form]').forEach(function (form) {
+            var groupId = parseInt(form.getAttribute('data-group-id') || '0', 10);
+            if (groupId <= 0) {
+                return;
+            }
+            var list = form.querySelector('[data-assignment-list]');
+            board[groupId] = getIdsFromList(list);
+        });
+        return board;
+    }
+
+    function syncAllStates() {
+        var board = buildBoardState();
+        var boardJson = JSON.stringify(board);
+
+        document.querySelectorAll('[data-group-order-form]').forEach(function (form) {
+            var list = form.querySelector('[data-assignment-list]');
+            var input = form.querySelector('[data-order-input]');
+            var boardInput = form.querySelector('[data-board-input]');
+            if (input) {
+                input.value = JSON.stringify(getIdsFromList(list));
+            }
+            if (boardInput) {
+                boardInput.value = boardJson;
+            }
+            if (list) {
+                updateEmptyState(list);
+            }
+        });
     }
 
     function getDragAfterElement(list, y) {
@@ -555,35 +631,20 @@ if (!empty($groups)) {
         return closest.element;
     }
 
-    document.querySelectorAll('[data-group-order-form]').forEach(function (form) {
-        var list = form.querySelector('[data-assignment-list]');
-        if (!list) {
-            return;
-        }
-
-        var draggedItem = null;
-
+    var draggedItem = null;
+    document.querySelectorAll('[data-assignment-list]').forEach(function (list) {
         list.addEventListener('dragstart', function (event) {
-            list.classList.add('is-dragover');
             var item = event.target.closest('.group-assignment-item');
             if (!item) {
                 return;
             }
             draggedItem = item;
             item.classList.add('dragging');
+            list.classList.add('is-dragover');
             if (event.dataTransfer) {
                 event.dataTransfer.effectAllowed = 'move';
                 event.dataTransfer.setData('text/plain', item.getAttribute('data-workshop-id') || '');
             }
-        });
-
-        list.addEventListener('dragend', function () {
-            list.classList.remove('is-dragover');
-            if (draggedItem) {
-                draggedItem.classList.remove('dragging');
-                draggedItem = null;
-            }
-            syncOrder(form);
         });
 
         list.addEventListener('dragover', function (event) {
@@ -594,7 +655,12 @@ if (!empty($groups)) {
             list.classList.add('is-dragover');
             var afterElement = getDragAfterElement(list, event.clientY);
             if (afterElement === null) {
-                list.appendChild(draggedItem);
+                var emptyState = list.querySelector('[data-empty-state]');
+                if (emptyState) {
+                    list.insertBefore(draggedItem, emptyState);
+                } else {
+                    list.appendChild(draggedItem);
+                }
             } else {
                 list.insertBefore(draggedItem, afterElement);
             }
@@ -606,6 +672,16 @@ if (!empty($groups)) {
 
         list.addEventListener('drop', function () {
             list.classList.remove('is-dragover');
+            syncAllStates();
+        });
+
+        list.addEventListener('dragend', function () {
+            list.classList.remove('is-dragover');
+            if (draggedItem) {
+                draggedItem.classList.remove('dragging');
+                draggedItem = null;
+            }
+            syncAllStates();
         });
 
         list.addEventListener('click', function (event) {
@@ -625,7 +701,7 @@ if (!empty($groups)) {
                 if (prev && prev.classList.contains('group-assignment-item')) {
                     list.insertBefore(item, prev);
                 }
-                syncOrder(form);
+                syncAllStates();
                 return;
             }
             if (move === 'down') {
@@ -633,18 +709,24 @@ if (!empty($groups)) {
                 if (next && next.classList.contains('group-assignment-item')) {
                     list.insertBefore(next, item);
                 }
-                syncOrder(form);
+                syncAllStates();
                 return;
             }
 
             if (button.getAttribute('data-remove') === '1') {
                 item.remove();
-                syncOrder(form);
+                syncAllStates();
             }
         });
-
-        syncOrder(form);
     });
+
+    document.querySelectorAll('[data-group-order-form]').forEach(function (form) {
+        form.addEventListener('submit', function () {
+            syncAllStates();
+        });
+    });
+
+    syncAllStates();
 })();
 </script>
 <script src="/assets/site-ui.js"></script>

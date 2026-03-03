@@ -379,11 +379,14 @@ const applyFilter = (filter) => {
             .filter(Boolean);
         const show = filter === 'all' || audiences.includes(filter);
         card.hidden = !show;
+        card.style.display = show ? '' : 'none';
     });
 
     groupSections.forEach(section => {
-        const visibleCards = section.querySelectorAll('.workshop-card:not([hidden])').length;
+        const visibleCards = Array.from(section.querySelectorAll('.workshop-card'))
+            .filter(card => card.style.display !== 'none').length;
         section.hidden = visibleCards === 0;
+        section.style.display = visibleCards === 0 ? 'none' : '';
     });
 };
 
