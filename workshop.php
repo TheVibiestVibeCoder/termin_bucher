@@ -11,24 +11,189 @@ if (!$workshop) {
     redirect(app_url());
 }
 
-$booked       = count_confirmed_bookings($db, $workshop['id']);
 $capacity     = (int) $workshop['capacity'];
-$spotsLeft    = $capacity > 0 ? max(0, $capacity - $booked) : null;
-$fillPct      = ($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0;
-$fillClass    = ($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : '');
-$isFull       = $capacity > 0 && $spotsLeft <= 0;
 $audLabels    = array_filter(array_map('trim', explode(',', $workshop['audience_labels'])));
 $isOpen       = ($workshop['workshop_type'] ?? 'auf_anfrage') === 'open';
 $price        = (float) ($workshop['price_netto'] ?? 0);
 $currency     = $workshop['price_currency'] ?? 'EUR';
 $minP         = (int) ($workshop['min_participants'] ?? 0);
-$minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
-$belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
-$aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
-$isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
-$eventDate    = $workshop['event_date']     ?? '';
-$eventDateEnd = $workshop['event_date_end'] ?? '';
 $location     = $workshop['location']       ?? '';
+
+$occurrences = [];
+$selectedOccurrence = null;
+$selectedOccurrenceId = (int) ($_POST['occurrence_id'] ?? $_GET['occurrence'] ?? 0);
+$legacyOccurrenceBooked = 0;
+
+if ($isOpen) {
+    $occurrences = get_workshop_occurrences($db, (int) $workshop['id'], true);
+    if (empty($occurrences) && trim((string) ($workshop['event_date'] ?? '')) !== '') {
+        $occurrences[] = [
+            'id' => 0,
+            'start_at' => (string) ($workshop['event_date'] ?? ''),
+            'end_at' => (string) ($workshop['event_date_end'] ?? ''),
+            'sort_order' => 0,
+            'active' => 1,
+        ];
+    }
+
+    if (!empty($occurrences)) {
+        $bookedByOccurrenceId = [];
+        $occBookedStmt = $db->prepare('
+            SELECT occurrence_id, COALESCE(SUM(participants), 0) AS booked
+            FROM bookings
+            WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0
+            GROUP BY occurrence_id
+        ');
+        $occBookedStmt->bindValue(':wid', (int) $workshop['id'], SQLITE3_INTEGER);
+        $occBookedRes = $occBookedStmt->execute();
+        while ($occBookedRow = $occBookedRes->fetchArray(SQLITE3_ASSOC)) {
+            $bookedCount = (int) ($occBookedRow['booked'] ?? 0);
+            $occurrenceKeyRaw = $occBookedRow['occurrence_id'] ?? null;
+
+            if ($occurrenceKeyRaw === null || (int) $occurrenceKeyRaw === 0) {
+                $legacyOccurrenceBooked += $bookedCount;
+            } else {
+                $bookedByOccurrenceId[(int) $occurrenceKeyRaw] = $bookedCount;
+            }
+        }
+
+        if ($legacyOccurrenceBooked > 0 && !empty($occurrences)) {
+            $firstOccurrenceId = (int) ($occurrences[0]['id'] ?? 0);
+            if ($firstOccurrenceId > 0) {
+                $bookedByOccurrenceId[$firstOccurrenceId] = ($bookedByOccurrenceId[$firstOccurrenceId] ?? 0) + $legacyOccurrenceBooked;
+            }
+        }
+
+        foreach ($occurrences as $index => $occurrenceRow) {
+            $occurrenceId = (int) ($occurrenceRow['id'] ?? 0);
+            $occurrenceBooked = $occurrenceId > 0
+                ? (int) ($bookedByOccurrenceId[$occurrenceId] ?? 0)
+                : $legacyOccurrenceBooked;
+
+            $occurrenceSpotsLeft = $capacity > 0 ? max(0, $capacity - $occurrenceBooked) : null;
+            $occurrenceFillPct = ($capacity > 0) ? min(100, round(($occurrenceBooked / $capacity) * 100)) : 0;
+            $occurrenceFillClass = ($occurrenceFillPct >= 85) ? 'high' : (($occurrenceFillPct >= 50) ? 'medium' : '');
+
+            $occurrenceRow['booked'] = $occurrenceBooked;
+            $occurrenceRow['spots_left'] = $occurrenceSpotsLeft;
+            $occurrenceRow['fill_pct'] = $occurrenceFillPct;
+            $occurrenceRow['fill_class'] = $occurrenceFillClass;
+            $occurrenceRow['is_full'] = ($capacity > 0 && $occurrenceSpotsLeft <= 0);
+            $occurrenceRow['formatted_date'] = format_event_date(
+                (string) ($occurrenceRow['start_at'] ?? ''),
+                (string) ($occurrenceRow['end_at'] ?? '')
+            );
+            $occurrenceRow['is_guaranteed'] = ($minP > 0 && $occurrenceBooked >= $minP);
+            $occurrenceRow['below_min'] = ($minP > 0 && $capacity > 0 && $occurrenceBooked < $minP);
+            $occurrenceRow['above_min'] = ($minP > 0 && $capacity > 0 && $occurrenceBooked >= $minP);
+
+            $occurrences[$index] = $occurrenceRow;
+        }
+
+        $selectedOccurrence = $occurrences[0];
+        if ($selectedOccurrenceId > 0) {
+            foreach ($occurrences as $occurrenceRow) {
+                if ((int) ($occurrenceRow['id'] ?? 0) === $selectedOccurrenceId) {
+                    $selectedOccurrence = $occurrenceRow;
+                    break;
+                }
+            }
+        }
+
+        $selectedOccurrenceId = (int) ($selectedOccurrence['id'] ?? 0);
+    }
+}
+
+if ($selectedOccurrence !== null) {
+    $booked = (int) ($selectedOccurrence['booked'] ?? 0);
+    $spotsLeft = $selectedOccurrence['spots_left'] ?? null;
+    $fillPct = (int) ($selectedOccurrence['fill_pct'] ?? 0);
+    $fillClass = (string) ($selectedOccurrence['fill_class'] ?? '');
+    $isFull = (bool) ($selectedOccurrence['is_full'] ?? false);
+    $eventDate = (string) ($selectedOccurrence['start_at'] ?? '');
+    $eventDateEnd = (string) ($selectedOccurrence['end_at'] ?? '');
+    $belowMin = (bool) ($selectedOccurrence['below_min'] ?? false);
+    $aboveMin = (bool) ($selectedOccurrence['above_min'] ?? false);
+} else {
+    $booked = count_confirmed_bookings($db, (int) $workshop['id']);
+    $spotsLeft = $capacity > 0 ? max(0, $capacity - $booked) : null;
+    $fillPct = ($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0;
+    $fillClass = ($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : '');
+    $isFull = $capacity > 0 && $spotsLeft <= 0;
+    $eventDate = $workshop['event_date'] ?? '';
+    $eventDateEnd = $workshop['event_date_end'] ?? '';
+    $belowMin = ($minP > 0 && $capacity > 0 && $booked < $minP);
+    $aboveMin = ($minP > 0 && $capacity > 0 && $booked >= $minP);
+}
+
+$minPct = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
+$isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
+$participantsMax = $capacity > 0 ? max(1, min(20, (int) $spotsLeft)) : 20;
+
+$workshopPageParams = ['slug' => (string) $slug];
+if ($selectedOccurrenceId > 0) {
+    $workshopPageParams['occurrence'] = $selectedOccurrenceId;
+}
+$workshopPageUrl = app_url('workshop', $workshopPageParams);
+
+$detailOccurrencePayload = [];
+if (!empty($occurrences)) {
+    foreach ($occurrences as $occurrenceRow) {
+        $occurrenceId = (int) ($occurrenceRow['id'] ?? 0);
+        $payloadQuery = ['slug' => (string) $slug];
+        if ($occurrenceId > 0) {
+            $payloadQuery['occurrence'] = $occurrenceId;
+        }
+
+        $detailOccurrencePayload[] = [
+            'id' => $occurrenceId,
+            'date' => (string) ($occurrenceRow['formatted_date'] ?? ''),
+            'start' => (string) ($occurrenceRow['start_at'] ?? ''),
+            'end' => (string) ($occurrenceRow['end_at'] ?? ''),
+            'booked' => (int) ($occurrenceRow['booked'] ?? 0),
+            'spotsLeft' => $occurrenceRow['spots_left'],
+            'fillPct' => (int) ($occurrenceRow['fill_pct'] ?? 0),
+            'fillClass' => (string) ($occurrenceRow['fill_class'] ?? ''),
+            'isFull' => (bool) ($occurrenceRow['is_full'] ?? false),
+            'isGuaranteed' => (bool) ($occurrenceRow['is_guaranteed'] ?? false),
+            'belowMin' => (bool) ($occurrenceRow['below_min'] ?? false),
+            'aboveMin' => (bool) ($occurrenceRow['above_min'] ?? false),
+            'url' => app_url('workshop', $payloadQuery),
+        ];
+    }
+}
+$selectedOccurrenceIndex = 0;
+if (!empty($occurrences)) {
+    foreach ($occurrences as $occurrenceIdx => $occurrenceRow) {
+        if ((int) ($occurrenceRow['id'] ?? 0) === $selectedOccurrenceId) {
+            $selectedOccurrenceIndex = $occurrenceIdx;
+            break;
+        }
+    }
+}
+
+$hasMultipleOccurrences = count($occurrences) > 1;
+$prevOccurrenceUrl = '';
+$nextOccurrenceUrl = '';
+if ($hasMultipleOccurrences) {
+    $prevIndex = ($selectedOccurrenceIndex - 1 + count($occurrences)) % count($occurrences);
+    $nextIndex = ($selectedOccurrenceIndex + 1) % count($occurrences);
+
+    $prevOccurrenceId = (int) ($occurrences[$prevIndex]['id'] ?? 0);
+    $nextOccurrenceId = (int) ($occurrences[$nextIndex]['id'] ?? 0);
+
+    $prevQuery = ['slug' => (string) $slug];
+    $nextQuery = ['slug' => (string) $slug];
+    if ($prevOccurrenceId > 0) {
+        $prevQuery['occurrence'] = $prevOccurrenceId;
+    }
+    if ($nextOccurrenceId > 0) {
+        $nextQuery['occurrence'] = $nextOccurrenceId;
+    }
+
+    $prevOccurrenceUrl = app_url('workshop', $prevQuery);
+    $nextOccurrenceUrl = app_url('workshop', $nextQuery);
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['discount_preview'])) {
     header('Content-Type: application/json; charset=UTF-8');
 
@@ -147,6 +312,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     $formData['booking_mode'] = ($_POST['booking_mode'] ?? 'group') === 'individual' ? 'individual' : 'group';
     $formData['discount_code'] = normalize_discount_code((string) ($_POST['discount_code'] ?? ''));
 
+    $activeOccurrenceId = $selectedOccurrenceId > 0 ? $selectedOccurrenceId : 0;
+    if ($isOpen && !empty($occurrences)) {
+        $hasOccurrenceMatch = false;
+        foreach ($occurrences as $occurrenceRow) {
+            if ((int) ($occurrenceRow['id'] ?? 0) === $activeOccurrenceId) {
+                $hasOccurrenceMatch = true;
+                break;
+            }
+        }
+
+        if (!$hasOccurrenceMatch) {
+            $hasLegacyOccurrence = false;
+            foreach ($occurrences as $occurrenceRow) {
+                if ((int) ($occurrenceRow['id'] ?? 0) === 0) {
+                    $hasLegacyOccurrence = true;
+                    break;
+                }
+            }
+
+            if ($activeOccurrenceId === 0 && $hasLegacyOccurrence) {
+                $hasOccurrenceMatch = true;
+            }
+        }
+
+        if (!$hasOccurrenceMatch) {
+            $errors[] = 'Der ausgewaehlte Termin ist nicht mehr verfuegbar.';
+        }
+    }
+
     if ($formData['booking_mode'] === 'individual') {
         $participantNames  = array_map('trim', (array)($_POST['participant_name']  ?? []));
         $participantEmails = array_map('trim', (array)($_POST['participant_email'] ?? []));
@@ -179,8 +373,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         }
     }
 
-    if ($capacity > 0 && $formData['participants'] > $spotsLeft) {
-        $errors[] = "Leider sind nur noch {$spotsLeft} Plätze verfügbar.";
+    if ($capacity > 0) {
+        $currentBooked = count_confirmed_bookings(
+            $db,
+            (int) $workshop['id'],
+            $activeOccurrenceId > 0 ? $activeOccurrenceId : null
+        );
+        $currentSpotsLeft = max(0, $capacity - $currentBooked);
+
+        if ($formData['participants'] > $currentSpotsLeft) {
+            $errors[] = "Leider sind nur noch {$currentSpotsLeft} Pl�tze verf�gbar.";
+        }
     }
 
     $pricingSummary = calculate_booking_totals($price, (int) $formData['participants']);
@@ -224,6 +427,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         $stmt = $db->prepare('
             INSERT INTO bookings (
                 workshop_id,
+                occurrence_id,
                 name,
                 email,
                 organization,
@@ -244,6 +448,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             )
             VALUES (
                 :wid,
+                :oid,
                 :name,
                 :email,
                 :org,
@@ -264,6 +469,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             )
         ');
         $stmt->bindValue(':wid',          $workshop['id'],           SQLITE3_INTEGER);
+        if ($activeOccurrenceId > 0) {
+            $stmt->bindValue(':oid', $activeOccurrenceId, SQLITE3_INTEGER);
+        } else {
+            $stmt->bindValue(':oid', null, SQLITE3_NULL);
+        }
         $stmt->bindValue(':name',         $formData['name'],         SQLITE3_TEXT);
         $stmt->bindValue(':email',        $formData['email'],        SQLITE3_TEXT);
         $stmt->bindValue(':org',          $formData['organization'], SQLITE3_TEXT);
@@ -311,6 +521,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             }
 
             $bookingForEmail = $formData;
+            if ($activeOccurrenceId > 0) {
+                $bookingForEmail['occurrence_id'] = $activeOccurrenceId;
+            }
             $bookingForEmail['price_per_person_netto'] = (float) $price;
             $bookingForEmail['booking_currency'] = $currency;
             $bookingForEmail['discount_code'] = $discountCodeText;
@@ -320,13 +533,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             $bookingForEmail['subtotal_netto'] = (float) $pricingSummary['subtotal'];
             $bookingForEmail['total_netto'] = (float) $pricingSummary['total'];
 
+            $workshopForEmail = $workshop;
+            if ($isOpen) {
+                $occurrenceForEmail = null;
+                foreach ($occurrences as $occurrenceRow) {
+                    $rowOccurrenceId = (int) ($occurrenceRow['id'] ?? 0);
+                    if ($rowOccurrenceId === $activeOccurrenceId) {
+                        $occurrenceForEmail = $occurrenceRow;
+                        break;
+                    }
+                    if ($activeOccurrenceId === 0 && $rowOccurrenceId === 0) {
+                        $occurrenceForEmail = $occurrenceRow;
+                    }
+                }
+
+                if ($occurrenceForEmail === null && $selectedOccurrence !== null) {
+                    $occurrenceForEmail = $selectedOccurrence;
+                }
+
+                if (is_array($occurrenceForEmail)) {
+                    $workshopForEmail['event_date'] = (string) ($occurrenceForEmail['start_at'] ?? '');
+                    $workshopForEmail['event_date_end'] = (string) ($occurrenceForEmail['end_at'] ?? '');
+                }
+            }
+
             if (!send_confirmation_email(
                 $formData['email'],
                 $formData['name'],
                 $workshop['title'],
                 $token,
                 $bookingForEmail,
-                $workshop,
+                $workshopForEmail,
                 $bookingParticipantsForEmail
             )) {
                 $rollbackStmt = $db->prepare('DELETE FROM bookings WHERE id = :id');
@@ -335,7 +572,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 $errors[] = 'Die Bestätigungs-E-Mail konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
             } else {
                 flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschließen.');
-                redirect(app_url('workshop', ['slug' => $slug]));
+                redirect($workshopPageUrl);
             }
         }
     }
@@ -493,6 +730,41 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                 </div>
 
                 <h1><?= e($workshop['title']) ?></h1>
+
+                <?php if ($isOpen && $hasMultipleOccurrences): ?>
+                <div class="detail-occurrence-slider" aria-label="Workshop-Termine">
+                    <a href="<?= e($prevOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-prev" aria-label="Vorheriger Termin">
+                        &#10094;
+                    </a>
+                    <div class="detail-occurrence-stack">
+                        <?php foreach ($occurrences as $occurrenceIdx => $occurrenceRow):
+                            $cardClass = 'is-hidden';
+                            if ($occurrenceIdx === $selectedOccurrenceIndex) {
+                                $cardClass = 'is-active';
+                            } elseif ($occurrenceIdx === $prevIndex) {
+                                $cardClass = 'is-prev';
+                            } elseif ($occurrenceIdx === $nextIndex) {
+                                $cardClass = 'is-next';
+                            }
+                        ?>
+                        <article class="detail-occurrence-card <?= e($cardClass) ?>">
+                            <div class="detail-occurrence-kicker">Termin <?= ($occurrenceIdx + 1) ?> von <?= count($occurrences) ?></div>
+                            <div class="detail-occurrence-date"><?= e((string) ($occurrenceRow['formatted_date'] ?? '')) ?></div>
+                            <div class="detail-occurrence-meta">
+                                <?php if ($capacity > 0): ?>
+                                    <?= (int) ($occurrenceRow['booked'] ?? 0) ?> / <?= $capacity ?> gebucht
+                                <?php else: ?>
+                                    Offen fuer Buchung
+                                <?php endif; ?>
+                            </div>
+                        </article>
+                        <?php endforeach; ?>
+                    </div>
+                    <a href="<?= e($nextOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-next" aria-label="Naechster Termin">
+                        &#10095;
+                    </a>
+                </div>
+                <?php endif; ?>
                 <div class="detail-desc-wrap" id="detailDescWrap">
                     <div class="detail-desc-content">
                         <p class="detail-desc"><?= nl2br(e($workshop['description'])) ?></p>
@@ -649,7 +921,8 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                     <?php endif; ?>
 
-                    <form method="POST" action="<?= e(app_url('workshop', ['slug' => (string) $slug])) ?>">
+                    <form method="POST" action="<?= e($workshopPageUrl) ?>">
+                        <input type="hidden" name="occurrence_id" id="occurrence_id" value="<?= (int) $selectedOccurrenceId ?>">
                         <?= csrf_field() ?>
                         <input type="hidden" name="book" value="1">
 
@@ -676,7 +949,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         <div class="form-group">
                             <label for="participants">Anzahl Teilnehmer:innen</label>
                             <select id="participants" name="participants">
-                                <?php for ($i = 1; $i <= min(20, $spotsLeft ?? 20); $i++): ?>
+                                <?php for ($i = 1; $i <= $participantsMax; $i++): ?>
                                     <option value="<?= $i ?>" <?= $formData['participants'] == $i ? 'selected' : '' ?>><?= $i ?></option>
                                 <?php endfor; ?>
                             </select>
@@ -787,7 +1060,7 @@ const discountInput = document.getElementById('discount_code');
 const discountFeedbackEl = document.getElementById('discount-feedback');
 const emailInput = document.getElementById('email');
 const csrfTokenInput = document.querySelector('form input[name="_token"]');
-const discountPreviewUrl = <?= json_for_html(app_url('workshop', ['slug' => (string) $slug])) ?>;
+const discountPreviewUrl = <?= json_for_html($workshopPageUrl) ?>;
 const currency = <?= json_for_html($currency) ?>;
 const defaultDiscountHint = 'Code wird beim Absenden final geprüft.';
 const symbols = { EUR: 'EUR', CHF: 'CHF', USD: 'USD' };
@@ -1203,3 +1476,4 @@ if (descToggle && descWrap) {
 
 </body>
 </html>
+

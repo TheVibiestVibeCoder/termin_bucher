@@ -137,9 +137,59 @@ function get_workshop_by_id(SQLite3 $db, int $id): ?array {
     return $result ?: null;
 }
 
-function count_confirmed_bookings(SQLite3 $db, int $workshopId): int {
-    $stmt = $db->prepare('SELECT COALESCE(SUM(participants), 0) FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0');
+function get_workshop_occurrences(SQLite3 $db, int $workshopId, bool $activeOnly = true): array {
+    if ($workshopId <= 0) {
+        return [];
+    }
+
+    $sql = 'SELECT * FROM workshop_occurrences WHERE workshop_id = :wid';
+    if ($activeOnly) {
+        $sql .= ' AND active = 1';
+    }
+    $sql .= ' ORDER BY sort_order ASC, start_at ASC, id ASC';
+
+    $stmt = $db->prepare($sql);
     $stmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    $result = $stmt->execute();
+
+    $rows = [];
+    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+        $rows[] = $row;
+    }
+
+    return $rows;
+}
+
+function get_workshop_occurrence_by_id(SQLite3 $db, int $workshopId, int $occurrenceId, bool $activeOnly = true): ?array {
+    if ($workshopId <= 0 || $occurrenceId <= 0) {
+        return null;
+    }
+
+    $sql = 'SELECT * FROM workshop_occurrences WHERE id = :oid AND workshop_id = :wid';
+    if ($activeOnly) {
+        $sql .= ' AND active = 1';
+    }
+    $sql .= ' LIMIT 1';
+
+    $stmt = $db->prepare($sql);
+    $stmt->bindValue(':oid', $occurrenceId, SQLITE3_INTEGER);
+    $stmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+    return $row ?: null;
+}
+
+function count_confirmed_bookings(SQLite3 $db, int $workshopId, ?int $occurrenceId = null): int {
+    $sql = 'SELECT COALESCE(SUM(participants), 0) FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0';
+    if ($occurrenceId !== null && $occurrenceId > 0) {
+        $sql .= ' AND occurrence_id = :oid';
+    }
+
+    $stmt = $db->prepare($sql);
+    $stmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    if ($occurrenceId !== null && $occurrenceId > 0) {
+        $stmt->bindValue(':oid', $occurrenceId, SQLITE3_INTEGER);
+    }
 
     return (int) $stmt->execute()->fetchArray()[0];
 }

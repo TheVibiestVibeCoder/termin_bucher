@@ -2,18 +2,97 @@
 require __DIR__ . '/includes/config.php';
 
 $bookedByWorkshop = [];
-$bookedRes = $db->query('SELECT workshop_id, COALESCE(SUM(participants), 0) AS booked FROM bookings WHERE confirmed = 1 AND COALESCE(archived, 0) = 0 GROUP BY workshop_id');
+$bookedByOccurrence = [];
+$legacyBookedByWorkshop = [];
+$bookedRes = $db->query('SELECT workshop_id, occurrence_id, COALESCE(SUM(participants), 0) AS booked FROM bookings WHERE confirmed = 1 AND COALESCE(archived, 0) = 0 GROUP BY workshop_id, occurrence_id');
 while ($row = $bookedRes->fetchArray(SQLITE3_ASSOC)) {
-    $bookedByWorkshop[(int) $row['workshop_id']] = (int) $row['booked'];
+    $workshopId = (int) ($row['workshop_id'] ?? 0);
+    $booked = (int) ($row['booked'] ?? 0);
+    $occurrenceRaw = $row['occurrence_id'] ?? null;
+
+    $bookedByWorkshop[$workshopId] = ($bookedByWorkshop[$workshopId] ?? 0) + $booked;
+
+    if ($occurrenceRaw === null || (int) $occurrenceRaw === 0) {
+        $legacyBookedByWorkshop[$workshopId] = ($legacyBookedByWorkshop[$workshopId] ?? 0) + $booked;
+    } else {
+        $occurrenceId = (int) $occurrenceRaw;
+        if (!isset($bookedByOccurrence[$workshopId])) {
+            $bookedByOccurrence[$workshopId] = [];
+        }
+        $bookedByOccurrence[$workshopId][$occurrenceId] = $booked;
+    }
 }
 
 $result = $db->query('SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order ASC, id ASC');
 $workshops = [];
 $workshopsById = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-    $row['booked'] = $bookedByWorkshop[(int) $row['id']] ?? 0;
+    $workshopId = (int) ($row['id'] ?? 0);
+    $row['booked'] = $bookedByWorkshop[$workshopId] ?? 0;
+    $row['occurrences'] = [];
+
+    $isOpenWorkshop = (($row['workshop_type'] ?? 'auf_anfrage') === 'open');
+    if ($isOpenWorkshop) {
+        $occRows = get_workshop_occurrences($db, $workshopId, true);
+        if (empty($occRows) && trim((string) ($row['event_date'] ?? '')) !== '') {
+            $occRows[] = [
+                'id' => 0,
+                'start_at' => (string) ($row['event_date'] ?? ''),
+                'end_at' => (string) ($row['event_date_end'] ?? ''),
+                'sort_order' => 0,
+                'active' => 1,
+            ];
+        }
+
+        $legacyBooked = (int) ($legacyBookedByWorkshop[$workshopId] ?? 0);
+        if ($legacyBooked > 0 && !empty($occRows)) {
+            $firstOccurrenceId = (int) ($occRows[0]['id'] ?? 0);
+            if ($firstOccurrenceId > 0) {
+                $bookedByOccurrence[$workshopId][$firstOccurrenceId] = (int) ($bookedByOccurrence[$workshopId][$firstOccurrenceId] ?? 0) + $legacyBooked;
+            }
+        }
+
+        $capacity = (int) ($row['capacity'] ?? 0);
+        $minParticipants = (int) ($row['min_participants'] ?? 0);
+
+        foreach ($occRows as $occurrenceIndex => $occurrenceRow) {
+            $occurrenceId = (int) ($occurrenceRow['id'] ?? 0);
+            $occBooked = $occurrenceId > 0
+                ? (int) ($bookedByOccurrence[$workshopId][$occurrenceId] ?? 0)
+                : $legacyBooked;
+
+            $occSpotsLeft = $capacity > 0 ? max(0, $capacity - $occBooked) : null;
+            $occFillPct = ($capacity > 0) ? min(100, round(($occBooked / $capacity) * 100)) : 0;
+            $occFillClass = ($occFillPct >= 85) ? 'high' : (($occFillPct >= 50) ? 'medium' : '');
+            $occQuery = ['slug' => (string) ($row['slug'] ?? '')];
+            if ($occurrenceId > 0) {
+                $occQuery['occurrence'] = $occurrenceId;
+            }
+
+            $occRows[$occurrenceIndex]['booked'] = $occBooked;
+            $occRows[$occurrenceIndex]['spots_left'] = $occSpotsLeft;
+            $occRows[$occurrenceIndex]['fill_pct'] = $occFillPct;
+            $occRows[$occurrenceIndex]['fill_class'] = $occFillClass;
+            $occRows[$occurrenceIndex]['is_full'] = ($capacity > 0 && $occSpotsLeft <= 0);
+            $occRows[$occurrenceIndex]['is_guaranteed'] = ($minParticipants > 0 && $occBooked >= $minParticipants);
+            $occRows[$occurrenceIndex]['below_min'] = ($minParticipants > 0 && $capacity > 0 && $occBooked < $minParticipants);
+            $occRows[$occurrenceIndex]['above_min'] = ($minParticipants > 0 && $capacity > 0 && $occBooked >= $minParticipants);
+            $occRows[$occurrenceIndex]['formatted_date'] = format_event_date((string) ($occurrenceRow['start_at'] ?? ''), (string) ($occurrenceRow['end_at'] ?? ''));
+            $occRows[$occurrenceIndex]['detail_url'] = app_url('workshop', $occQuery);
+        }
+
+        $row['occurrences'] = $occRows;
+
+        if (!empty($occRows)) {
+            $firstOccurrence = $occRows[0];
+            $row['booked'] = (int) ($firstOccurrence['booked'] ?? 0);
+            $row['event_date'] = (string) ($firstOccurrence['start_at'] ?? '');
+            $row['event_date_end'] = (string) ($firstOccurrence['end_at'] ?? '');
+        }
+    }
+
     $workshops[] = $row;
-    $workshopsById[(int) $row['id']] = $row;
+    $workshopsById[$workshopId] = $row;
 }
 
 $allAudiences = [];
@@ -177,26 +256,62 @@ if (empty($workshopSections)) {
 
                     <div class="workshops-grid workshop-group-grid">
                         <?php foreach ($section['workshops'] as $w):
-                            $booked       = $w['booked'];
                             $capacity     = (int) $w['capacity'];
-                            $spotsLeft    = $capacity > 0 ? max(0, $capacity - $booked) : null;
-                            $fillPct      = ($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0;
-                            $fillClass    = ($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : '');
                             $audLabels    = array_filter(array_map('trim', explode(',', $w['audience_labels'])));
                             $isOpen       = ($w['workshop_type'] ?? 'auf_anfrage') === 'open';
                             $price        = (float) ($w['price_netto'] ?? 0);
                             $currency     = $w['price_currency'] ?? 'EUR';
                             $minP         = (int) ($w['min_participants'] ?? 0);
-                            $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
+                            $location     = $w['location']       ?? '';
+                            $occurrences  = is_array($w['occurrences'] ?? null) ? $w['occurrences'] : [];
+                            $selectedOccurrence = !empty($occurrences) ? $occurrences[0] : null;
+
+                            $booked       = $selectedOccurrence !== null ? (int) ($selectedOccurrence['booked'] ?? 0) : (int) ($w['booked'] ?? 0);
+                            $spotsLeft    = $selectedOccurrence !== null
+                                ? ($selectedOccurrence['spots_left'] ?? ($capacity > 0 ? max(0, $capacity - $booked) : null))
+                                : ($capacity > 0 ? max(0, $capacity - $booked) : null);
+                            $fillPct      = $selectedOccurrence !== null
+                                ? (int) ($selectedOccurrence['fill_pct'] ?? 0)
+                                : (($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0);
+                            $fillClass    = $selectedOccurrence !== null
+                                ? (string) ($selectedOccurrence['fill_class'] ?? '')
+                                : (($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : ''));
+                            $eventDate    = $selectedOccurrence !== null ? (string) ($selectedOccurrence['start_at'] ?? '') : (string) ($w['event_date'] ?? '');
+                            $eventDateEnd = $selectedOccurrence !== null ? (string) ($selectedOccurrence['end_at'] ?? '') : (string) ($w['event_date_end'] ?? '');
+                            $eventDateFormatted = $selectedOccurrence !== null
+                                ? (string) ($selectedOccurrence['formatted_date'] ?? format_event_date($eventDate, $eventDateEnd))
+                                : format_event_date($eventDate, $eventDateEnd);
                             $belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
                             $aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
                             $isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
-                            $eventDate    = $w['event_date']     ?? '';
-                            $eventDateEnd = $w['event_date_end'] ?? '';
-                            $location     = $w['location']       ?? '';
+                            $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
+
+                            $occurrencePayload = [];
+                            foreach ($occurrences as $occurrenceRow) {
+                                $occurrencePayload[] = [
+                                    'id' => (int) ($occurrenceRow['id'] ?? 0),
+                                    'date' => (string) ($occurrenceRow['formatted_date'] ?? ''),
+                                    'booked' => (int) ($occurrenceRow['booked'] ?? 0),
+                                    'spotsLeft' => $occurrenceRow['spots_left'] ?? null,
+                                    'fillPct' => (int) ($occurrenceRow['fill_pct'] ?? 0),
+                                    'fillClass' => (string) ($occurrenceRow['fill_class'] ?? ''),
+                                    'isGuaranteed' => (bool) ($occurrenceRow['is_guaranteed'] ?? false),
+                                    'belowMin' => (bool) ($occurrenceRow['below_min'] ?? false),
+                                    'aboveMin' => (bool) ($occurrenceRow['above_min'] ?? false),
+                                    'detailUrl' => (string) ($occurrenceRow['detail_url'] ?? app_url('workshop', ['slug' => (string) $w['slug']])),
+                                ];
+                            }
+
+                            $defaultDetailUrl = !empty($occurrencePayload)
+                                ? (string) ($occurrencePayload[0]['detailUrl'] ?? app_url('workshop', ['slug' => (string) $w['slug']]))
+                                : app_url('workshop', ['slug' => (string) $w['slug']]);
                         ?>
                         <article class="workshop-card <?= $w['featured'] ? 'featured' : '' ?> fade-in"
                                  data-audiences="<?= e($w['audiences']) ?>"
+                                 data-occurrence-payload="<?= e(json_for_html($occurrencePayload)) ?>"
+                                 data-occurrence-index="0"
+                                 data-min-participants="<?= $minP ?>"
+                                 data-capacity="<?= $capacity ?>"
                                  style="transition-delay:<?= ($cardDelayIndex++) * 0.08 ?>s">
                             <?php if ($w['featured']): ?>
                                 <div class="featured-badge">Empfohlen</div>
@@ -205,11 +320,11 @@ if (empty($workshopSections)) {
                             <div class="badge-row badge-row-card">
                                 <?php if ($isOpen): ?>
                                     <?php if ($isGuaranteed): ?>
-                                        <span class="type-badge type-badge-confirmed"><span class="badge-dot"></span>Findet statt</span>
+                                        <span class="type-badge type-badge-confirmed js-status-badge"><span class="badge-dot"></span>Findet statt</span>
                                     <?php elseif ($minP > 0): ?>
-                                        <span class="type-badge type-badge-open-pending"><span class="badge-dot"></span>Mindestanzahl offen</span>
+                                        <span class="type-badge type-badge-open-pending js-status-badge"><span class="badge-dot"></span>Mindestanzahl offen</span>
                                     <?php else: ?>
-                                        <span class="type-badge type-badge-open"><span class="badge-dot"></span>Anmeldung offen</span>
+                                        <span class="type-badge type-badge-open js-status-badge"><span class="badge-dot"></span>Anmeldung offen</span>
                                     <?php endif; ?>
                                 <?php else: ?>
                                     <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
@@ -229,14 +344,21 @@ if (empty($workshopSections)) {
 
                             <?php if ($isOpen && $eventDate): ?>
                             <div class="event-details-panel">
+                                <?php if (count($occurrencePayload) > 1): ?>
+                                <div class="event-occurrence-switch" data-occurrence-switch>
+                                    <button type="button" class="event-occurrence-btn" data-occurrence-prev aria-label="Vorheriger Termin">&#10094;</button>
+                                    <span class="event-occurrence-count"><span data-occurrence-current>1</span> / <?= count($occurrencePayload) ?></span>
+                                    <button type="button" class="event-occurrence-btn" data-occurrence-next aria-label="Naechster Termin">&#10095;</button>
+                                </div>
+                                <?php endif; ?>
                                 <div class="event-details-row">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                                    <span><?= format_event_date($eventDate, $eventDateEnd) ?></span>
+                                    <span class="js-occurrence-date"><?= e($eventDateFormatted) ?></span>
                                 </div>
                                 <?php if ($location): ?>
                                 <div class="event-details-row">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                                    <span><?= e($location) ?></span>
+                                    <span class="js-occurrence-location"><?= e($location) ?></span>
                                 </div>
                                 <?php endif; ?>
                                 <div class="event-details-price-row">
@@ -287,10 +409,10 @@ if (empty($workshopSections)) {
                             </div>
 
                             <?php if ($minP > 0): ?>
-                            <div class="min-participants-note">
+                            <div class="min-participants-note js-occurrence-min-note">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                                 <?php if ($isOpen): ?>
-                                    <?= $isGuaranteed ? 'Mindestanzahl erreicht: findet statt.' : 'Findet statt ab ' . $minP . ' Teilnehmer:innen.' ?>
+                                    <span class="js-occurrence-min-note-text"><?= $isGuaranteed ? 'Mindestanzahl erreicht: findet statt.' : 'Findet statt ab ' . $minP . ' Teilnehmer:innen.' ?></span>
                                 <?php else: ?>
                                     Mindestens <?= $minP ?> Teilnehmende erforderlich
                                 <?php endif; ?>
@@ -298,12 +420,12 @@ if (empty($workshopSections)) {
                             <?php endif; ?>
 
                             <?php if ($capacity > 0): ?>
-                            <div class="seats-indicator <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
+                            <div class="seats-indicator js-occurrence-seats <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
                                  style="margin-top:1rem;"
                                  <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
                                 <div class="seats-bar">
                                     <div class="seats-bar-track">
-                                        <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                                        <div class="seats-bar-fill js-occurrence-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
                                     </div>
                                     <?php if ($minP > 0 && $capacity > 0): ?>
                                     <div class="seats-bar-marker" style="left:<?= $minPct ?>%">
@@ -311,7 +433,7 @@ if (empty($workshopSections)) {
                                     </div>
                                     <?php endif; ?>
                                 </div>
-                                <span class="seats-text"><?= $spotsLeft ?> / <?= $capacity ?> frei</span>
+                                <span class="seats-text js-occurrence-seats-text"><?= $spotsLeft ?> / <?= $capacity ?> frei</span>
                             </div>
                             <?php endif; ?>
 
@@ -322,7 +444,7 @@ if (empty($workshopSections)) {
                                     <span class="aud-tag"><?= e($al) ?></span>
                                 <?php endforeach; ?>
                             </div>
-                            <a href="<?= e(app_url('workshop', ['slug' => (string) $w['slug']])) ?>" class="btn-book">Details &amp; Buchen &rarr;</a>
+                            <a href="<?= e($defaultDetailUrl) ?>" class="btn-book js-occurrence-detail-link">Details &amp; Buchen &rarr;</a>
                         </article>
                         <?php endforeach; ?>
                     </div>
@@ -371,6 +493,115 @@ const filterBtns = document.querySelectorAll('.filter-btn');
 const cards = document.querySelectorAll('.workshop-group-section .workshop-card');
 const groupSections = document.querySelectorAll('[data-group-section]');
 
+const initOccurrenceCards = () => {
+    document.querySelectorAll('.workshop-card').forEach(card => {
+        const payloadRaw = card.dataset.occurrencePayload || '[]';
+        let payload = [];
+        try {
+            payload = JSON.parse(payloadRaw);
+        } catch (e) {
+            payload = [];
+        }
+
+        if (!Array.isArray(payload) || payload.length === 0) {
+            return;
+        }
+
+        let index = parseInt(card.dataset.occurrenceIndex || '0', 10);
+        if (!Number.isFinite(index) || index < 0 || index >= payload.length) {
+            index = 0;
+        }
+
+        const prevBtn = card.querySelector('[data-occurrence-prev]');
+        const nextBtn = card.querySelector('[data-occurrence-next]');
+        const currentEl = card.querySelector('[data-occurrence-current]');
+        const dateEl = card.querySelector('.js-occurrence-date');
+        const statusBadge = card.querySelector('.js-status-badge');
+        const minNoteText = card.querySelector('.js-occurrence-min-note-text');
+        const seatsWrap = card.querySelector('.js-occurrence-seats');
+        const seatsFill = card.querySelector('.js-occurrence-fill');
+        const seatsText = card.querySelector('.js-occurrence-seats-text');
+        const detailLink = card.querySelector('.js-occurrence-detail-link');
+
+        const minParticipants = parseInt(card.dataset.minParticipants || '0', 10) || 0;
+        const capacity = parseInt(card.dataset.capacity || '0', 10) || 0;
+
+        const applyOccurrence = (nextIndex) => {
+            index = ((nextIndex % payload.length) + payload.length) % payload.length;
+            card.dataset.occurrenceIndex = String(index);
+
+            const occurrence = payload[index] || {};
+
+            if (dateEl) {
+                dateEl.textContent = String(occurrence.date || '');
+            }
+
+            if (currentEl) {
+                currentEl.textContent = String(index + 1);
+            }
+
+            if (detailLink && occurrence.detailUrl) {
+                detailLink.setAttribute('href', String(occurrence.detailUrl));
+            }
+
+            if (statusBadge) {
+                statusBadge.classList.remove('type-badge-confirmed', 'type-badge-open-pending', 'type-badge-open');
+                if (minParticipants > 0 && occurrence.isGuaranteed) {
+                    statusBadge.classList.add('type-badge-confirmed');
+                    statusBadge.innerHTML = '<span class="badge-dot"></span>Findet statt';
+                } else if (minParticipants > 0) {
+                    statusBadge.classList.add('type-badge-open-pending');
+                    statusBadge.innerHTML = '<span class="badge-dot"></span>Mindestanzahl offen';
+                } else {
+                    statusBadge.classList.add('type-badge-open');
+                    statusBadge.innerHTML = '<span class="badge-dot"></span>Anmeldung offen';
+                }
+            }
+
+            if (minNoteText && minParticipants > 0) {
+                minNoteText.textContent = occurrence.isGuaranteed
+                    ? 'Mindestanzahl erreicht: findet statt.'
+                    : ('Findet statt ab ' + minParticipants + ' Teilnehmer:innen.');
+            }
+
+            if (seatsWrap) {
+                seatsWrap.classList.remove('below-min', 'above-min');
+                if (occurrence.belowMin) {
+                    seatsWrap.classList.add('below-min');
+                }
+                if (occurrence.aboveMin) {
+                    seatsWrap.classList.add('above-min');
+                }
+            }
+
+            if (seatsFill) {
+                const fillPct = Number(occurrence.fillPct || 0);
+                seatsFill.style.width = String(Math.max(0, Math.min(100, fillPct))) + '%';
+                seatsFill.classList.remove('high', 'medium');
+                if (occurrence.fillClass === 'high' || occurrence.fillClass === 'medium') {
+                    seatsFill.classList.add(occurrence.fillClass);
+                }
+            }
+
+            if (seatsText && capacity > 0) {
+                const booked = Number(occurrence.booked || 0);
+                const spotsLeft = (occurrence.spotsLeft === null || typeof occurrence.spotsLeft === 'undefined')
+                    ? Math.max(0, capacity - booked)
+                    : Number(occurrence.spotsLeft || 0);
+                seatsText.textContent = String(spotsLeft) + ' / ' + String(capacity) + ' frei';
+            }
+        };
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => applyOccurrence(index - 1));
+        }
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => applyOccurrence(index + 1));
+        }
+
+        applyOccurrence(index);
+    });
+};
 const applyFilter = (filter) => {
     cards.forEach(card => {
         const audiences = (card.dataset.audiences || '')
@@ -398,6 +629,7 @@ filterBtns.forEach(btn => {
     });
 });
 
+initOccurrenceCards();
 applyFilter('all');
 </script>
 <script src="/assets/site-ui.js"></script>

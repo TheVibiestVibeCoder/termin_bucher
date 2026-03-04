@@ -256,9 +256,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     w.event_date_end,
                     w.location,
                     w.price_netto,
-                    w.price_currency
+                    w.price_currency,
+                    o.start_at AS occurrence_start_at,
+                    o.end_at AS occurrence_end_at
                 FROM bookings b
                 JOIN workshops w ON b.workshop_id = w.id
+                LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = w.id
                 WHERE b.id = :id AND COALESCE(b.archived, 0) = 0
             ');
             $bstmt->bindValue(':id', $bid, SQLITE3_INTEGER);
@@ -270,7 +273,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('success', 'Buchung ist bereits bestätigt.');
             } else {
                 $capacity = (int) $brow['workshop_capacity'];
-                $booked = count_confirmed_bookings($db, (int) $brow['workshop_id']);
+                $booked = count_confirmed_bookings($db, (int) $brow['workshop_id'], ((int) ($brow['occurrence_id'] ?? 0)) > 0 ? (int) $brow['occurrence_id'] : null);
 
                 if ($capacity > 0 && ($booked + (int) $brow['participants']) > $capacity) {
                     flash('error', 'Buchung kann nicht bestätigt werden: Kapazität erreicht.');
@@ -306,12 +309,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $emailParticipants[] = $p;
             }
 
+            $workshopForEmail = $sendConfirmationEmail;
+            if (!empty($sendConfirmationEmail['occurrence_start_at'])) {
+                $workshopForEmail['event_date'] = (string) $sendConfirmationEmail['occurrence_start_at'];
+                $workshopForEmail['event_date_end'] = (string) ($sendConfirmationEmail['occurrence_end_at'] ?? '');
+            }
+
             if (!send_booking_confirmed_email(
                 $sendConfirmationEmail['email'],
                 $sendConfirmationEmail['name'],
                 $sendConfirmationEmail['workshop_title'],
                 $sendConfirmationEmail,
-                $sendConfirmationEmail,
+                $workshopForEmail,
                 $emailParticipants
             )) {
                 flash('error', 'Bestätigungs-E-Mail konnte nicht gesendet werden.');

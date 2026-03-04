@@ -48,9 +48,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         $capacity = (int) ($capRow['capacity'] ?? 0);
 
         if ($capacity > 0) {
-            $sumStmt = $db->prepare('SELECT COALESCE(SUM(participants), 0) AS confirmed_sum FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 AND id != :id');
+            $sumSql = 'SELECT COALESCE(SUM(participants), 0) AS confirmed_sum FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 AND id != :id';
+            if ((int) ($booking['occurrence_id'] ?? 0) > 0) {
+                $sumSql .= ' AND occurrence_id = :oid';
+            } else {
+                $sumSql .= ' AND occurrence_id IS NULL';
+            }
+
+            $sumStmt = $db->prepare($sumSql);
             $sumStmt->bindValue(':wid', (int) $booking['workshop_id'], SQLITE3_INTEGER);
             $sumStmt->bindValue(':id', $id, SQLITE3_INTEGER);
+            if ((int) ($booking['occurrence_id'] ?? 0) > 0) {
+                $sumStmt->bindValue(':oid', (int) $booking['occurrence_id'], SQLITE3_INTEGER);
+            }
             $sumRow = $sumStmt->execute()->fetchArray(SQLITE3_ASSOC);
             $confirmedSum = (int) ($sumRow['confirmed_sum'] ?? 0);
 
@@ -272,3 +282,4 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
 <script src="/assets/site-ui.js"></script>
 </body>
 </html>
+
