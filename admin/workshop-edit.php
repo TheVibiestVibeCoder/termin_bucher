@@ -20,6 +20,28 @@ function normalize_datetime_input(?string $raw): string {
     return str_replace('T', ' ', $value);
 }
 
+function add_cancellation_recipient(array &$map, string $email, string $name): void {
+    $mail = trim($email);
+    if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) {
+        return;
+    }
+
+    $key = strtolower($mail);
+    $cleanName = trim($name);
+
+    if (!isset($map[$key])) {
+        $map[$key] = [
+            'name' => $cleanName,
+            'email' => $mail,
+        ];
+        return;
+    }
+
+    if ($map[$key]['name'] === '' && $cleanName !== '') {
+        $map[$key]['name'] = $cleanName;
+    }
+}
+
 function archive_bookings_for_removed_occurrences(SQLite3 $db, int $workshopId, array $occurrenceIds, string $archiveNote = 'Termin abgesagt'): array {
     $cleanOccurrenceIds = [];
     foreach ($occurrenceIds as $occurrenceId) {
@@ -38,26 +60,41 @@ function archive_bookings_for_removed_occurrences(SQLite3 $db, int $workshopId, 
     }
 
     $inList = implode(',', $cleanOccurrenceIds);
-    $mailRecipients = [];
+    $recipientMap = [];
 
     $collectSql = 'SELECT id, name, email, confirmed FROM bookings WHERE workshop_id = :wid AND COALESCE(archived, 0) = 0 AND occurrence_id IN (' . $inList . ')';
     $collectStmt = $db->prepare($collectSql);
     $collectStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
     $collectRes = $collectStmt->execute();
+
+    $participantStmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid ORDER BY id ASC');
+
     while ($row = $collectRes->fetchArray(SQLITE3_ASSOC)) {
         if ((int) ($row['confirmed'] ?? 0) !== 1) {
             continue;
         }
 
-        $mail = trim((string) ($row['email'] ?? ''));
-        if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) {
+        $bookingId = (int) ($row['id'] ?? 0);
+
+        add_cancellation_recipient(
+            $recipientMap,
+            (string) ($row['email'] ?? ''),
+            (string) ($row['name'] ?? '')
+        );
+
+        if ($bookingId <= 0) {
             continue;
         }
 
-        $mailRecipients[] = [
-            'name' => trim((string) ($row['name'] ?? '')),
-            'email' => $mail,
-        ];
+        $participantStmt->bindValue(':bid', $bookingId, SQLITE3_INTEGER);
+        $participantRes = $participantStmt->execute();
+        while ($participant = $participantRes->fetchArray(SQLITE3_ASSOC)) {
+            add_cancellation_recipient(
+                $recipientMap,
+                (string) ($participant['email'] ?? ''),
+                (string) ($participant['name'] ?? '')
+            );
+        }
     }
 
     $updateSql = "
@@ -78,7 +115,7 @@ function archive_bookings_for_removed_occurrences(SQLite3 $db, int $workshopId, 
 
     return [
         'archived_count' => $archivedCount,
-        'mail_recipients' => $mailRecipients,
+        'mail_recipients' => array_values($recipientMap),
     ];
 }
 

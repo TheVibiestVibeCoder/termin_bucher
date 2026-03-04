@@ -3,28 +3,65 @@ require __DIR__ . '/../includes/config.php';
 require __DIR__ . '/../includes/email.php';
 require_admin();
 
+function add_cancellation_recipient(array &$map, string $email, string $name): void {
+    $mail = trim($email);
+    if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) {
+        return;
+    }
+
+    $key = strtolower($mail);
+    $cleanName = trim($name);
+
+    if (!isset($map[$key])) {
+        $map[$key] = [
+            'name' => $cleanName,
+            'email' => $mail,
+        ];
+        return;
+    }
+
+    if ($map[$key]['name'] === '' && $cleanName !== '') {
+        $map[$key]['name'] = $cleanName;
+    }
+}
+
 function fetch_workshop_cancellation_recipients(SQLite3 $db, int $workshopId): array {
     if ($workshopId <= 0) {
         return [];
     }
 
-    $rows = [];
-    $stmt = $db->prepare('SELECT name, email FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 ORDER BY id ASC');
+    $recipientMap = [];
+    $stmt = $db->prepare('SELECT id, name, email FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 ORDER BY id ASC');
     $stmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
     $res = $stmt->execute();
+
+    $participantStmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid ORDER BY id ASC');
+
     while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
-        $mail = trim((string) ($row['email'] ?? ''));
-        if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) {
+        $bookingId = (int) ($row['id'] ?? 0);
+
+        add_cancellation_recipient(
+            $recipientMap,
+            (string) ($row['email'] ?? ''),
+            (string) ($row['name'] ?? '')
+        );
+
+        if ($bookingId <= 0) {
             continue;
         }
 
-        $rows[] = [
-            'name' => trim((string) ($row['name'] ?? '')),
-            'email' => $mail,
-        ];
+        $participantStmt->bindValue(':bid', $bookingId, SQLITE3_INTEGER);
+        $participantRes = $participantStmt->execute();
+        while ($participant = $participantRes->fetchArray(SQLITE3_ASSOC)) {
+            add_cancellation_recipient(
+                $recipientMap,
+                (string) ($participant['email'] ?? ''),
+                (string) ($participant['name'] ?? '')
+            );
+        }
     }
 
-    return $rows;
+    return array_values($recipientMap);
 }
 
 function count_workshop_bookings(SQLite3 $db, int $workshopId): int {
