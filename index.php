@@ -2,7 +2,7 @@
 require __DIR__ . '/includes/config.php';
 
 $bookedByWorkshop = [];
-$bookedRes = $db->query('SELECT workshop_id, COALESCE(SUM(participants), 0) AS booked FROM bookings WHERE confirmed = 1 GROUP BY workshop_id');
+$bookedRes = $db->query('SELECT workshop_id, COALESCE(SUM(participants), 0) AS booked FROM bookings WHERE confirmed = 1 AND COALESCE(archived, 0) = 0 GROUP BY workshop_id');
 while ($row = $bookedRes->fetchArray(SQLITE3_ASSOC)) {
     $bookedByWorkshop[(int) $row['workshop_id']] = (int) $row['booked'];
 }
