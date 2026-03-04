@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify()) {
         $capacity = (int) ($capRow['capacity'] ?? 0);
 
         if ($capacity > 0) {
-            $sumStmt = $db->prepare('SELECT COALESCE(SUM(participants), 0) AS confirmed_sum FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND id != :id');
+            $sumStmt = $db->prepare('SELECT COALESCE(SUM(participants), 0) AS confirmed_sum FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 AND id != :id');
             $sumStmt->bindValue(':wid', (int) $booking['workshop_id'], SQLITE3_INTEGER);
             $sumStmt->bindValue(':id', $id, SQLITE3_INTEGER);
             $sumRow = $sumStmt->execute()->fetchArray(SQLITE3_ASSOC);

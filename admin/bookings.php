@@ -3,14 +3,27 @@ require __DIR__ . '/../includes/config.php';
 require __DIR__ . '/../includes/email.php';
 require_admin();
 
-$workshopId = (int) ($_GET['workshop_id'] ?? 0);
+$workshopFilterRaw = isset($_GET['workshop_id']) ? trim((string) $_GET['workshop_id']) : '0';
+$isArchiveView = strcasecmp($workshopFilterRaw, 'archive') === 0;
+$workshopId = 0;
+if (!$isArchiveView && ctype_digit($workshopFilterRaw)) {
+    $workshopId = (int) $workshopFilterRaw;
+}
+
 $workshop = null;
-if ($workshopId) {
+if ($workshopId > 0) {
     $workshop = get_workshop_by_id($db, $workshopId);
 }
-$returnUrl = admin_url('bookings', $workshopId ? ['workshop_id' => $workshopId] : []);
 
-if ($workshopId && (string) ($_GET['export_participants'] ?? '') === '1') {
+$returnParams = [];
+if ($isArchiveView) {
+    $returnParams['workshop_id'] = 'archive';
+} elseif ($workshopId > 0) {
+    $returnParams['workshop_id'] = $workshopId;
+}
+$returnUrl = admin_url('bookings', $returnParams);
+
+if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? '') === '1') {
     if (!$workshop) {
         flash('error', 'Workshop nicht gefunden.');
         redirect(admin_url('bookings'));
@@ -30,7 +43,7 @@ if ($workshopId && (string) ($_GET['export_participants'] ?? '') === '1') {
             confirmed_at,
             created_at
         FROM bookings
-        WHERE workshop_id = :wid AND confirmed = 1
+        WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0
         ORDER BY confirmed_at ASC, created_at ASC
     ');
     $bookingStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
@@ -171,25 +184,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    // Delete booking
-    if (isset($_POST['delete_booking_id'])) {
-        $delId = (int) $_POST['delete_booking_id'];
+    // Archive booking (soft delete). Keep old delete_booking_id for compatibility.
+    if (isset($_POST['archive_booking_id']) || isset($_POST['delete_booking_id'])) {
+        $archiveId = isset($_POST['archive_booking_id'])
+            ? (int) $_POST['archive_booking_id']
+            : (int) $_POST['delete_booking_id'];
+        $archiveNote = trim((string) ($_POST['archive_note'] ?? ''));
 
-        // Fetch booking data before deletion for the cancellation email
-        $dstmt = $db->prepare('SELECT b.name, b.email, b.confirmed, w.title AS workshop_title FROM bookings b JOIN workshops w ON b.workshop_id = w.id WHERE b.id = :id');
-        $dstmt->bindValue(':id', $delId, SQLITE3_INTEGER);
+        $dstmt = $db->prepare('
+            SELECT
+                b.name,
+                b.email,
+                b.confirmed,
+                COALESCE(b.archived, 0) AS archived,
+                w.title AS workshop_title
+            FROM bookings b
+            JOIN workshops w ON b.workshop_id = w.id
+            WHERE b.id = :id
+            LIMIT 1
+        ');
+        $dstmt->bindValue(':id', $archiveId, SQLITE3_INTEGER);
         $drow = $dstmt->execute()->fetchArray(SQLITE3_ASSOC);
 
-        $stmt = $db->prepare('DELETE FROM bookings WHERE id = :id');
-        $stmt->bindValue(':id', $delId, SQLITE3_INTEGER);
-        $stmt->execute();
-
-        // Send cancellation email only if the booking was confirmed
-        if ($drow && $drow['confirmed']) {
-            send_booking_cancelled_email($drow['email'], $drow['name'], $drow['workshop_title']);
+        if (!$drow) {
+            flash('error', 'Buchung nicht gefunden.');
+            redirect($returnUrl);
         }
 
-        flash('success', 'Buchung gelöscht.' . ($drow && $drow['confirmed'] ? ' Stornierungsmail gesendet.' : ''));
+        if ((int) ($drow['archived'] ?? 0) === 1) {
+            flash('success', 'Buchung ist bereits archiviert.');
+            redirect($returnUrl);
+        }
+
+        $stmt = $db->prepare("\n            UPDATE bookings\n            SET\n                archived = 1,\n                archived_at = datetime('now'),\n                archived_by = :archived_by,\n                archive_note = CASE WHEN :archive_note = '' THEN archive_note ELSE :archive_note END\n            WHERE id = :id AND COALESCE(archived, 0) = 0\n        ");
+        $stmt->bindValue(':id', $archiveId, SQLITE3_INTEGER);
+        $stmt->bindValue(':archived_by', 'admin', SQLITE3_TEXT);
+        $stmt->bindValue(':archive_note', $archiveNote, SQLITE3_TEXT);
+        $updateResult = $stmt->execute();
+
+        if ($updateResult !== false && $db->changes() === 1) {
+            if ((int) ($drow['confirmed'] ?? 0) === 1) {
+                send_booking_cancelled_email((string) $drow['email'], (string) $drow['name'], (string) $drow['workshop_title']);
+            }
+            flash('success', 'Buchung archiviert.' . ((int) ($drow['confirmed'] ?? 0) === 1 ? ' Stornierungsmail gesendet.' : ''));
+        } else {
+            flash('error', 'Buchung konnte nicht archiviert werden.');
+        }
+
         redirect($returnUrl);
     }
 
@@ -218,7 +259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     w.price_currency
                 FROM bookings b
                 JOIN workshops w ON b.workshop_id = w.id
-                WHERE b.id = :id
+                WHERE b.id = :id AND COALESCE(b.archived, 0) = 0
             ');
             $bstmt->bindValue(':id', $bid, SQLITE3_INTEGER);
             $brow = $bstmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -234,7 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($capacity > 0 && ($booked + (int) $brow['participants']) > $capacity) {
                     flash('error', 'Buchung kann nicht bestätigt werden: Kapazität erreicht.');
                 } else {
-                    $stmt = $db->prepare("UPDATE bookings SET confirmed = 1, confirmed_at = datetime('now') WHERE id = :id AND confirmed = 0");
+                    $stmt = $db->prepare("UPDATE bookings SET confirmed = 1, confirmed_at = datetime('now') WHERE id = :id AND confirmed = 0 AND COALESCE(archived, 0) = 0");
                     $stmt->bindValue(':id', $bid, SQLITE3_INTEGER);
                     $updateResult = $stmt->execute();
 
@@ -352,7 +393,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $discountCode = '';
                 $discountAmount = 0.0;
                 if ($bookingId > 0) {
-                    $rbStmt = $db->prepare('SELECT discount_code, discount_amount FROM bookings WHERE id = :id AND workshop_id = :wid AND confirmed = 1 LIMIT 1');
+                    $rbStmt = $db->prepare('SELECT discount_code, discount_amount FROM bookings WHERE id = :id AND workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 LIMIT 1');
                     $rbStmt->bindValue(':id', $bookingId, SQLITE3_INTEGER);
                     $rbStmt->bindValue(':wid', $rwid, SQLITE3_INTEGER);
                     $rbRow = $rbStmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -414,7 +455,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $emails = [];
 
             // Booker emails (confirmed bookings)
-            $bstmt = $db->prepare('SELECT DISTINCT email FROM bookings WHERE workshop_id = :wid AND confirmed = 1');
+            $bstmt = $db->prepare('SELECT DISTINCT email FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0');
             $bstmt->bindValue(':wid', $bulkWid, SQLITE3_INTEGER);
             $bres = $bstmt->execute();
             while ($br = $bres->fetchArray(SQLITE3_ASSOC)) {
@@ -425,7 +466,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pstmt = $db->prepare('
                 SELECT DISTINCT bp.email FROM booking_participants bp
                 JOIN bookings b ON bp.booking_id = b.id
-                WHERE b.workshop_id = :wid AND b.confirmed = 1
+                WHERE b.workshop_id = :wid AND b.confirmed = 1 AND COALESCE(b.archived, 0) = 0
             ');
             $pstmt->bindValue(':wid', $bulkWid, SQLITE3_INTEGER);
             $pres = $pstmt->execute();
@@ -452,11 +493,26 @@ $sql = '
     JOIN workshops w ON b.workshop_id = w.id
 ';
 $params = [];
-if ($workshopId) {
-    $sql .= ' WHERE b.workshop_id = :wid';
-    $params[':wid'] = $workshopId;
+$where = [];
+
+if ($isArchiveView) {
+    $where[] = 'COALESCE(b.archived, 0) = 1';
+} else {
+    $where[] = 'COALESCE(b.archived, 0) = 0';
+    if ($workshopId > 0) {
+        $where[] = 'b.workshop_id = :wid';
+        $params[':wid'] = $workshopId;
+    }
 }
-$sql .= ' ORDER BY b.created_at DESC';
+
+if (!empty($where)) {
+    $sql .= ' WHERE ' . implode(' AND ', $where);
+}
+if ($isArchiveView) {
+    $sql .= " ORDER BY COALESCE(b.archived_at, b.created_at) DESC, b.id DESC";
+} else {
+    $sql .= ' ORDER BY b.created_at DESC';
+}
 
 $stmt = $db->prepare($sql);
 foreach ($params as $k => $v) {
@@ -487,8 +543,8 @@ while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
 
 // Confirmed bookings for Rechnung modal (one card per booking)
 $confirmedBookingsForRechnung = [];
-if ($workshop) {
-    $rcStmt = $db->prepare('SELECT id, name, email, organization FROM bookings WHERE workshop_id = :wid AND confirmed = 1 ORDER BY confirmed_at ASC, created_at ASC');
+if ($workshop && !$isArchiveView) {
+    $rcStmt = $db->prepare('SELECT id, name, email, organization FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 ORDER BY confirmed_at ASC, created_at ASC');
     $rcStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
     $rcResult = $rcStmt->execute();
     while ($rcRow = $rcResult->fetchArray(SQLITE3_ASSOC)) {
@@ -822,8 +878,10 @@ if ($workshop) {
         <div class="admin-header">
             <h1>
                 Buchungen
-                <?php if ($workshop): ?>
+                <?php if ($workshop && !$isArchiveView): ?>
                     <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - <?= e($workshop['title']) ?></span>
+                <?php elseif ($isArchiveView): ?>
+                    <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - Archiv</span>
                 <?php endif; ?>
             </h1>
         </div>
@@ -834,16 +892,17 @@ if ($workshop) {
         <div class="booking-filter-bar">
             <form method="GET" class="booking-filter-form">
                 <select name="workshop_id" class="booking-filter-select">
-                    <option value="0">Alle Workshops</option>
+                    <option value="0" <?= !$isArchiveView && $workshopId === 0 ? 'selected' : '' ?>>Alle Workshops</option>
+                    <option value="archive" <?= $isArchiveView ? 'selected' : '' ?>>Archiv</option>
                     <?php foreach ($allWorkshops as $ws): ?>
-                        <option value="<?= $ws['id'] ?>" <?= $workshopId == $ws['id'] ? 'selected' : '' ?>><?= e($ws['title']) ?></option>
+                        <option value="<?= $ws['id'] ?>" <?= !$isArchiveView && $workshopId === (int) $ws['id'] ? 'selected' : '' ?>><?= e($ws['title']) ?></option>
                     <?php endforeach; ?>
                 </select>
                 <button type="submit" class="btn-admin">Filtern</button>
             </form>
         </div>
 
-        <?php if ($workshop): ?>
+        <?php if ($workshop && !$isArchiveView): ?>
         <div class="workshop-actions">
             <div class="workshop-actions-copy">
                 <div class="workshop-actions-title">Workshop-Aktionen</div>
@@ -872,9 +931,9 @@ if ($workshop) {
         <?php endif; ?>
 
         <?php if (empty($bookings)): ?>
-            <p style="color:var(--muted);">Keine Buchungen gefunden.</p>
+            <p style="color:var(--muted);"><?= $isArchiveView ? 'Keine archivierten Buchungen gefunden.' : 'Keine Buchungen gefunden.' ?></p>
         <?php else: ?>
-            <p style="color:var(--dim);font-size:0.85rem;margin-bottom:1rem;"><?= count($bookings) ?> Buchung(en)</p>
+            <p style="color:var(--dim);font-size:0.85rem;margin-bottom:1rem;"><?= count($bookings) ?> <?= $isArchiveView ? 'archivierte Buchung(en)' : 'Buchung(en)' ?></p>
             <div class="admin-table-scroll">
             <table class="admin-table">
                 <thead>
@@ -898,6 +957,10 @@ if ($workshop) {
     if ($bookingCurrency === '') {
         $bookingCurrency = trim((string)($b['workshop_currency'] ?? 'EUR'));
     }
+    $isArchivedRow = (int) ($b['archived'] ?? 0) === 1;
+    $rowDateValue = $isArchivedRow && !empty($b['archived_at'])
+        ? (string) $b['archived_at']
+        : (string) $b['created_at'];
 ?>
                     <tr>
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
@@ -926,18 +989,20 @@ if ($workshop) {
     <?php endif; ?>
 </td>
                         <td>
-                            <?php if ($b['confirmed']): ?>
-                                <span class="status-badge status-confirmed">Bestätigt</span>
+                            <?php if ($isArchivedRow): ?>
+                                <span class="status-badge status-pending">Archiviert</span>
+                            <?php elseif ($b['confirmed']): ?>
+                                <span class="status-badge status-confirmed">Best&auml;tigt</span>
                             <?php else: ?>
                                 <span class="status-badge status-pending">Ausstehend</span>
                             <?php endif; ?>
                         </td>
-                        <td style="white-space:nowrap;"><?= e(date('d.m.Y H:i', strtotime($b['created_at']))) ?></td>
+                        <td style="white-space:nowrap;"><?= e(date('d.m.Y H:i', strtotime($rowDateValue))) ?></td>
                         <td>
                             <div class="admin-actions">
                                 <a href="<?= e(admin_url('booking-edit', ['id' => (int) $b['id']])) ?>" class="btn-admin" title="Bearbeiten">Bearbeiten</a>
 
-                                <?php if (!$b['confirmed']): ?>
+                                <?php if (!$b['confirmed'] && !$isArchivedRow): ?>
                                 <form method="POST" style="display:inline;">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="confirm_booking_id" value="<?= $b['id'] ?>">
@@ -949,11 +1014,13 @@ if ($workshop) {
                                         onclick='openEmailModal(<?= (int) $b['id'] ?>, <?= json_for_html((string) $b['name']) ?>, <?= json_for_html((string) $b['email']) ?>)'
                                         title="E-Mail senden">E-Mail</button>
 
-                                <form method="POST" style="display:inline;" onsubmit="return confirm('Buchung wirklich löschen?')">
+                                <?php if (!$isArchivedRow): ?>
+                                <form method="POST" style="display:inline;" onsubmit="return confirm('Buchung wirklich archivieren?')">
                                     <?= csrf_field() ?>
-                                    <input type="hidden" name="delete_booking_id" value="<?= $b['id'] ?>">
-                                    <button type="submit" class="btn-admin btn-danger" title="Löschen">Löschen</button>
+                                    <input type="hidden" name="archive_booking_id" value="<?= $b['id'] ?>">
+                                    <button type="submit" class="btn-admin btn-danger" title="Archivieren">Archivieren</button>
                                 </form>
+                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>
@@ -1006,7 +1073,7 @@ if ($workshop) {
     </div>
 </div>
 
-<?php if ($workshop):
+<?php if ($workshop && !$isArchiveView):
     $evtDateDefault   = !empty($workshop['event_date'])
         ? format_event_date($workshop['event_date'], $workshop['event_date_end'] ?? '')
         : '';

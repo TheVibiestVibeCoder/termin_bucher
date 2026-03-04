@@ -30,7 +30,7 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                 w.price_currency
             FROM bookings b
             JOIN workshops w ON b.workshop_id = w.id
-            WHERE b.token = :token
+            WHERE b.token = :token AND COALESCE(b.archived, 0) = 0
         ');
         $stmt->bindValue(':token', $token, SQLITE3_TEXT);
         $booking = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -53,7 +53,7 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                     if ($capacity > 0 && ($booked + (int) $booking['participants']) > $capacity) {
                         $status = 'full';
                     } else {
-                        $upd = $db->prepare("UPDATE bookings SET confirmed = 1, confirmed_at = datetime('now') WHERE id = :id AND confirmed = 0");
+                        $upd = $db->prepare("UPDATE bookings SET confirmed = 1, confirmed_at = datetime('now') WHERE id = :id AND confirmed = 0 AND COALESCE(archived, 0) = 0");
                         $upd->bindValue(':id', (int) $booking['id'], SQLITE3_INTEGER);
                         $updateResult = $upd->execute();
 

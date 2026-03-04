@@ -67,6 +67,10 @@ $migrations = [
     ['bookings', 'discount_amount',         "REAL NOT NULL DEFAULT 0"],
     ['bookings', 'subtotal_netto',          "REAL NOT NULL DEFAULT 0"],
     ['bookings', 'total_netto',             "REAL NOT NULL DEFAULT 0"],
+    ['bookings', 'archived',                "INTEGER NOT NULL DEFAULT 0"],
+    ['bookings', 'archived_at',             "DATETIME"],
+    ['bookings', 'archived_by',             "TEXT NOT NULL DEFAULT ''"],
+    ['bookings', 'archive_note',            "TEXT NOT NULL DEFAULT ''"],
 
     // short description for listing cards (long description stays in 'description')
     ['workshops', 'description_short', "TEXT NOT NULL DEFAULT ''"],
@@ -105,4 +109,5 @@ foreach ($migrations as [$table, $col, $def]) {
 }
 
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_discount_code_id ON bookings(discount_code_id);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_archived_workshop ON bookings(archived, workshop_id, confirmed);");
 
