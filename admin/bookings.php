@@ -688,13 +688,19 @@ while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
         }
     }
 
-    $hasMultipleOccurrences = $isOpenWorkshop && count($occurrencesForFilter) > 1;
-    $allWorkshopFilters[] = [
-        'value' => (string) $wid,
-        'label' => $hasMultipleOccurrences ? ($title . ' - alle Termine') : $title,
-    ];
-
     if (!$isOpenWorkshop) {
+        $allWorkshopFilters[] = [
+            'value' => (string) $wid,
+            'label' => $title,
+        ];
+        continue;
+    }
+
+    if (count($occurrencesForFilter) <= 1) {
+        $allWorkshopFilters[] = [
+            'value' => (string) $wid,
+            'label' => $title,
+        ];
         continue;
     }
 
