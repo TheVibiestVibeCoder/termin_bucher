@@ -4,9 +4,9 @@ require_admin();
 
 // -- Stats --------------------------------------------------------------------
 $totalWorkshops    = (int) $db->querySingle('SELECT COUNT(*) FROM workshops WHERE active = 1');
-$totalBookings     = (int) $db->querySingle('SELECT COUNT(*) FROM bookings WHERE confirmed = 1');
-$pendingBookings   = (int) $db->querySingle('SELECT COUNT(*) FROM bookings WHERE confirmed = 0');
-$totalParticipants = (int) $db->querySingle('SELECT COALESCE(SUM(participants), 0) FROM bookings WHERE confirmed = 1');
+$totalBookings     = (int) $db->querySingle('SELECT COUNT(*) FROM bookings WHERE confirmed = 1 AND COALESCE(archived, 0) = 0');
+$pendingBookings   = (int) $db->querySingle('SELECT COUNT(*) FROM bookings WHERE confirmed = 0 AND COALESCE(archived, 0) = 0');
+$totalParticipants = (int) $db->querySingle('SELECT COALESCE(SUM(participants), 0) FROM bookings WHERE confirmed = 1 AND COALESCE(archived, 0) = 0');
 
 // Revenue per workshop (confirmed bookings, discount-aware)
 $revenueResult = $db->query('
@@ -25,7 +25,7 @@ $revenueResult = $db->query('
             END
         ), 0) AS net_revenue
     FROM workshops w
-    LEFT JOIN bookings b ON b.workshop_id = w.id AND b.confirmed = 1
+    LEFT JOIN bookings b ON b.workshop_id = w.id AND b.confirmed = 1 AND COALESCE(b.archived, 0) = 0
     WHERE w.price_netto > 0
     GROUP BY w.id
     ORDER BY net_revenue DESC
@@ -45,6 +45,7 @@ $recentResult = $db->query('
     SELECT b.*, w.id AS workshop_id, w.title AS workshop_title, w.price_netto, w.price_currency
     FROM bookings b
     JOIN workshops w ON b.workshop_id = w.id
+    WHERE COALESCE(b.archived, 0) = 0
     ORDER BY b.created_at DESC
     LIMIT 10
 ');

@@ -225,8 +225,8 @@ if ($editId > 0 && $_SERVER['REQUEST_METHOD'] !== 'POST') {
 $codesResult = $db->query('
     SELECT
         dc.*,
-        COUNT(b.id) AS usage_total,
-        COALESCE(SUM(CASE WHEN b.confirmed = 1 THEN 1 ELSE 0 END), 0) AS usage_confirmed
+        COUNT(CASE WHEN COALESCE(b.archived, 0) = 0 THEN 1 END) AS usage_total,
+        COALESCE(SUM(CASE WHEN b.confirmed = 1 AND COALESCE(b.archived, 0) = 0 THEN 1 ELSE 0 END), 0) AS usage_confirmed
     FROM discount_codes dc
     LEFT JOIN bookings b ON b.discount_code_id = dc.id
     GROUP BY dc.id

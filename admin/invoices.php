@@ -243,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $bookingFetchStmt = $db->prepare('
             SELECT id, name, email, organization, discount_code, discount_amount
             FROM bookings
-            WHERE id = :id AND workshop_id = :wid AND confirmed = 1
+            WHERE id = :id AND workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0
             LIMIT 1
         ');
         $existingInvoiceStmt = $db->prepare('SELECT id, invoice_number_display FROM invoices WHERE booking_id = :bid LIMIT 1');
@@ -489,7 +489,7 @@ if ($selectedWorkshopId > 0) {
             i.send_status
         FROM bookings b
         LEFT JOIN invoices i ON i.booking_id = b.id
-        WHERE b.workshop_id = :wid AND b.confirmed = 1
+        WHERE b.workshop_id = :wid AND b.confirmed = 1 AND COALESCE(b.archived, 0) = 0
         ORDER BY b.confirmed_at ASC, b.created_at ASC
     ');
     $bookingsStmt->bindValue(':wid', $selectedWorkshopId, SQLITE3_INTEGER);
