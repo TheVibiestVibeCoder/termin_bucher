@@ -8,7 +8,7 @@ if (!$id) {
     redirect(admin_url('bookings'));
 }
 
-$stmt = $db->prepare('SELECT b.*, w.title AS workshop_title, w.id AS workshop_id, w.price_netto AS workshop_price_netto, w.price_currency AS workshop_currency FROM bookings b JOIN workshops w ON b.workshop_id = w.id WHERE b.id = :id');
+$stmt = $db->prepare('SELECT b.*, w.title AS workshop_title, w.id AS workshop_id, w.price_netto AS workshop_price_netto, w.price_currency AS workshop_currency, o.start_at AS occurrence_start_at, o.end_at AS occurrence_end_at FROM bookings b JOIN workshops w ON b.workshop_id = w.id LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = b.workshop_id WHERE b.id = :id');
 $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
 $booking = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
@@ -16,6 +16,20 @@ if (!$booking) {
     flash('error', 'Buchung nicht gefunden.');
     redirect(admin_url('bookings'));
 }
+
+$backWorkshopFilter = (string) ((int) ($booking['workshop_id'] ?? 0));
+if ((int) ($booking['occurrence_id'] ?? 0) > 0) {
+    $backWorkshopFilter .= ':' . (int) $booking['occurrence_id'];
+}
+
+$bookingOccurrenceLabel = '';
+if (!empty($booking['occurrence_start_at'])) {
+    $bookingOccurrenceLabel = format_event_date(
+        (string) ($booking['occurrence_start_at'] ?? ''),
+        (string) ($booking['occurrence_end_at'] ?? '')
+    );
+}
+
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
@@ -198,6 +212,9 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
         <div style="margin-bottom:1.5rem;padding:1rem 1.25rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:0.85rem;color:var(--muted);">
             <div style="margin-bottom:0.25rem;">
                 <strong style="color:var(--text);">Workshop:</strong> <?= e($booking['workshop_title']) ?>
+                <?php if ($bookingOccurrenceLabel !== ''): ?>
+                    <div style="font-size:0.78rem;color:var(--dim);margin-top:0.15rem;"><?= e($bookingOccurrenceLabel) ?></div>
+                <?php endif; ?>
             </div>
             <div style="margin-bottom:0.25rem;">
                 <strong style="color:var(--text);">Buchungs-ID:</strong> #<?= $booking['id'] ?>
@@ -274,7 +291,7 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
 
             <div style="display:flex;gap:0.75rem;margin-top:0.5rem;">
                 <button type="submit" class="btn-admin btn-success">Speichern</button>
-                <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $booking['workshop_id']])) ?>" class="btn-admin">Abbrechen</a>
+                <a href="<?= e(admin_url('bookings', ['workshop_id' => $backWorkshopFilter])) ?>" class="btn-admin">Abbrechen</a>
             </div>
         </form>
     </div>

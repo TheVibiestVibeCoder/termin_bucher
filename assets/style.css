@@ -2899,6 +2899,32 @@ footer a:hover { color: var(--text); }
     text-transform: uppercase;
 }
 
+.workshop-card .event-details-panel,
+.workshop-card .js-occurrence-seats,
+.workshop-card .js-occurrence-min-note,
+.workshop-card .js-status-badge,
+.workshop-card .js-occurrence-detail-link {
+    transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.34s ease;
+    will-change: transform, opacity;
+}
+
+.workshop-card.is-occurrence-animating .event-details-panel,
+.workshop-card.is-occurrence-animating .js-occurrence-seats,
+.workshop-card.is-occurrence-animating .js-occurrence-min-note,
+.workshop-card.is-occurrence-animating .js-status-badge,
+.workshop-card.is-occurrence-animating .js-occurrence-detail-link {
+    opacity: 0.55;
+    transform: translateX(var(--occurrence-shift, -12px)) scale(0.985);
+}
+
+.workshop-card.is-occurrence-animating.is-occurrence-prev {
+    --occurrence-shift: 12px;
+}
+
+.workshop-card.is-occurrence-animating.is-occurrence-next {
+    --occurrence-shift: -12px;
+}
+
 .detail-occurrence-slider {
     position: relative;
     display: grid;
@@ -2931,6 +2957,8 @@ footer a:hover { color: var(--text); }
 .detail-occurrence-stack {
     position: relative;
     min-height: 116px;
+    overflow: hidden;
+    perspective: 900px;
 }
 
 .detail-occurrence-card {
@@ -2940,33 +2968,51 @@ footer a:hover { color: var(--text); }
     border: 1px solid var(--border);
     background: linear-gradient(140deg, rgba(255,255,255,0.08), rgba(255,255,255,0.01));
     padding: 0.9rem 1rem;
-    transition: transform 0.33s ease, opacity 0.33s ease;
+    transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.42s ease;
     box-shadow: 0 12px 28px var(--shadow);
+    opacity: 0;
+    transform: translateX(18%) rotateY(12deg) scale(0.95);
+    pointer-events: none;
+    z-index: 1;
+    will-change: transform, opacity;
 }
 
 .detail-occurrence-card.is-active {
     opacity: 1;
-    transform: translateX(0) rotate(0deg) scale(1);
+    transform: translateX(0) rotateY(0deg) scale(1);
+    pointer-events: auto;
     z-index: 3;
-}
-
-.detail-occurrence-card.is-prev {
-    opacity: 0.58;
-    transform: translateX(-34%) rotate(-4deg) scale(0.9);
-    z-index: 2;
-}
-
-.detail-occurrence-card.is-next {
-    opacity: 0.58;
-    transform: translateX(34%) rotate(4deg) scale(0.9);
-    z-index: 2;
 }
 
 .detail-occurrence-card.is-hidden {
     opacity: 0;
-    transform: scale(0.84);
+    transform: translateX(-18%) rotateY(-12deg) scale(0.95);
     pointer-events: none;
     z-index: 1;
+}
+
+.detail-occurrence-card.is-entering-next {
+    opacity: 0;
+    transform: translateX(24%) rotateY(14deg) scale(0.94);
+}
+
+.detail-occurrence-card.is-entering-prev {
+    opacity: 0;
+    transform: translateX(-24%) rotateY(-14deg) scale(0.94);
+}
+
+.detail-occurrence-card.is-leaving-next {
+    opacity: 0;
+    transform: translateX(-24%) rotateY(-14deg) scale(0.94);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.detail-occurrence-card.is-leaving-prev {
+    opacity: 0;
+    transform: translateX(24%) rotateY(14deg) scale(0.94);
+    pointer-events: none;
+    z-index: 2;
 }
 
 .detail-occurrence-kicker {
@@ -3007,14 +3053,35 @@ footer a:hover { color: var(--text); }
         min-height: 106px;
     }
 
-    .detail-occurrence-card.is-prev,
-    .detail-occurrence-card.is-next {
-        opacity: 0.45;
-        transform: translateX(24%) scale(0.92);
+    .detail-occurrence-card {
+        transform: translateX(14%) scale(0.96);
     }
 
-    .detail-occurrence-card.is-prev {
-        transform: translateX(-24%) scale(0.92);
+    .detail-occurrence-card.is-hidden {
+        transform: translateX(-14%) scale(0.96);
+    }
+
+    .detail-occurrence-card.is-entering-next,
+    .detail-occurrence-card.is-leaving-prev {
+        transform: translateX(18%) scale(0.95);
+    }
+
+    .detail-occurrence-card.is-entering-prev,
+    .detail-occurrence-card.is-leaving-next {
+        transform: translateX(-18%) scale(0.95);
     }
 }
 
+
+
+@media (prefers-reduced-motion: reduce) {
+    .detail-occurrence-card,
+    .workshop-card .event-details-panel,
+    .workshop-card .js-occurrence-seats,
+    .workshop-card .js-occurrence-min-note,
+    .workshop-card .js-status-badge,
+    .workshop-card .js-occurrence-detail-link {
+        transition: none !important;
+        animation: none !important;
+    }
+}

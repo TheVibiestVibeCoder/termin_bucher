@@ -607,6 +607,7 @@ if ($isOpen && $eventDate) {
     $detailMetaItems[] = [
         'label' => 'Datum & Uhrzeit',
         'value' => format_event_date($eventDate, $eventDateEnd),
+        'field' => 'date',
     ];
 }
 if ($isOpen && $location) {
@@ -624,6 +625,7 @@ if ($isOpen && $minP > 0) {
     $detailMetaItems[] = [
         'label' => 'Status',
         'value' => $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen',
+        'field' => 'status',
     ];
 }
 $detailMetaItems[] = [
@@ -642,6 +644,7 @@ if ($capacity > 0) {
     $detailMetaItems[] = [
         'label' => 'Verfügbar',
         'value' => $isFull ? 'Ausgebucht' : ($spotsLeft . ' frei'),
+        'field' => 'availability',
     ];
 }
 if ($minP > 0) {
@@ -732,22 +735,21 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                 <h1><?= e($workshop['title']) ?></h1>
 
                 <?php if ($isOpen && $hasMultipleOccurrences): ?>
-                <div class="detail-occurrence-slider" aria-label="Workshop-Termine">
-                    <a href="<?= e($prevOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-prev" aria-label="Vorheriger Termin">
+                <div class="detail-occurrence-slider"
+                     data-detail-occurrence-slider
+                     data-occurrence-payload="<?= e(json_for_html($detailOccurrencePayload)) ?>"
+                     data-occurrence-index="<?= (int) $selectedOccurrenceIndex ?>"
+                     data-min-participants="<?= (int) $minP ?>"
+                     data-capacity="<?= (int) $capacity ?>"
+                     aria-label="Workshop-Termine">
+                    <a href="<?= e($prevOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-prev" data-detail-occurrence-prev aria-label="Vorheriger Termin">
                         &#10094;
                     </a>
                     <div class="detail-occurrence-stack">
                         <?php foreach ($occurrences as $occurrenceIdx => $occurrenceRow):
-                            $cardClass = 'is-hidden';
-                            if ($occurrenceIdx === $selectedOccurrenceIndex) {
-                                $cardClass = 'is-active';
-                            } elseif ($occurrenceIdx === $prevIndex) {
-                                $cardClass = 'is-prev';
-                            } elseif ($occurrenceIdx === $nextIndex) {
-                                $cardClass = 'is-next';
-                            }
+                            $cardClass = ($occurrenceIdx === $selectedOccurrenceIndex) ? 'is-active' : 'is-hidden';
                         ?>
-                        <article class="detail-occurrence-card <?= e($cardClass) ?>">
+                        <article class="detail-occurrence-card <?= e($cardClass) ?>" data-detail-occurrence-card data-occurrence-id="<?= (int) ($occurrenceRow['id'] ?? 0) ?>">
                             <div class="detail-occurrence-kicker">Termin <?= ($occurrenceIdx + 1) ?> von <?= count($occurrences) ?></div>
                             <div class="detail-occurrence-date"><?= e((string) ($occurrenceRow['formatted_date'] ?? '')) ?></div>
                             <div class="detail-occurrence-meta">
@@ -760,7 +762,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </article>
                         <?php endforeach; ?>
                     </div>
-                    <a href="<?= e($nextOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-next" aria-label="Naechster Termin">
+                    <a href="<?= e($nextOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-next" data-detail-occurrence-next aria-label="Naechster Termin">
                         &#10095;
                     </a>
                 </div>
@@ -790,16 +792,19 @@ $hasMoreMetaItems = !empty($extraMetaItems);
 
                 <div class="detail-meta-grid detail-meta-grid-main">
                     <?php foreach ($primaryMetaItems as $metaItem): ?>
-                    <?php $metaHref = trim((string) ($metaItem['href'] ?? '')); ?>
+                    <?php
+                        $metaHref = trim((string) ($metaItem['href'] ?? ''));
+                        $metaField = trim((string) ($metaItem['field'] ?? ''));
+                    ?>
                     <div class="detail-meta-item<?= $metaHref !== '' ? ' detail-meta-item-link' : '' ?>">
                         <?php if ($metaHref !== ''): ?>
                         <a href="<?= e($metaHref) ?>" class="detail-meta-link detail-location-link" aria-label="Route mit Öffis zu dieser Adresse in Google Maps öffnen">
                             <span class="label"><?= e($metaItem['label']) ?></span>
-                            <span class="value"><?= e($metaItem['value']) ?></span>
+                            <span class="value"<?= $metaField !== '' ? ' data-detail-field="' . e($metaField) . '"' : '' ?>><?= e($metaItem['value']) ?></span>
                         </a>
                         <?php else: ?>
                         <div class="label"><?= e($metaItem['label']) ?></div>
-                        <div class="value"><?= e($metaItem['value']) ?></div>
+                        <div class="value"<?= $metaField !== '' ? ' data-detail-field="' . e($metaField) . '"' : '' ?>><?= e($metaItem['value']) ?></div>
                         <?php endif; ?>
                     </div>
                     <?php endforeach; ?>
@@ -840,16 +845,19 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                         <div class="detail-meta-grid detail-meta-grid-overlay">
                             <?php foreach ($extraMetaItems as $metaItem): ?>
-                            <?php $metaHref = trim((string) ($metaItem['href'] ?? '')); ?>
+                            <?php
+                                $metaHref = trim((string) ($metaItem['href'] ?? ''));
+                                $metaField = trim((string) ($metaItem['field'] ?? ''));
+                            ?>
                             <div class="detail-meta-item<?= $metaHref !== '' ? ' detail-meta-item-link' : '' ?>">
                                 <?php if ($metaHref !== ''): ?>
                                 <a href="<?= e($metaHref) ?>" class="detail-meta-link detail-location-link" aria-label="Route mit Öffis zu dieser Adresse in Google Maps öffnen">
                                     <span class="label"><?= e($metaItem['label']) ?></span>
-                                    <span class="value"><?= e($metaItem['value']) ?></span>
+                                    <span class="value"<?= $metaField !== '' ? ' data-detail-field="' . e($metaField) . '"' : '' ?>><?= e($metaItem['value']) ?></span>
                                 </a>
                                 <?php else: ?>
                                 <div class="label"><?= e($metaItem['label']) ?></div>
-                                <div class="value"><?= e($metaItem['value']) ?></div>
+                                <div class="value"<?= $metaField !== '' ? ' data-detail-field="' . e($metaField) . '"' : '' ?>><?= e($metaItem['value']) ?></div>
                                 <?php endif; ?>
                             </div>
                             <?php endforeach; ?>
@@ -859,21 +867,21 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                 <?php endif; ?>
 
                 <?php if ($minP > 0): ?>
-                <div class="min-participants-note" style="margin-bottom:1.5rem;">
+                <div class="min-participants-note js-detail-min-note" style="margin-bottom:1.5rem;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    <?= $isGuaranteed
+                    <span class="js-detail-min-note-text"><?= $isGuaranteed
                         ? 'Mindestanzahl erreicht: Dieser Workshop findet statt.'
-                        : ('Dieser Workshop findet statt, sobald mindestens ' . $minP . ' Teilnehmer:innen gebucht sind.') ?>
+                        : ('Dieser Workshop findet statt, sobald mindestens ' . $minP . ' Teilnehmer:innen gebucht sind.') ?></span>
                 </div>
                 <?php endif; ?>
 
                 <?php if ($capacity > 0): ?>
-                <div class="seats-indicator <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
+                <div class="seats-indicator js-detail-seats <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
                      style="max-width:400px;margin-bottom:2rem;"
                      <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
                     <div class="seats-bar">
                         <div class="seats-bar-track">
-                            <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                            <div class="seats-bar-fill js-detail-seats-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
                         </div>
                         <?php if ($minP > 0 && $capacity > 0): ?>
                         <div class="seats-bar-marker" style="left:<?= $minPct ?>%">
@@ -881,7 +889,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                         <?php endif; ?>
                     </div>
-                    <span class="seats-text"><?= $booked ?> / <?= $capacity ?> gebucht</span>
+                    <span class="seats-text js-detail-seats-text"><?= $booked ?> / <?= $capacity ?> gebucht</span>
                 </div>
                 <?php endif; ?>
 
@@ -921,10 +929,12 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                     <?php endif; ?>
 
-                    <form method="POST" action="<?= e($workshopPageUrl) ?>">
+                    <form method="POST" action="<?= e($workshopPageUrl) ?>" id="bookingForm">
                         <input type="hidden" name="occurrence_id" id="occurrence_id" value="<?= (int) $selectedOccurrenceId ?>">
                         <?= csrf_field() ?>
                         <input type="hidden" name="book" value="1">
+
+                        <div class="flash flash-error" id="detailBookingUnavailable" hidden style="margin-bottom:0.9rem;">Dieser Termin ist aktuell ausgebucht. Bitte waehlen Sie einen anderen Termin.</div>
 
                         <div class="form-group">
                             <label for="name">Name *</label>
@@ -1015,7 +1025,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                         <?php endif; ?>
 
-                        <button type="submit" class="btn-submit">Buchung anfragen &rarr;</button>
+                        <button type="submit" class="btn-submit" id="bookingSubmitBtn">Buchung anfragen &rarr;</button>
 
                         <p class="form-disclaimer">
                             Mit dem Absenden erklären Sie sich mit unserer
@@ -1374,6 +1384,239 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
     updateModeVisibility();
     buildParticipantFields();
+})();
+
+(function () {
+    const slider = document.querySelector('[data-detail-occurrence-slider]');
+    if (!slider) {
+        return;
+    }
+
+    let payload = [];
+    try {
+        payload = JSON.parse(slider.getAttribute('data-occurrence-payload') || '[]');
+    } catch (error) {
+        payload = [];
+    }
+
+    if (!Array.isArray(payload) || payload.length <= 1) {
+        return;
+    }
+
+    const cards = Array.from(slider.querySelectorAll('[data-detail-occurrence-card]'));
+    const prevBtn = slider.querySelector('[data-detail-occurrence-prev]');
+    const nextBtn = slider.querySelector('[data-detail-occurrence-next]');
+    const minParticipants = parseInt(slider.getAttribute('data-min-participants') || '0', 10) || 0;
+    const capacity = parseInt(slider.getAttribute('data-capacity') || '0', 10) || 0;
+
+    const dateFields = document.querySelectorAll('[data-detail-field="date"]');
+    const statusFields = document.querySelectorAll('[data-detail-field="status"]');
+    const availabilityFields = document.querySelectorAll('[data-detail-field="availability"]');
+    const minNoteText = document.querySelector('.js-detail-min-note-text');
+    const seatsWrap = document.querySelector('.js-detail-seats');
+    const seatsFill = document.querySelector('.js-detail-seats-fill');
+    const seatsText = document.querySelector('.js-detail-seats-text');
+    const occurrenceInput = document.getElementById('occurrence_id');
+    const bookingForm = document.getElementById('bookingForm');
+    const bookingSubmitBtn = document.getElementById('bookingSubmitBtn');
+    const bookingUnavailable = document.getElementById('detailBookingUnavailable');
+    const canSwitchClientSide = Boolean(bookingForm);
+
+    let index = parseInt(slider.getAttribute('data-occurrence-index') || '0', 10);
+    if (!Number.isFinite(index) || index < 0 || index >= payload.length) {
+        index = 0;
+    }
+
+    let animating = false;
+    let resetTimer = null;
+
+    const normalizeIndex = (value) => ((value % payload.length) + payload.length) % payload.length;
+
+    const updateNavTargets = () => {
+        const prevIndex = normalizeIndex(index - 1);
+        const nextIndex = normalizeIndex(index + 1);
+        const prevOccurrence = payload[prevIndex] || {};
+        const nextOccurrence = payload[nextIndex] || {};
+
+        if (prevBtn && prevOccurrence.url) {
+            prevBtn.setAttribute('href', String(prevOccurrence.url));
+        }
+        if (nextBtn && nextOccurrence.url) {
+            nextBtn.setAttribute('href', String(nextOccurrence.url));
+        }
+    };
+
+    const updateUi = (occurrence) => {
+        if (!occurrence || typeof occurrence !== 'object') {
+            return;
+        }
+
+        const booked = Number(occurrence.booked || 0);
+        const spotsLeft = (occurrence.spotsLeft === null || typeof occurrence.spotsLeft === 'undefined')
+            ? Math.max(0, capacity - booked)
+            : Number(occurrence.spotsLeft || 0);
+
+        dateFields.forEach((el) => {
+            el.textContent = String(occurrence.date || '');
+        });
+
+        if (statusFields.length > 0 && minParticipants > 0) {
+            const statusText = occurrence.isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen';
+            statusFields.forEach((el) => {
+                el.textContent = statusText;
+            });
+        }
+
+        availabilityFields.forEach((el) => {
+            el.textContent = occurrence.isFull ? 'Ausgebucht' : (String(spotsLeft) + ' frei');
+        });
+
+        if (minNoteText && minParticipants > 0) {
+            minNoteText.textContent = occurrence.isGuaranteed
+                ? 'Mindestanzahl erreicht: Dieser Workshop findet statt.'
+                : ('Dieser Workshop findet statt, sobald mindestens ' + minParticipants + ' Teilnehmer:innen gebucht sind.');
+        }
+
+        if (seatsWrap) {
+            seatsWrap.classList.remove('below-min', 'above-min');
+            if (occurrence.belowMin) {
+                seatsWrap.classList.add('below-min');
+            }
+            if (occurrence.aboveMin) {
+                seatsWrap.classList.add('above-min');
+            }
+        }
+
+        if (seatsFill) {
+            const fillPct = Number(occurrence.fillPct || 0);
+            seatsFill.style.width = String(Math.max(0, Math.min(100, fillPct))) + '%';
+            seatsFill.classList.remove('high', 'medium');
+            if (occurrence.fillClass === 'high' || occurrence.fillClass === 'medium') {
+                seatsFill.classList.add(occurrence.fillClass);
+            }
+        }
+
+        if (seatsText && capacity > 0) {
+            seatsText.textContent = String(booked) + ' / ' + String(capacity) + ' gebucht';
+        }
+
+        if (occurrenceInput) {
+            occurrenceInput.value = String(parseInt(occurrence.id || 0, 10) || 0);
+        }
+
+        if (bookingForm && occurrence.url) {
+            bookingForm.setAttribute('action', String(occurrence.url));
+        }
+
+        if (bookingSubmitBtn) {
+            const occurrenceIsFull = Boolean(occurrence.isFull);
+            bookingSubmitBtn.disabled = occurrenceIsFull;
+            if (bookingUnavailable) {
+                bookingUnavailable.hidden = !occurrenceIsFull;
+            }
+        }
+
+        if (occurrence.url && window.history && typeof window.history.replaceState === 'function') {
+            const targetUrl = String(occurrence.url);
+            if (targetUrl !== window.location.pathname + window.location.search) {
+                window.history.replaceState(null, '', targetUrl);
+            }
+        }
+    };
+
+    const finalizeCards = () => {
+        cards.forEach((card, cardIndex) => {
+            card.classList.remove('is-entering-next', 'is-entering-prev', 'is-leaving-next', 'is-leaving-prev');
+            if (cardIndex === index) {
+                card.classList.add('is-active');
+                card.classList.remove('is-hidden');
+            } else {
+                card.classList.remove('is-active');
+                card.classList.add('is-hidden');
+            }
+        });
+    };
+
+    const switchTo = (nextIndex, direction) => {
+        const targetIndex = normalizeIndex(nextIndex);
+        if (targetIndex === index || animating) {
+            return;
+        }
+
+        const currentCard = cards[index];
+        const nextCard = cards[targetIndex];
+        if (!currentCard || !nextCard) {
+            index = targetIndex;
+            slider.setAttribute('data-occurrence-index', String(index));
+            updateUi(payload[index]);
+            updateNavTargets();
+            finalizeCards();
+            return;
+        }
+
+        animating = true;
+        if (resetTimer) {
+            window.clearTimeout(resetTimer);
+        }
+
+        currentCard.classList.remove('is-active');
+        currentCard.classList.add(direction === 'next' ? 'is-leaving-next' : 'is-leaving-prev');
+
+        nextCard.classList.remove('is-hidden', 'is-leaving-next', 'is-leaving-prev', 'is-entering-next', 'is-entering-prev');
+        nextCard.classList.add(direction === 'next' ? 'is-entering-next' : 'is-entering-prev');
+
+        void nextCard.offsetWidth;
+        nextCard.classList.add('is-active');
+        nextCard.classList.remove('is-entering-next', 'is-entering-prev');
+
+        index = targetIndex;
+        slider.setAttribute('data-occurrence-index', String(index));
+        updateUi(payload[index]);
+        updateNavTargets();
+
+        resetTimer = window.setTimeout(() => {
+            finalizeCards();
+            animating = false;
+        }, 430);
+    };
+
+    if (prevBtn) {
+        prevBtn.addEventListener('click', (event) => {
+            if (!canSwitchClientSide) {
+                return;
+            }
+            event.preventDefault();
+            switchTo(index - 1, 'prev');
+        });
+    }
+
+    if (nextBtn) {
+        nextBtn.addEventListener('click', (event) => {
+            if (!canSwitchClientSide) {
+                return;
+            }
+            event.preventDefault();
+            switchTo(index + 1, 'next');
+        });
+    }
+
+    slider.addEventListener('keydown', (event) => {
+        if (!canSwitchClientSide) {
+            return;
+        }
+
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            switchTo(index - 1, 'prev');
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            switchTo(index + 1, 'next');
+        }
+    });
+
+    finalizeCards();
+    updateUi(payload[index]);
+    updateNavTargets();
 })();
 
 // Detail "more details" interaction (click/tap)

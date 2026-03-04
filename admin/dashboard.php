@@ -42,9 +42,17 @@ while ($row = $revenueResult->fetchArray(SQLITE3_ASSOC)) {
 
 // Recent bookings
 $recentResult = $db->query('
-    SELECT b.*, w.id AS workshop_id, w.title AS workshop_title, w.price_netto, w.price_currency
+    SELECT
+        b.*,
+        w.id AS workshop_id,
+        w.title AS workshop_title,
+        w.price_netto,
+        w.price_currency,
+        o.start_at AS occurrence_start_at,
+        o.end_at AS occurrence_end_at
     FROM bookings b
     JOIN workshops w ON b.workshop_id = w.id
+    LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = b.workshop_id
     WHERE COALESCE(b.archived, 0) = 0
     ORDER BY b.created_at DESC
     LIMIT 10
@@ -189,21 +197,29 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                 </thead>
                 <tbody>
                     <?php foreach ($recentBookings as $b):
-                                                if ((float) $b['subtotal_netto'] > 0 || (float) $b['total_netto'] > 0 || (float) $b['discount_amount'] > 0) {
+                        if ((float) $b['subtotal_netto'] > 0 || (float) $b['total_netto'] > 0 || (float) $b['discount_amount'] > 0) {
                             $bRev = (float) $b['total_netto'];
                         } elseif ((float) $b['price_per_person_netto'] > 0) {
                             $bRev = (float) $b['price_per_person_netto'] * (int) $b['participants'];
                         } else {
                             $bRev = (float) $b['price_netto'] * (int) $b['participants'];
                         }
+
+                        $bookingFilterValue = (string) ((int) $b['workshop_id']);
+                        if ((int) ($b['occurrence_id'] ?? 0) > 0) {
+                            $bookingFilterValue .= ':' . (int) $b['occurrence_id'];
+                        }
                     ?>
                     <tr>
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><?= e($b['email']) ?></td>
                         <td>
-                            <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $b['workshop_id']])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
+                            <a href="<?= e(admin_url('bookings', ['workshop_id' => $bookingFilterValue])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
                                 <?= e($b['workshop_title']) ?>
                             </a>
+                            <?php if (!empty($b['occurrence_start_at'])): ?>
+                                <div style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;"><?= e(format_event_date((string) ($b['occurrence_start_at'] ?? ''), (string) ($b['occurrence_end_at'] ?? ''))) ?></div>
+                            <?php endif; ?>
                         </td>
                         <td><?= (int) $b['participants'] ?></td>
                         <td>

@@ -17,10 +17,37 @@ function invoice_number_display(array $circle, int $number): string {
     return $label . ' / ' . $number;
 }
 
-function redirect_invoices(int $workshopId = 0, int $circleId = 0): never {
+function invoice_workshop_filter_value(int $workshopId, int $occurrenceId = 0): string {
+    if ($workshopId <= 0) {
+        return '0';
+    }
+
+    return $occurrenceId > 0 ? ($workshopId . ':' . $occurrenceId) : (string) $workshopId;
+}
+
+function parse_invoice_workshop_filter(string $raw): array {
+    $raw = trim($raw);
+    $workshopId = 0;
+    $occurrenceId = 0;
+
+    if (preg_match('/^(\d+):(\d+)$/', $raw, $match) === 1) {
+        $workshopId = (int) $match[1];
+        $occurrenceId = (int) $match[2];
+    } elseif (ctype_digit($raw)) {
+        $workshopId = (int) $raw;
+    }
+
+    return [
+        'workshop_id' => $workshopId,
+        'occurrence_id' => $occurrenceId,
+        'value' => invoice_workshop_filter_value($workshopId, $occurrenceId),
+    ];
+}
+
+function redirect_invoices(string $workshopFilter = '0', int $circleId = 0): never {
     $query = [];
-    if ($workshopId > 0) {
-        $query['workshop_id'] = $workshopId;
+    if ($workshopFilter !== '0' && $workshopFilter !== '') {
+        $query['workshop_id'] = $workshopFilter;
     }
     if ($circleId > 0) {
         $query['circle_id'] = $circleId;
@@ -29,7 +56,10 @@ function redirect_invoices(int $workshopId = 0, int $circleId = 0): never {
     redirect(admin_url('invoices', $query));
 }
 
-$selectedWorkshopId = max(0, (int) ($_GET['workshop_id'] ?? 0));
+$selectedWorkshopFilter = parse_invoice_workshop_filter((string) ($_GET['workshop_id'] ?? '0'));
+$selectedWorkshopId = (int) $selectedWorkshopFilter['workshop_id'];
+$selectedOccurrenceId = (int) $selectedWorkshopFilter['occurrence_id'];
+$selectedWorkshopFilterValue = (string) $selectedWorkshopFilter['value'];
 $selectedCircleId = max(0, (int) ($_GET['circle_id'] ?? 0));
 
 $currentYear = (int) date('Y');
@@ -54,7 +84,7 @@ if (!$defaultCircle) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
     flash('error', 'Ungültige Sitzung.');
-    redirect_invoices($selectedWorkshopId, $selectedCircleId);
+    redirect_invoices($selectedWorkshopFilterValue, $selectedCircleId);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -66,11 +96,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($prefix === '' || strlen($prefix) > 12) {
             flash('error', 'Prefix muss 1-12 Zeichen (A-Z, 0-9) haben.');
-            redirect_invoices($selectedWorkshopId, $selectedCircleId);
+            redirect_invoices($selectedWorkshopFilterValue, $selectedCircleId);
         }
         if ($year < 2000 || $year > 2100) {
             flash('error', 'Jahr muss zwischen 2000 und 2100 liegen.');
-            redirect_invoices($selectedWorkshopId, $selectedCircleId);
+            redirect_invoices($selectedWorkshopFilterValue, $selectedCircleId);
         }
 
         $code = invoice_circle_code($prefix, $year);
@@ -81,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $existsRow = $existsStmt->execute()->fetchArray(SQLITE3_ASSOC);
         if ($existsRow) {
             flash('error', 'Dieser Rechnungskreis existiert bereits.');
-            redirect_invoices($selectedWorkshopId, (int) $existsRow['id']);
+            redirect_invoices($selectedWorkshopFilterValue, (int) $existsRow['id']);
         }
 
         $createStmt = $db->prepare('
@@ -97,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $newCircleId = (int) $db->lastInsertRowID();
         flash('success', 'Rechnungskreis ' . $label . ' wurde angelegt.');
-        redirect_invoices($selectedWorkshopId, $newCircleId);
+        redirect_invoices($selectedWorkshopFilterValue, $newCircleId);
     }
 
     if (isset($_POST['adjust_counter_submit'])) {
@@ -107,11 +137,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($adjustCircleId <= 0) {
             flash('error', 'Bitte einen Rechnungskreis wählen.');
-            redirect_invoices($selectedWorkshopId, $selectedCircleId);
+            redirect_invoices($selectedWorkshopFilterValue, $selectedCircleId);
         }
         if ($reason === '') {
             flash('error', 'Begründung ist verpflichtend.');
-            redirect_invoices($selectedWorkshopId, $adjustCircleId);
+            redirect_invoices($selectedWorkshopFilterValue, $adjustCircleId);
         }
 
         $circleStmt = $db->prepare('SELECT * FROM invoice_circles WHERE id = :id LIMIT 1');
@@ -119,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $circle = $circleStmt->execute()->fetchArray(SQLITE3_ASSOC);
         if (!$circle) {
             flash('error', 'Rechnungskreis nicht gefunden.');
-            redirect_invoices($selectedWorkshopId, $selectedCircleId);
+            redirect_invoices($selectedWorkshopFilterValue, $selectedCircleId);
         }
 
         $oldNext = max(1, (int) ($circle['next_number'] ?? 1));
@@ -130,12 +160,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($newNext <= $maxIssued) {
             flash('error', 'Neue Startnummer muss größer als die höchste bereits vergebene Nummer sein (' . $maxIssued . ').');
-            redirect_invoices($selectedWorkshopId, $adjustCircleId);
+            redirect_invoices($selectedWorkshopFilterValue, $adjustCircleId);
         }
 
         if ($newNext === $oldNext) {
             flash('error', 'Neue Startnummer ist identisch mit dem aktuellen Stand.');
-            redirect_invoices($selectedWorkshopId, $adjustCircleId);
+            redirect_invoices($selectedWorkshopFilterValue, $adjustCircleId);
         }
 
         $inTransaction = false;
@@ -166,26 +196,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $db->exec('ROLLBACK');
             }
             flash('error', 'Counter konnte nicht angepasst werden.');
-            redirect_invoices($selectedWorkshopId, $adjustCircleId);
+            redirect_invoices($selectedWorkshopFilterValue, $adjustCircleId);
         }
 
         flash('success', 'Counter aktualisiert: ' . $oldNext . ' -> ' . $newNext . '. Änderung wurde im Audit-Log gespeichert.');
-        redirect_invoices($selectedWorkshopId, $adjustCircleId);
+        redirect_invoices($selectedWorkshopFilterValue, $adjustCircleId);
     }
 
     if (isset($_POST['invoice_send_submit'])) {
         $postWorkshopId = max(0, (int) ($_POST['invoice_workshop_id'] ?? 0));
+        $postOccurrenceId = max(0, (int) ($_POST['invoice_occurrence_id'] ?? 0));
+        $postWorkshopFilterValue = invoice_workshop_filter_value($postWorkshopId, $postOccurrenceId);
         $postCircleId = max(0, (int) ($_POST['invoice_circle_id'] ?? 0));
 
         if ($postWorkshopId <= 0 || $postCircleId <= 0) {
             flash('error', 'Workshop und Rechnungskreis sind erforderlich.');
-            redirect_invoices($postWorkshopId, $postCircleId);
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
         }
 
         $workshop = get_workshop_by_id($db, $postWorkshopId);
         if (!$workshop) {
             flash('error', 'Workshop nicht gefunden.');
-            redirect_invoices($postWorkshopId, $postCircleId);
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
+        }
+
+        if ($postOccurrenceId > 0) {
+            $postOccurrence = get_workshop_occurrence_by_id($db, $postWorkshopId, $postOccurrenceId, false);
+            if (!$postOccurrence) {
+                flash('error', 'Ausgewählter Termin wurde nicht gefunden.');
+                redirect_invoices(invoice_workshop_filter_value($postWorkshopId), $postCircleId);
+            }
         }
 
         $circleStmt = $db->prepare('SELECT * FROM invoice_circles WHERE id = :id LIMIT 1');
@@ -193,7 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $circle = $circleStmt->execute()->fetchArray(SQLITE3_ASSOC);
         if (!$circle) {
             flash('error', 'Rechnungskreis nicht gefunden.');
-            redirect_invoices($postWorkshopId, $postCircleId);
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
         }
 
         $commonData = [
@@ -211,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $selectedCards = $_POST['r_booking_selected'] ?? [];
         if (!is_array($selectedCards) || empty($selectedCards)) {
             flash('error', 'Bitte mindestens eine Buchung auswählen.');
-            redirect_invoices($postWorkshopId, $postCircleId);
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
         }
 
         $baseLineItems = [];
@@ -229,7 +269,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (empty($baseLineItems)) {
             flash('error', 'Mindestens eine Rechnungsposition mit Betrag ist erforderlich.');
-            redirect_invoices($postWorkshopId, $postCircleId);
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
         }
 
         $baseSubtotal = 0.0;
@@ -240,12 +280,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $selectedIndices = array_map(static fn($idx) => (int) $idx, array_keys($selectedCards));
         sort($selectedIndices, SORT_NUMERIC);
 
-        $bookingFetchStmt = $db->prepare('
+        $bookingFetchSql = '
             SELECT id, name, email, organization, discount_code, discount_amount
             FROM bookings
             WHERE id = :id AND workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0
-            LIMIT 1
-        ');
+        ';
+        if ($postOccurrenceId > 0) {
+            $bookingFetchSql .= ' AND occurrence_id = :oid';
+        }
+        $bookingFetchSql .= ' LIMIT 1';
+        $bookingFetchStmt = $db->prepare($bookingFetchSql);
         $existingInvoiceStmt = $db->prepare('SELECT id, invoice_number_display FROM invoices WHERE booking_id = :bid LIMIT 1');
         $insertInvoiceStmt = $db->prepare('
             INSERT INTO invoices (
@@ -307,6 +351,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $bookingFetchStmt->bindValue(':id', $bookingId, SQLITE3_INTEGER);
                 $bookingFetchStmt->bindValue(':wid', $postWorkshopId, SQLITE3_INTEGER);
+                if ($postOccurrenceId > 0) {
+                    $bookingFetchStmt->bindValue(':oid', $postOccurrenceId, SQLITE3_INTEGER);
+                }
                 $bookingRow = $bookingFetchStmt->execute()->fetchArray(SQLITE3_ASSOC);
                 if (!$bookingRow) {
                     $warnings[] = 'Buchung #' . $bookingId . ' nicht bestätigt oder nicht gefunden, übersprungen.';
@@ -395,7 +442,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $db->exec('ROLLBACK');
             }
             flash('error', 'Rechnungsnummern konnten nicht reserviert werden.');
-            redirect_invoices($postWorkshopId, $postCircleId);
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
         }
 
         $statusUpdateStmt = $db->prepare('UPDATE invoices SET send_status = :status, sent_at = CASE WHEN :status = "sent" THEN datetime("now") ELSE sent_at END WHERE id = :id');
@@ -426,14 +473,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', $warning);
         }
 
-        redirect_invoices($postWorkshopId, $postCircleId);
+        redirect_invoices($postWorkshopFilterValue, $postCircleId);
     }
 }
 
 $workshops = [];
-$workshopsResult = $db->query('SELECT id, title, event_date, event_date_end, tag_label, price_netto FROM workshops ORDER BY sort_order ASC, title ASC');
+$workshopFilterOptions = [];
+$workshopsResult = $db->query('SELECT id, title, workshop_type, event_date, event_date_end, tag_label, price_netto FROM workshops ORDER BY sort_order ASC, title ASC');
 while ($row = $workshopsResult->fetchArray(SQLITE3_ASSOC)) {
     $workshops[] = $row;
+
+    $wid = (int) ($row['id'] ?? 0);
+    $title = trim((string) ($row['title'] ?? ''));
+    if ($wid <= 0 || $title === '') {
+        continue;
+    }
+
+    $isOpenWorkshop = ((string) ($row['workshop_type'] ?? '') === 'open');
+    $occurrencesForFilter = [];
+
+    if ($isOpenWorkshop) {
+        $occurrencesForFilter = get_workshop_occurrences($db, $wid, true);
+        if (empty($occurrencesForFilter) && trim((string) ($row['event_date'] ?? '')) !== '') {
+            $occurrencesForFilter[] = [
+                'id' => 0,
+                'start_at' => (string) ($row['event_date'] ?? ''),
+                'end_at' => (string) ($row['event_date_end'] ?? ''),
+            ];
+        }
+    }
+
+    $hasMultipleOccurrences = $isOpenWorkshop && count($occurrencesForFilter) > 1;
+    $workshopFilterOptions[] = [
+        'value' => (string) $wid,
+        'label' => $hasMultipleOccurrences ? ($title . ' - alle Termine') : $title,
+    ];
+
+    if (!$isOpenWorkshop) {
+        continue;
+    }
+
+    foreach ($occurrencesForFilter as $occurrenceRow) {
+        $oid = (int) ($occurrenceRow['id'] ?? 0);
+        if ($oid <= 0) {
+            continue;
+        }
+
+        $dateLabel = format_event_date(
+            (string) ($occurrenceRow['start_at'] ?? ''),
+            (string) ($occurrenceRow['end_at'] ?? '')
+        );
+        if ($dateLabel === '') {
+            continue;
+        }
+
+        $workshopFilterOptions[] = [
+            'value' => $wid . ':' . $oid,
+            'label' => $title . ' - ' . $dateLabel,
+        ];
+    }
 }
 
 $invoiceCircles = [];
@@ -466,16 +564,31 @@ if (!$selectedCircle && !empty($invoiceCircles)) {
 }
 
 $selectedWorkshop = null;
+$selectedOccurrence = null;
+$selectedOccurrenceLabel = '';
 if ($selectedWorkshopId > 0) {
     $selectedWorkshop = get_workshop_by_id($db, $selectedWorkshopId);
     if (!$selectedWorkshop) {
         $selectedWorkshopId = 0;
+        $selectedOccurrenceId = 0;
     }
 }
+if ($selectedWorkshop && $selectedOccurrenceId > 0) {
+    $selectedOccurrence = get_workshop_occurrence_by_id($db, $selectedWorkshopId, $selectedOccurrenceId, false);
+    if (!$selectedOccurrence) {
+        $selectedOccurrenceId = 0;
+    } else {
+        $selectedOccurrenceLabel = format_event_date(
+            (string) ($selectedOccurrence['start_at'] ?? ''),
+            (string) ($selectedOccurrence['end_at'] ?? '')
+        );
+    }
+}
+$selectedWorkshopFilterValue = invoice_workshop_filter_value($selectedWorkshopId, $selectedOccurrenceId);
 
 $confirmedBookingsForInvoices = [];
 if ($selectedWorkshopId > 0) {
-    $bookingsStmt = $db->prepare('
+    $bookingsSql = '
         SELECT
             b.id,
             b.name,
@@ -485,14 +598,26 @@ if ($selectedWorkshopId > 0) {
             b.discount_amount,
             b.confirmed_at,
             b.created_at,
+            b.occurrence_id,
+            o.start_at AS occurrence_start_at,
+            o.end_at AS occurrence_end_at,
             i.invoice_number_display,
             i.send_status
         FROM bookings b
+        LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = b.workshop_id
         LEFT JOIN invoices i ON i.booking_id = b.id
         WHERE b.workshop_id = :wid AND b.confirmed = 1 AND COALESCE(b.archived, 0) = 0
-        ORDER BY b.confirmed_at ASC, b.created_at ASC
-    ');
+    ';
+    if ($selectedOccurrenceId > 0) {
+        $bookingsSql .= ' AND b.occurrence_id = :oid';
+    }
+    $bookingsSql .= ' ORDER BY b.confirmed_at ASC, b.created_at ASC';
+
+    $bookingsStmt = $db->prepare($bookingsSql);
     $bookingsStmt->bindValue(':wid', $selectedWorkshopId, SQLITE3_INTEGER);
+    if ($selectedOccurrenceId > 0) {
+        $bookingsStmt->bindValue(':oid', $selectedOccurrenceId, SQLITE3_INTEGER);
+    }
     $bookingsResult = $bookingsStmt->execute();
     while ($row = $bookingsResult->fetchArray(SQLITE3_ASSOC)) {
         $confirmedBookingsForInvoices[] = $row;
@@ -509,12 +634,15 @@ $recentInvoicesResult = $db->query('
         i.sent_at,
         i.recipient_email,
         w.title AS workshop_title,
+        o.start_at AS occurrence_start_at,
+        o.end_at AS occurrence_end_at,
         c.circle_label,
         b.name AS booking_name
     FROM invoices i
     JOIN workshops w ON w.id = i.workshop_id
     JOIN invoice_circles c ON c.id = i.circle_id
     JOIN bookings b ON b.id = i.booking_id
+    LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = w.id
     ORDER BY i.issued_at DESC, i.id DESC
     LIMIT 40
 ');
@@ -537,9 +665,11 @@ while ($row = $auditResult->fetchArray(SQLITE3_ASSOC)) {
     $auditRows[] = $row;
 }
 
-$evtDateDefault = ($selectedWorkshop && !empty($selectedWorkshop['event_date']))
-    ? format_event_date((string) $selectedWorkshop['event_date'], (string) ($selectedWorkshop['event_date_end'] ?? ''))
-    : '';
+$evtDateDefault = $selectedOccurrenceLabel !== ''
+    ? $selectedOccurrenceLabel
+    : (($selectedWorkshop && !empty($selectedWorkshop['event_date']))
+        ? format_event_date((string) $selectedWorkshop['event_date'], (string) ($selectedWorkshop['event_date_end'] ?? ''))
+        : '');
 $pos1LabelDefault = $selectedWorkshop
     ? (!empty($selectedWorkshop['tag_label']) ? (string) $selectedWorkshop['tag_label'] : (string) $selectedWorkshop['title'])
     : '';
@@ -882,10 +1012,11 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                     <div class="form-group">
                         <label for="workshopSelect">Workshop</label>
                         <select id="workshopSelect" name="workshop_id">
-                            <option value="0">Workshop wählen</option>
-                            <?php foreach ($workshops as $ws): ?>
-                                <option value="<?= (int) $ws['id'] ?>" <?= $selectedWorkshopId === (int) $ws['id'] ? 'selected' : '' ?>>
-                                    <?= e((string) $ws['title']) ?>
+                            <option value="0" <?= $selectedWorkshopFilterValue === '0' ? 'selected' : '' ?>>Workshop wählen</option>
+                            <?php foreach ($workshopFilterOptions as $filterOption): ?>
+                                <?php $optionValue = (string) ($filterOption['value'] ?? '0'); ?>
+                                <option value="<?= e($optionValue) ?>" <?= $selectedWorkshopFilterValue === $optionValue ? 'selected' : '' ?>>
+                                    <?= e((string) ($filterOption['label'] ?? '')) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -913,6 +1044,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                     <?= csrf_field() ?>
                     <input type="hidden" name="invoice_send_submit" value="1">
                     <input type="hidden" name="invoice_workshop_id" value="<?= (int) $selectedWorkshopId ?>">
+                    <input type="hidden" name="invoice_occurrence_id" value="<?= (int) $selectedOccurrenceId ?>">
                     <input type="hidden" name="invoice_circle_id" value="<?= (int) $selectedCircleId ?>">
 
                     <div class="invoice-section-title" style="margin-top:0;">Gemeinsame Rechnungsdaten</div>
@@ -1002,7 +1134,12 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                                                 <?php if ($organization !== '' && $organization !== $name): ?>
                                                     <span class="invoice-booking-sub"> - <?= e($name) ?></span>
                                                 <?php endif; ?>
-                                                <span class="invoice-booking-sub"> · <?= e($email) ?></span>
+                                                <span class="invoice-booking-sub">&middot; <?= e($email) ?></span>
+                                                <?php if (!empty($bookingRow['occurrence_start_at'])): ?>
+                                                    <span class="invoice-booking-sub">&middot; Termin: <?= e(format_event_date((string) ($bookingRow['occurrence_start_at'] ?? ''), (string) ($bookingRow['occurrence_end_at'] ?? ''))) ?></span>
+                                                <?php elseif ($selectedOccurrenceLabel !== ''): ?>
+                                                    <span class="invoice-booking-sub">&middot; Termin: <?= e($selectedOccurrenceLabel) ?></span>
+                                                <?php endif; ?>
                                             </span>
                                         </label>
 
@@ -1071,7 +1208,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                         <button type="submit" class="btn-submit" <?= empty($confirmedBookingsForInvoices) ? 'disabled' : '' ?>>
                             Rechnungen finalisieren und senden
                         </button>
-                        <a href="<?= e(admin_url('bookings', ['workshop_id' => $selectedWorkshopId])) ?>" class="btn-admin">Zu Buchungen</a>
+                        <a href="<?= e(admin_url('bookings', ['workshop_id' => $selectedWorkshopFilterValue])) ?>" class="btn-admin">Zu Buchungen</a>
                     </div>
                 </form>
             <?php endif; ?>
@@ -1098,7 +1235,12 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                         <?php foreach ($recentInvoices as $row): ?>
                         <tr>
                             <td style="color:var(--text);font-weight:600;"><?= e((string) $row['invoice_number_display']) ?></td>
-                            <td><?= e((string) $row['workshop_title']) ?></td>
+                            <td>
+                                <?= e((string) $row['workshop_title']) ?>
+                                <?php if (!empty($row['occurrence_start_at'])): ?>
+                                    <div style="font-size:0.72rem;color:var(--dim);"><?= e(format_event_date((string) ($row['occurrence_start_at'] ?? ''), (string) ($row['occurrence_end_at'] ?? ''))) ?></div>
+                                <?php endif; ?>
+                            </td>
                             <td><?= e((string) $row['booking_name']) ?></td>
                             <td><a href="mailto:<?= e((string) $row['recipient_email']) ?>" style="color:var(--muted);"><?= e((string) $row['recipient_email']) ?></a></td>
                             <td>

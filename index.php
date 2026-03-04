@@ -526,7 +526,33 @@ const initOccurrenceCards = () => {
         const minParticipants = parseInt(card.dataset.minParticipants || '0', 10) || 0;
         const capacity = parseInt(card.dataset.capacity || '0', 10) || 0;
 
-        const applyOccurrence = (nextIndex) => {
+        let animationTimer = null;
+        let animating = false;
+
+        const startAnimation = (direction) => {
+            card.classList.remove('is-occurrence-next', 'is-occurrence-prev', 'is-occurrence-animating');
+            // Reflow so repeated quick switches still animate.
+            void card.offsetWidth;
+            card.classList.add('is-occurrence-animating', direction === 'prev' ? 'is-occurrence-prev' : 'is-occurrence-next');
+
+            if (animationTimer) {
+                window.clearTimeout(animationTimer);
+            }
+            animationTimer = window.setTimeout(() => {
+                card.classList.remove('is-occurrence-next', 'is-occurrence-prev', 'is-occurrence-animating');
+                animating = false;
+            }, 360);
+        };
+
+        const applyOccurrence = (nextIndex, direction = 'next', withAnimation = true) => {
+            if (withAnimation) {
+                if (animating) {
+                    return;
+                }
+                animating = true;
+                startAnimation(direction);
+            }
+
             index = ((nextIndex % payload.length) + payload.length) % payload.length;
             card.dataset.occurrenceIndex = String(index);
 
@@ -593,13 +619,13 @@ const initOccurrenceCards = () => {
         };
 
         if (prevBtn) {
-            prevBtn.addEventListener('click', () => applyOccurrence(index - 1));
+            prevBtn.addEventListener('click', () => applyOccurrence(index - 1, 'prev', true));
         }
         if (nextBtn) {
-            nextBtn.addEventListener('click', () => applyOccurrence(index + 1));
+            nextBtn.addEventListener('click', () => applyOccurrence(index + 1, 'next', true));
         }
 
-        applyOccurrence(index);
+        applyOccurrence(index, 'next', false);
     });
 };
 const applyFilter = (filter) => {
