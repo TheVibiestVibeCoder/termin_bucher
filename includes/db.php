@@ -16,7 +16,6 @@ $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_workshop ON bookings(workshop
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_token    ON bookings(token);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_email    ON bookings(email);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_workshops_slug    ON workshops(slug);");
-$db->exec("CREATE INDEX IF NOT EXISTS idx_workshops_archived_active ON workshops(archived, active, sort_order, id);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_workshop_groups_active_order ON workshop_groups(active, sort_order, id);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_wgw_group_order ON workshop_group_workshops(group_id, sort_order);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_wgw_workshop ON workshop_group_workshops(workshop_id);");
@@ -119,6 +118,7 @@ foreach ($migrations as [$table, $col, $def]) {
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_discount_code_id ON bookings(discount_code_id);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_archived_workshop ON bookings(archived, workshop_id, confirmed);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_occurrence ON bookings(occurrence_id, confirmed, archived);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_workshops_archived_active ON workshops(archived, active, sort_order, id);");
 
 
 // Backfill legacy single-date workshops into the new occurrences table.

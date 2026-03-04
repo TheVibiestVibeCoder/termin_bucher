@@ -3,6 +3,35 @@ require __DIR__ . '/../includes/config.php';
 require __DIR__ . '/../includes/email.php';
 require_admin();
 
+function workshop_col_exists(SQLite3 $db, string $col): bool {
+    $res = $db->query('PRAGMA table_info(workshops)');
+    while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+        if ((string) ($row['name'] ?? '') === $col) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function ensure_workshop_archive_schema(SQLite3 $db): void {
+    $cols = [
+        'archived' => 'INTEGER NOT NULL DEFAULT 0',
+        'archived_at' => 'DATETIME',
+        'archived_by' => "TEXT NOT NULL DEFAULT ''",
+        'archive_note' => "TEXT NOT NULL DEFAULT ''",
+    ];
+
+    foreach ($cols as $name => $def) {
+        if (!workshop_col_exists($db, $name)) {
+            $db->exec('ALTER TABLE workshops ADD COLUMN ' . $name . ' ' . $def);
+        }
+    }
+
+    $db->exec('CREATE INDEX IF NOT EXISTS idx_workshops_archived_active ON workshops(archived, active, sort_order, id)');
+}
+
+ensure_workshop_archive_schema($db);
 function add_cancellation_recipient(array &$map, string $email, string $name): void {
     $mail = trim($email);
     if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) {
