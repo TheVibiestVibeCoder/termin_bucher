@@ -122,7 +122,7 @@ function require_admin(): void {
 
 // Workshop helpers
 function get_workshop_by_slug(SQLite3 $db, string $slug): ?array {
-    $stmt = $db->prepare('SELECT * FROM workshops WHERE slug = :slug AND active = 1');
+    $stmt = $db->prepare('SELECT * FROM workshops WHERE slug = :slug AND active = 1 AND COALESCE(archived, 0) = 0');
     $stmt->bindValue(':slug', $slug, SQLITE3_TEXT);
     $result = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 

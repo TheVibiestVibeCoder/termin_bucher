@@ -23,7 +23,7 @@ while ($row = $bookedRes->fetchArray(SQLITE3_ASSOC)) {
     }
 }
 
-$result = $db->query('SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order ASC, id ASC');
+$result = $db->query('SELECT * FROM workshops WHERE active = 1 AND COALESCE(archived, 0) = 0 ORDER BY sort_order ASC, id ASC');
 $workshops = [];
 $workshopsById = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {

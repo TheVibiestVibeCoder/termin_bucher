@@ -64,18 +64,6 @@ function fetch_workshop_cancellation_recipients(SQLite3 $db, int $workshopId): a
     return array_values($recipientMap);
 }
 
-function count_workshop_bookings(SQLite3 $db, int $workshopId): int {
-    if ($workshopId <= 0) {
-        return 0;
-    }
-
-    $stmt = $db->prepare('SELECT COUNT(*) AS cnt FROM bookings WHERE workshop_id = :wid');
-    $stmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
-    $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-
-    return (int) ($row['cnt'] ?? 0);
-}
-
 function archive_open_workshop_bookings(SQLite3 $db, int $workshopId, string $archiveNote = 'Workshop wurde abgesagt.'): int {
     if ($workshopId <= 0) {
         return 0;
@@ -101,66 +89,73 @@ function archive_open_workshop_bookings(SQLite3 $db, int $workshopId, string $ar
     return (int) $db->changes();
 }
 
-// Handle delete/cancel
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
-    if (!csrf_verify()) {
-        flash('error', 'Ungueltige Sitzung.');
+function format_admin_datetime(?string $raw): string {
+    $value = trim((string) $raw);
+    if ($value === '') {
+        return '-';
+    }
+
+    $ts = strtotime($value);
+    if ($ts === false) {
+        return $value;
+    }
+
+    return date('d.m.Y H:i', $ts);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
+    flash('error', 'Ungueltige Sitzung.');
+    redirect(admin_url('workshops'));
+}
+
+// Archive workshop (default remove behavior)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['archive_id'])) {
+    $archiveId = max(0, (int) ($_POST['archive_id'] ?? 0));
+    if ($archiveId <= 0) {
+        flash('error', 'Workshop konnte nicht archiviert werden.');
         redirect(admin_url('workshops'));
     }
 
-    $deleteId = max(0, (int) ($_POST['delete_id'] ?? 0));
-    if ($deleteId <= 0) {
-        flash('error', 'Workshop konnte nicht geloescht werden.');
-        redirect(admin_url('workshops'));
-    }
-
-    $workshopStmt = $db->prepare('SELECT id, title FROM workshops WHERE id = :id LIMIT 1');
-    $workshopStmt->bindValue(':id', $deleteId, SQLITE3_INTEGER);
+    $workshopStmt = $db->prepare('SELECT id, title, COALESCE(archived, 0) AS archived FROM workshops WHERE id = :id LIMIT 1');
+    $workshopStmt->bindValue(':id', $archiveId, SQLITE3_INTEGER);
     $workshopRow = $workshopStmt->execute()->fetchArray(SQLITE3_ASSOC);
     if (!$workshopRow) {
         flash('error', 'Workshop nicht gefunden.');
         redirect(admin_url('workshops'));
     }
+    if ((int) ($workshopRow['archived'] ?? 0) === 1) {
+        flash('error', 'Workshop ist bereits archiviert.');
+        redirect(admin_url('workshops'));
+    }
 
-    $bookingsTotal = count_workshop_bookings($db, $deleteId);
-    $recipients = fetch_workshop_cancellation_recipients($db, $deleteId);
+    $recipients = fetch_workshop_cancellation_recipients($db, $archiveId);
 
     $inTransaction = false;
-    $deleteSucceeded = false;
-    $cancelledWorkshop = false;
-    $archivedCount = 0;
+    $archivedBookingCount = 0;
 
     try {
         $db->exec('BEGIN IMMEDIATE');
         $inTransaction = true;
 
-        if ($bookingsTotal > 0) {
-            $archivedCount = archive_open_workshop_bookings($db, $deleteId, 'Workshop wurde abgesagt.');
+        $archivedBookingCount = archive_open_workshop_bookings($db, $archiveId, 'Workshop wurde abgesagt.');
 
-            $disableOccurrencesStmt = $db->prepare('UPDATE workshop_occurrences SET active = 0, updated_at = datetime("now") WHERE workshop_id = :wid');
-            $disableOccurrencesStmt->bindValue(':wid', $deleteId, SQLITE3_INTEGER);
-            if ($disableOccurrencesStmt->execute() === false) {
-                throw new RuntimeException('Termine konnten nicht deaktiviert werden.');
-            }
-
-            $disableWorkshopStmt = $db->prepare('UPDATE workshops SET active = 0, updated_at = datetime("now") WHERE id = :id');
-            $disableWorkshopStmt->bindValue(':id', $deleteId, SQLITE3_INTEGER);
-            $disableWorkshopResult = $disableWorkshopStmt->execute();
-            if ($disableWorkshopResult === false || $db->changes() !== 1) {
-                throw new RuntimeException('Workshop konnte nicht deaktiviert werden.');
-            }
-
-            $cancelledWorkshop = true;
-            $deleteSucceeded = true;
-        } else {
-            $deleteStmt = $db->prepare('DELETE FROM workshops WHERE id = :id');
-            $deleteStmt->bindValue(':id', $deleteId, SQLITE3_INTEGER);
-            $deleteResult = $deleteStmt->execute();
-            $deleteSucceeded = ($deleteResult !== false && $db->changes() === 1);
-        }
-
-        if (!$deleteSucceeded) {
-            throw new RuntimeException('Workshop konnte nicht geloescht werden.');
+        $archiveStmt = $db->prepare('
+            UPDATE workshops
+            SET
+                archived = 1,
+                archived_at = datetime("now"),
+                archived_by = :archived_by,
+                archive_note = :archive_note,
+                active = 0,
+                updated_at = datetime("now")
+            WHERE id = :id AND COALESCE(archived, 0) = 0
+        ');
+        $archiveStmt->bindValue(':archived_by', 'admin', SQLITE3_TEXT);
+        $archiveStmt->bindValue(':archive_note', 'Workshop archiviert.', SQLITE3_TEXT);
+        $archiveStmt->bindValue(':id', $archiveId, SQLITE3_INTEGER);
+        $archiveResult = $archiveStmt->execute();
+        if ($archiveResult === false || $db->changes() !== 1) {
+            throw new RuntimeException('Workshop konnte nicht archiviert werden.');
         }
 
         $db->exec('COMMIT');
@@ -169,14 +164,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
         if ($inTransaction) {
             $db->exec('ROLLBACK');
         }
-        flash('error', 'Workshop konnte nicht geloescht werden.');
+        flash('error', 'Workshop konnte nicht archiviert werden.');
         redirect(admin_url('workshops'));
     }
 
-    $sent = 0;
-    $failed = 0;
+    $mailSent = 0;
+    $mailFailed = 0;
     $workshopTitle = trim((string) ($workshopRow['title'] ?? ''));
-
     foreach ($recipients as $recipient) {
         $ok = send_booking_cancelled_email(
             (string) ($recipient['email'] ?? ''),
@@ -184,24 +178,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
             $workshopTitle
         );
         if ($ok) {
-            $sent++;
+            $mailSent++;
         } else {
-            $failed++;
+            $mailFailed++;
         }
     }
 
-    $msg = $cancelledWorkshop
-        ? 'Workshop abgesagt und deaktiviert.'
-        : 'Workshop geloescht.';
-
-    if ($cancelledWorkshop) {
-        $msg .= ' Buchungen archiviert: ' . $archivedCount . '.';
+    $msg = 'Workshop archiviert.';
+    if ($archivedBookingCount > 0) {
+        $msg .= ' Buchungen archiviert: ' . $archivedBookingCount . '.';
     }
-
     if (!empty($recipients)) {
-        $msg .= ' Stornomails gesendet: ' . $sent;
-        if ($failed > 0) {
-            $msg .= ', fehlgeschlagen: ' . $failed . '.';
+        $msg .= ' Stornomails gesendet: ' . $mailSent;
+        if ($mailFailed > 0) {
+            $msg .= ', fehlgeschlagen: ' . $mailFailed . '.';
         } else {
             $msg .= '.';
         }
@@ -211,23 +201,116 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
     redirect(admin_url('workshops'));
 }
 
-// Handle toggle active
+// Restore archived workshop
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restore_id'])) {
+    $restoreId = max(0, (int) ($_POST['restore_id'] ?? 0));
+    if ($restoreId <= 0) {
+        flash('error', 'Workshop konnte nicht reaktiviert werden.');
+        redirect(admin_url('workshops'));
+    }
+
+    $stmt = $db->prepare('
+        UPDATE workshops
+        SET
+            archived = 0,
+            archived_at = NULL,
+            archived_by = "",
+            archive_note = "",
+            active = 1,
+            updated_at = datetime("now")
+        WHERE id = :id AND COALESCE(archived, 0) = 1
+    ');
+    $stmt->bindValue(':id', $restoreId, SQLITE3_INTEGER);
+    $result = $stmt->execute();
+
+    if ($result !== false && $db->changes() === 1) {
+        flash('success', 'Workshop reaktiviert.');
+    } else {
+        flash('error', 'Workshop konnte nicht reaktiviert werden.');
+    }
+
+    redirect(admin_url('workshops'));
+}
+
+// Hard delete (only archived workshops)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hard_delete_id'])) {
+    $hardDeleteId = max(0, (int) ($_POST['hard_delete_id'] ?? 0));
+    if ($hardDeleteId <= 0) {
+        flash('error', 'Workshop konnte nicht endgueltig geloescht werden.');
+        redirect(admin_url('workshops'));
+    }
+
+    $workshopStmt = $db->prepare('SELECT id, COALESCE(archived, 0) AS archived FROM workshops WHERE id = :id LIMIT 1');
+    $workshopStmt->bindValue(':id', $hardDeleteId, SQLITE3_INTEGER);
+    $workshopRow = $workshopStmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+    if (!$workshopRow) {
+        flash('error', 'Workshop nicht gefunden.');
+        redirect(admin_url('workshops'));
+    }
+    if ((int) ($workshopRow['archived'] ?? 0) !== 1) {
+        flash('error', 'Nur archivierte Workshops koennen endgueltig geloescht werden.');
+        redirect(admin_url('workshops'));
+    }
+
+    $inTransaction = false;
+    try {
+        $db->exec('BEGIN IMMEDIATE');
+        $inTransaction = true;
+
+        $deleteStmt = $db->prepare('DELETE FROM workshops WHERE id = :id');
+        $deleteStmt->bindValue(':id', $hardDeleteId, SQLITE3_INTEGER);
+        $deleteResult = $deleteStmt->execute();
+        if ($deleteResult === false || $db->changes() !== 1) {
+            throw new RuntimeException('Delete failed');
+        }
+
+        $db->exec('COMMIT');
+        $inTransaction = false;
+        flash('success', 'Workshop endgueltig geloescht.');
+    } catch (Throwable $e) {
+        if ($inTransaction) {
+            $db->exec('ROLLBACK');
+        }
+        flash('error', 'Workshop konnte nicht endgueltig geloescht werden (z. B. wegen bestehender Rechnungen).');
+    }
+
+    redirect(admin_url('workshops'));
+}
+
+// Handle toggle active (only non-archived workshops)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_id'])) {
-    if (csrf_verify()) {
-        $stmt = $db->prepare('UPDATE workshops SET active = CASE WHEN active = 1 THEN 0 ELSE 1 END, updated_at = datetime("now") WHERE id = :id');
-        $stmt->bindValue(':id', (int) $_POST['toggle_id'], SQLITE3_INTEGER);
+    $toggleId = max(0, (int) ($_POST['toggle_id'] ?? 0));
+    if ($toggleId > 0) {
+        $stmt = $db->prepare('UPDATE workshops SET active = CASE WHEN active = 1 THEN 0 ELSE 1 END, updated_at = datetime("now") WHERE id = :id AND COALESCE(archived, 0) = 0');
+        $stmt->bindValue(':id', $toggleId, SQLITE3_INTEGER);
         $stmt->execute();
         flash('success', 'Status aktualisiert.');
     }
     redirect(admin_url('workshops'));
 }
 
-// Fetch all workshops
-$result = $db->query('SELECT * FROM workshops ORDER BY sort_order ASC, id ASC');
-$workshops = [];
+// Fetch all workshops and split into active vs archived sections
+$result = $db->query('SELECT * FROM workshops ORDER BY COALESCE(archived, 0) ASC, sort_order ASC, id ASC');
+$activeWorkshops = [];
+$archivedWorkshops = [];
+
+$totalBookingStmt = $db->prepare('SELECT COUNT(*) AS cnt FROM bookings WHERE workshop_id = :wid');
+
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-    $row['booking_count'] = count_confirmed_bookings($db, $row['id']);
-    $workshops[] = $row;
+    $wid = (int) ($row['id'] ?? 0);
+
+    $row['booking_count'] = count_confirmed_bookings($db, $wid);
+
+    $totalBookingStmt->bindValue(':wid', $wid, SQLITE3_INTEGER);
+    $totalBookingRow = $totalBookingStmt->execute()->fetchArray(SQLITE3_ASSOC);
+    $row['booking_total'] = (int) ($totalBookingRow['cnt'] ?? 0);
+
+    if ((int) ($row['archived'] ?? 0) === 1) {
+        $archivedWorkshops[] = $row;
+    } else {
+        $activeWorkshops[] = $row;
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -266,62 +349,118 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 
         <?= render_flash() ?>
 
-        <?php if (empty($workshops)): ?>
+        <?php if (empty($activeWorkshops) && empty($archivedWorkshops)): ?>
             <p style="color:var(--muted);">Noch keine Workshops vorhanden. <a href="<?= e(admin_url('workshop-edit')) ?>" style="color:var(--text);">Jetzt erstellen</a></p>
+        <?php endif; ?>
+
+        <?php if (!empty($activeWorkshops)): ?>
+            <div class="admin-section-head" style="display:flex;justify-content:space-between;align-items:center;margin:1.35rem 0 0.6rem;gap:0.9rem;flex-wrap:wrap;">
+                <h2 style="margin:0;font-size:1rem;color:var(--text);">Aktive &amp; inaktive Workshops</h2>
+                <span style="color:var(--dim);font-size:0.78rem;">Standardaktion: Archivieren</span>
+            </div>
+            <div class="admin-table-scroll">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Titel</th>
+                            <th>Format</th>
+                            <th>Kapazit&auml;t</th>
+                            <th>Gebucht</th>
+                            <th>Status</th>
+                            <th>Reihenfolge</th>
+                            <th>Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($activeWorkshops as $w): ?>
+                        <tr>
+                            <td style="color:var(--text);">
+                                <?= e((string) ($w['title'] ?? '')) ?>
+                                <?php if ((int) ($w['featured'] ?? 0) === 1): ?>
+                                    <span style="font-size:0.65rem;background:var(--featured-pill-bg);color:var(--featured-pill-text);padding:2px 6px;border-radius:3px;margin-left:0.5rem;">Featured</span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?= e((string) ($w['tag_label'] ?? '')) ?></td>
+                            <td><?= (int) ($w['capacity'] ?? 0) ?: '&infin;' ?></td>
+                            <td><?= (int) ($w['booking_count'] ?? 0) ?></td>
+                            <td>
+                                <?php if ((int) ($w['active'] ?? 0) === 1): ?>
+                                    <span class="status-badge status-confirmed">Aktiv</span>
+                                <?php else: ?>
+                                    <span class="status-badge status-pending">Inaktiv</span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?= (int) ($w['sort_order'] ?? 0) ?></td>
+                            <td>
+                                <div class="admin-actions">
+                                    <a href="<?= e(admin_url('workshop-edit', ['id' => (int) $w['id']])) ?>" class="btn-admin">Bearbeiten</a>
+                                    <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $w['id']])) ?>" class="btn-admin">Buchungen</a>
+
+                                    <form method="POST" style="display:inline;">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="toggle_id" value="<?= (int) $w['id'] ?>">
+                                        <button type="submit" class="btn-admin"><?= ((int) ($w['active'] ?? 0) === 1) ? 'Deaktivieren' : 'Aktivieren' ?></button>
+                                    </form>
+
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop wirklich archivieren? Bei bestaetigten Buchungen werden Stornomails versendet und Buchungen archiviert.')">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="archive_id" value="<?= (int) $w['id'] ?>">
+                                        <button type="submit" class="btn-admin btn-danger">Archivieren</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+
+        <div class="admin-section-head" style="display:flex;justify-content:space-between;align-items:center;margin:1.5rem 0 0.6rem;gap:0.9rem;flex-wrap:wrap;">
+            <h2 style="margin:0;font-size:1rem;color:var(--text);">Archivierte Workshops</h2>
+            <a href="<?= e(admin_url('bookings', ['workshop_id' => 'archive'])) ?>" class="btn-admin">Archiv-Buchungen</a>
+        </div>
+
+        <?php if (empty($archivedWorkshops)): ?>
+            <p style="color:var(--muted);margin-top:0;">Keine archivierten Workshops vorhanden.</p>
         <?php else: ?>
             <div class="admin-table-scroll">
-            <table class="admin-table">
-                <thead>
-                    <tr>
-                        <th>Titel</th>
-                        <th>Format</th>
-                        <th>Kapazit&auml;t</th>
-                        <th>Gebucht</th>
-                        <th>Status</th>
-                        <th>Reihenfolge</th>
-                        <th>Aktionen</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($workshops as $w): ?>
-                    <tr>
-                        <td style="color:var(--text);">
-                            <?= e($w['title']) ?>
-                            <?php if ($w['featured']): ?>
-                                <span style="font-size:0.65rem;background:var(--featured-pill-bg);color:var(--featured-pill-text);padding:2px 6px;border-radius:3px;margin-left:0.5rem;">Featured</span>
-                            <?php endif; ?>
-                        </td>
-                        <td><?= e($w['tag_label']) ?></td>
-                        <td><?= (int) $w['capacity'] ?: '&infin;' ?></td>
-                        <td><?= $w['booking_count'] ?></td>
-                        <td>
-                            <?php if ($w['active']): ?>
-                                <span class="status-badge status-confirmed">Aktiv</span>
-                            <?php else: ?>
-                                <span class="status-badge status-pending">Inaktiv</span>
-                            <?php endif; ?>
-                        </td>
-                        <td><?= (int) $w['sort_order'] ?></td>
-                        <td>
-                            <div class="admin-actions">
-                                <a href="<?= e(admin_url('workshop-edit', ['id' => (int) $w['id']])) ?>" class="btn-admin">Bearbeiten</a>
-                                <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $w['id']])) ?>" class="btn-admin">Buchungen</a>
-                                <form method="POST" style="display:inline;">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="toggle_id" value="<?= $w['id'] ?>">
-                                    <button type="submit" class="btn-admin"><?= $w['active'] ? 'Deaktivieren' : 'Aktivieren' ?></button>
-                                </form>
-                                <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop wirklich entfernen? Bei vorhandenen Buchungen wird der Workshop abgesagt und alle Buchungen werden archiviert.')">
-                                    <?= csrf_field() ?>
-                                    <input type="hidden" name="delete_id" value="<?= $w['id'] ?>">
-                                    <button type="submit" class="btn-admin btn-danger">L&ouml;schen</button>
-                                </form>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Titel</th>
+                            <th>Format</th>
+                            <th>Buchungen gesamt</th>
+                            <th>Archiviert am</th>
+                            <th>Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($archivedWorkshops as $w): ?>
+                        <tr>
+                            <td style="color:var(--text);"><?= e((string) ($w['title'] ?? '')) ?></td>
+                            <td><?= e((string) ($w['tag_label'] ?? '')) ?></td>
+                            <td><?= (int) ($w['booking_total'] ?? 0) ?></td>
+                            <td><?= e(format_admin_datetime((string) ($w['archived_at'] ?? ''))) ?></td>
+                            <td>
+                                <div class="admin-actions">
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop reaktivieren?')">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="restore_id" value="<?= (int) $w['id'] ?>">
+                                        <button type="submit" class="btn-admin btn-success">Reaktivieren</button>
+                                    </form>
+
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop endgueltig loeschen? Diese Aktion ist nicht rueckgaengig und loescht den Datensatz komplett.')">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="hard_delete_id" value="<?= (int) $w['id'] ?>">
+                                        <button type="submit" class="btn-admin btn-danger">Endgueltig loeschen</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         <?php endif; ?>
     </div>
