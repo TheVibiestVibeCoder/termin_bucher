@@ -118,20 +118,6 @@ function archive_open_workshop_bookings(SQLite3 $db, int $workshopId, string $ar
     return (int) $db->changes();
 }
 
-function format_admin_datetime(?string $raw): string {
-    $value = trim((string) $raw);
-    if ($value === '') {
-        return '-';
-    }
-
-    $ts = strtotime($value);
-    if ($ts === false) {
-        return $value;
-    }
-
-    return date('d.m.Y H:i', $ts);
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
     flash('error', 'Ungueltige Sitzung.');
     redirect(admin_url('workshops'));
