@@ -1,15 +1,91 @@
 <?php
 require __DIR__ . '/../includes/config.php';
+require __DIR__ . '/../includes/email.php';
 require_admin();
+
+function fetch_workshop_cancellation_recipients(SQLite3 $db, int $workshopId): array {
+    if ($workshopId <= 0) {
+        return [];
+    }
+
+    $rows = [];
+    $stmt = $db->prepare('SELECT name, email FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 ORDER BY id ASC');
+    $stmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    $res = $stmt->execute();
+    while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+        $mail = trim((string) ($row['email'] ?? ''));
+        if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) {
+            continue;
+        }
+
+        $rows[] = [
+            'name' => trim((string) ($row['name'] ?? '')),
+            'email' => $mail,
+        ];
+    }
+
+    return $rows;
+}
 
 // Handle delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
-    if (csrf_verify()) {
-        $stmt = $db->prepare('DELETE FROM workshops WHERE id = :id');
-        $stmt->bindValue(':id', (int) $_POST['delete_id'], SQLITE3_INTEGER);
-        $stmt->execute();
-        flash('success', 'Workshop gelöscht.');
+    if (!csrf_verify()) {
+        flash('error', 'Ungueltige Sitzung.');
+        redirect(admin_url('workshops'));
     }
+
+    $deleteId = max(0, (int) ($_POST['delete_id'] ?? 0));
+    if ($deleteId <= 0) {
+        flash('error', 'Workshop konnte nicht geloescht werden.');
+        redirect(admin_url('workshops'));
+    }
+
+    $workshopStmt = $db->prepare('SELECT id, title FROM workshops WHERE id = :id LIMIT 1');
+    $workshopStmt->bindValue(':id', $deleteId, SQLITE3_INTEGER);
+    $workshopRow = $workshopStmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$workshopRow) {
+        flash('error', 'Workshop nicht gefunden.');
+        redirect(admin_url('workshops'));
+    }
+
+    $recipients = fetch_workshop_cancellation_recipients($db, $deleteId);
+
+    $deleteStmt = $db->prepare('DELETE FROM workshops WHERE id = :id');
+    $deleteStmt->bindValue(':id', $deleteId, SQLITE3_INTEGER);
+    $deleteResult = $deleteStmt->execute();
+
+    if ($deleteResult !== false && $db->changes() === 1) {
+        $sent = 0;
+        $failed = 0;
+        $workshopTitle = trim((string) ($workshopRow['title'] ?? ''));
+
+        foreach ($recipients as $recipient) {
+            $ok = send_booking_cancelled_email(
+                (string) ($recipient['email'] ?? ''),
+                (string) ($recipient['name'] ?? ''),
+                $workshopTitle
+            );
+            if ($ok) {
+                $sent++;
+            } else {
+                $failed++;
+            }
+        }
+
+        $msg = 'Workshop geloescht.';
+        if (!empty($recipients)) {
+            $msg .= ' Stornomails gesendet: ' . $sent;
+            if ($failed > 0) {
+                $msg .= ', fehlgeschlagen: ' . $failed . '.';
+            } else {
+                $msg .= '.';
+            }
+        }
+        flash('success', $msg);
+    } else {
+        flash('error', 'Workshop konnte nicht geloescht werden.');
+    }
+
     redirect(admin_url('workshops'));
 }
 

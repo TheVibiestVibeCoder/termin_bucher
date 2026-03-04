@@ -1,5 +1,6 @@
 <?php
 require __DIR__ . '/../includes/config.php';
+require __DIR__ . '/../includes/email.php';
 require_admin();
 
 function to_datetime_local(string $val): string {
@@ -17,6 +18,68 @@ function normalize_datetime_input(?string $raw): string {
     }
 
     return str_replace('T', ' ', $value);
+}
+
+function archive_bookings_for_removed_occurrences(SQLite3 $db, int $workshopId, array $occurrenceIds, string $archiveNote = 'Termin abgesagt'): array {
+    $cleanOccurrenceIds = [];
+    foreach ($occurrenceIds as $occurrenceId) {
+        $oid = (int) $occurrenceId;
+        if ($oid > 0) {
+            $cleanOccurrenceIds[$oid] = true;
+        }
+    }
+
+    $cleanOccurrenceIds = array_map('intval', array_keys($cleanOccurrenceIds));
+    if ($workshopId <= 0 || empty($cleanOccurrenceIds)) {
+        return [
+            'archived_count' => 0,
+            'mail_recipients' => [],
+        ];
+    }
+
+    $inList = implode(',', $cleanOccurrenceIds);
+    $mailRecipients = [];
+
+    $collectSql = 'SELECT id, name, email, confirmed FROM bookings WHERE workshop_id = :wid AND COALESCE(archived, 0) = 0 AND occurrence_id IN (' . $inList . ')';
+    $collectStmt = $db->prepare($collectSql);
+    $collectStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    $collectRes = $collectStmt->execute();
+    while ($row = $collectRes->fetchArray(SQLITE3_ASSOC)) {
+        if ((int) ($row['confirmed'] ?? 0) !== 1) {
+            continue;
+        }
+
+        $mail = trim((string) ($row['email'] ?? ''));
+        if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) {
+            continue;
+        }
+
+        $mailRecipients[] = [
+            'name' => trim((string) ($row['name'] ?? '')),
+            'email' => $mail,
+        ];
+    }
+
+    $updateSql = "
+        UPDATE bookings
+        SET
+            archived = 1,
+            archived_at = datetime('now'),
+            archived_by = :archived_by,
+            archive_note = CASE WHEN :archive_note = '' THEN archive_note ELSE :archive_note END
+        WHERE workshop_id = :wid AND COALESCE(archived, 0) = 0 AND occurrence_id IN (" . $inList . ")
+    ";
+    $updateStmt = $db->prepare($updateSql);
+    $updateStmt->bindValue(':archived_by', 'admin', SQLITE3_TEXT);
+    $updateStmt->bindValue(':archive_note', $archiveNote, SQLITE3_TEXT);
+    $updateStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    $updateResult = $updateStmt->execute();
+    $archivedCount = ($updateResult !== false) ? (int) $db->changes() : 0;
+
+    return [
+        'archived_count' => $archivedCount,
+        'mail_recipients' => $mailRecipients,
+    ];
 }
 
 $id = (int) ($_GET['id'] ?? 0);
@@ -187,6 +250,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
 
     if (empty($errors)) {
         $inTransaction = false;
+        $cancelledArchivedCount = 0;
+        $cancelledRecipients = [];
 
         try {
             $db->exec('BEGIN IMMEDIATE');
@@ -261,6 +326,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
             $savedWorkshopId = $isEdit ? $id : (int) $db->lastInsertRowID();
 
             if ($formData['workshop_type'] === 'open') {
+                $activeOccurrenceIds = [];
+                $activeStmt = $db->prepare('SELECT id FROM workshop_occurrences WHERE workshop_id = :wid AND active = 1');
+                $activeStmt->bindValue(':wid', $savedWorkshopId, SQLITE3_INTEGER);
+                $activeRes = $activeStmt->execute();
+                while ($activeRow = $activeRes->fetchArray(SQLITE3_ASSOC)) {
+                    $activeOccurrenceIds[] = (int) ($activeRow['id'] ?? 0);
+                }
+
                 $existingIds = [];
                 $existingStmt = $db->prepare('SELECT id FROM workshop_occurrences WHERE workshop_id = :wid');
                 $existingStmt->bindValue(':wid', $savedWorkshopId, SQLITE3_INTEGER);
@@ -310,19 +383,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                     }
                 }
 
+                $removedOccurrenceIds = array_values(array_diff($activeOccurrenceIds, $keptIds));
+                if (!empty($removedOccurrenceIds)) {
+                    $archiveResult = archive_bookings_for_removed_occurrences(
+                        $db,
+                        $savedWorkshopId,
+                        $removedOccurrenceIds,
+                        'Termin wurde abgesagt oder entfernt.'
+                    );
+                    $cancelledArchivedCount += (int) ($archiveResult['archived_count'] ?? 0);
+                    $cancelledRecipients = array_merge($cancelledRecipients, (array) ($archiveResult['mail_recipients'] ?? []));
+                }
+
                 $deactivateSql = 'UPDATE workshop_occurrences SET active = 0, updated_at = datetime("now") WHERE workshop_id = ' . (int) $savedWorkshopId;
                 if (!empty($keptIds)) {
                     $deactivateSql .= ' AND id NOT IN (' . implode(',', array_map('intval', $keptIds)) . ')';
                 }
                 $db->exec($deactivateSql);
             } else {
+                $activeOccurrenceIds = [];
+                $activeStmt = $db->prepare('SELECT id FROM workshop_occurrences WHERE workshop_id = :wid AND active = 1');
+                $activeStmt->bindValue(':wid', $savedWorkshopId, SQLITE3_INTEGER);
+                $activeRes = $activeStmt->execute();
+                while ($activeRow = $activeRes->fetchArray(SQLITE3_ASSOC)) {
+                    $activeOccurrenceIds[] = (int) ($activeRow['id'] ?? 0);
+                }
+
+                if (!empty($activeOccurrenceIds)) {
+                    $archiveResult = archive_bookings_for_removed_occurrences(
+                        $db,
+                        $savedWorkshopId,
+                        $activeOccurrenceIds,
+                        'Termin wurde abgesagt oder entfernt.'
+                    );
+                    $cancelledArchivedCount += (int) ($archiveResult['archived_count'] ?? 0);
+                    $cancelledRecipients = array_merge($cancelledRecipients, (array) ($archiveResult['mail_recipients'] ?? []));
+                }
+
                 $db->exec('UPDATE workshop_occurrences SET active = 0, updated_at = datetime("now") WHERE workshop_id = ' . (int) $savedWorkshopId);
             }
 
             $db->exec('COMMIT');
             $inTransaction = false;
 
-            flash('success', $isEdit ? 'Workshop aktualisiert.' : 'Workshop erstellt.');
+            $stornoSent = 0;
+            $stornoFailed = 0;
+            $workshopTitleForMail = trim((string) ($formData['title'] ?? ($workshop['title'] ?? 'Workshop')));
+            foreach ($cancelledRecipients as $recipient) {
+                $ok = send_booking_cancelled_email(
+                    (string) ($recipient['email'] ?? ''),
+                    (string) ($recipient['name'] ?? ''),
+                    $workshopTitleForMail
+                );
+                if ($ok) {
+                    $stornoSent++;
+                } else {
+                    $stornoFailed++;
+                }
+            }
+
+            $successMessage = $isEdit ? 'Workshop aktualisiert.' : 'Workshop erstellt.';
+            if ($cancelledArchivedCount > 0) {
+                $successMessage .= ' Abgesagte Termin-Buchungen archiviert: ' . $cancelledArchivedCount . '.';
+                $successMessage .= ' Stornomails gesendet: ' . $stornoSent;
+                if ($stornoFailed > 0) {
+                    $successMessage .= ', fehlgeschlagen: ' . $stornoFailed . '.';
+                } else {
+                    $successMessage .= '.';
+                }
+            }
+
+            flash('success', $successMessage);
             redirect(admin_url('workshops'));
         } catch (Throwable $e) {
             if ($inTransaction) {
