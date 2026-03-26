@@ -14,8 +14,80 @@ function sanitize_email_address(string $email): string {
     return trim(str_replace(["\r", "\n"], '', $email));
 }
 
+function infer_site_url_from_request_for_email(): string {
+    $hostRaw = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if ($hostRaw === '') {
+        $hostRaw = trim((string) ($_SERVER['SERVER_NAME'] ?? ''));
+    }
+    if ($hostRaw === '' || preg_match('/[\s\/\\\\]/', $hostRaw)) {
+        return '';
+    }
+
+    $hostRaw = strtolower($hostRaw);
+    $host = $hostRaw;
+    $port = '';
+
+    if (str_starts_with($hostRaw, '[')) {
+        $endBracketPos = strpos($hostRaw, ']');
+        if ($endBracketPos === false) {
+            return '';
+        }
+        $host = substr($hostRaw, 0, $endBracketPos + 1);
+        $rest = substr($hostRaw, $endBracketPos + 1);
+        if ($rest !== '') {
+            if (!str_starts_with($rest, ':')) {
+                return '';
+            }
+            $port = substr($rest, 1);
+        }
+    } else {
+        $parts = explode(':', $hostRaw);
+        if (count($parts) > 2) {
+            return '';
+        }
+        $host = $parts[0];
+        $port = $parts[1] ?? '';
+    }
+
+    $hostForValidation = trim($host, '[]');
+    $hostIsValid = filter_var($hostForValidation, FILTER_VALIDATE_IP) !== false
+        || filter_var($hostForValidation, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false
+        || $hostForValidation === 'localhost';
+    if (!$hostIsValid) {
+        return '';
+    }
+
+    if ($port !== '') {
+        if (!ctype_digit($port)) {
+            return '';
+        }
+        $portInt = (int) $port;
+        if ($portInt < 1 || $portInt > 65535) {
+            return '';
+        }
+    }
+
+    $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    $httpsServer = strtolower((string) ($_SERVER['HTTPS'] ?? ''));
+    $isHttps = ($httpsServer !== '' && $httpsServer !== 'off') || $forwardedProto === 'https';
+    $scheme = $isHttps ? 'https' : 'http';
+
+    $hostWithPort = $host;
+    if ($port !== '') {
+        $defaultPort = $isHttps ? 443 : 80;
+        if ((int) $port !== $defaultPort) {
+            $hostWithPort .= ':' . (int) $port;
+        }
+    }
+
+    return $scheme . '://' . $hostWithPort;
+}
+
 function build_site_url(string $path = ''): string {
     $base = trim((string) SITE_URL);
+    if ($base === '') {
+        $base = infer_site_url_from_request_for_email();
+    }
 
     if ($path === '') {
         return $base;

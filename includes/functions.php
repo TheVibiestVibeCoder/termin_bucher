@@ -199,13 +199,98 @@ function generate_token(): string {
     return bin2hex(random_bytes(32));
 }
 
-function rate_limit_client_id(): string {
-    $ip = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
-    if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP) !== false) {
-        return $ip;
+function rate_limit_client_ip(): string {
+    $remoteIp = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    $remoteValid = ($remoteIp !== '' && filter_var($remoteIp, FILTER_VALIDATE_IP) !== false);
+
+    $forwardedIp = '';
+    $cfConnectingIp = trim((string) ($_SERVER['HTTP_CF_CONNECTING_IP'] ?? ''));
+    if ($cfConnectingIp !== '' && filter_var($cfConnectingIp, FILTER_VALIDATE_IP) !== false) {
+        $forwardedIp = $cfConnectingIp;
+    }
+    if ($forwardedIp === '') {
+        $xffRaw = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+        if ($xffRaw !== '') {
+            foreach (explode(',', $xffRaw) as $candidate) {
+                $candidate = trim($candidate);
+                if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_IP) !== false) {
+                    $forwardedIp = $candidate;
+                    break;
+                }
+            }
+        }
+    }
+
+    $remoteIsPublic = $remoteValid
+        && filter_var($remoteIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+
+    // Trust forwarded client IPs only when the direct peer is private/reserved.
+    if (!$remoteIsPublic && $forwardedIp !== '') {
+        return $forwardedIp;
+    }
+
+    if ($remoteValid) {
+        return $remoteIp;
+    }
+    if ($forwardedIp !== '') {
+        return $forwardedIp;
     }
 
     return 'unknown';
+}
+
+function rate_limit_client_id(): string {
+    $ip = rate_limit_client_ip();
+    $sessionId = session_id();
+    if ($sessionId === '') {
+        $cookieName = session_name();
+        $cookieVal = $cookieName !== '' ? (string) ($_COOKIE[$cookieName] ?? '') : '';
+        $sessionId = preg_replace('/[^A-Za-z0-9,-]/', '', $cookieVal) ?? '';
+    }
+
+    $ua = trim((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    if (strlen($ua) > 200) {
+        $ua = substr($ua, 0, 200);
+    }
+
+    $fingerprint = $ip;
+    if ($sessionId !== '') {
+        $fingerprint .= '|sid:' . $sessionId;
+    } elseif ($ua !== '') {
+        $fingerprint .= '|ua:' . $ua;
+    }
+
+    return hash('sha256', $fingerprint);
+}
+
+function archive_expired_unconfirmed_bookings(SQLite3 $db, int $ttlHours = 48): int {
+    $ttl = max(1, $ttlHours);
+    $stmt = $db->prepare("
+        UPDATE bookings
+        SET
+            archived = 1,
+            archived_at = datetime('now'),
+            archived_by = 'system',
+            archive_note = CASE
+                WHEN TRIM(COALESCE(archive_note, '')) = '' THEN :note
+                ELSE archive_note
+            END
+        WHERE
+            confirmed = 0
+            AND COALESCE(archived, 0) = 0
+            AND created_at <= datetime('now', :age)
+    ");
+    if (!$stmt instanceof SQLite3Stmt) {
+        return 0;
+    }
+    $stmt->bindValue(':note', 'Automatisch archiviert: Bestaetigungslink abgelaufen.', SQLITE3_TEXT);
+    $stmt->bindValue(':age', '-' . $ttl . ' hours', SQLITE3_TEXT);
+    $result = $stmt->execute();
+    if ($result === false) {
+        return 0;
+    }
+
+    return (int) $db->changes();
 }
 
 function rate_limit_session_check(string $key, int $maxPerMinute): bool {
@@ -549,14 +634,14 @@ function discount_code_status(array $code, ?int $now = null): string {
 
 function count_discount_code_usages(SQLite3 $db, int $discountCodeId, ?string $email = null): int {
     if ($email !== null && $email !== '') {
-        $stmt = $db->prepare('SELECT COUNT(*) FROM bookings WHERE discount_code_id = :cid AND COALESCE(archived, 0) = 0 AND lower(email) = :mail');
+        $stmt = $db->prepare('SELECT COUNT(*) FROM bookings WHERE discount_code_id = :cid AND confirmed = 1 AND COALESCE(archived, 0) = 0 AND lower(email) = :mail');
         $stmt->bindValue(':cid', $discountCodeId, SQLITE3_INTEGER);
         $stmt->bindValue(':mail', strtolower(trim($email)), SQLITE3_TEXT);
 
         return (int) $stmt->execute()->fetchArray(SQLITE3_NUM)[0];
     }
 
-    $stmt = $db->prepare('SELECT COUNT(*) FROM bookings WHERE discount_code_id = :cid AND COALESCE(archived, 0) = 0');
+    $stmt = $db->prepare('SELECT COUNT(*) FROM bookings WHERE discount_code_id = :cid AND confirmed = 1 AND COALESCE(archived, 0) = 0');
     $stmt->bindValue(':cid', $discountCodeId, SQLITE3_INTEGER);
 
     return (int) $stmt->execute()->fetchArray(SQLITE3_NUM)[0];

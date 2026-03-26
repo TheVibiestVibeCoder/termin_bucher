@@ -118,6 +118,7 @@ foreach ($migrations as [$table, $col, $def]) {
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_discount_code_id ON bookings(discount_code_id);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_archived_workshop ON bookings(archived, workshop_id, confirmed);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_occurrence ON bookings(occurrence_id, confirmed, archived);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_pending_expiry ON bookings(confirmed, archived, created_at);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_workshops_archived_active ON workshops(archived, active, sort_order, id);");
 
 
