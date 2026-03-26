@@ -154,6 +154,40 @@ if ($listStmt instanceof SQLite3Stmt) {
             justify-content: space-between;
             gap: 0.75rem;
         }
+        .email-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.42rem 0.85rem;
+            border-radius: 999px;
+            font-size: 0.69rem;
+            font-weight: 700;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+            line-height: 1;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+        .email-status-pill::before {
+            content: '';
+            width: 0.42rem;
+            height: 0.42rem;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.95;
+        }
+        .email-status-pill-sent {
+            background: rgba(46, 204, 113, 0.16);
+            border-color: rgba(46, 204, 113, 0.35);
+            color: #2ecc71;
+            box-shadow: inset 0 0 0 1px rgba(46, 204, 113, 0.08);
+        }
+        .email-status-pill-failed {
+            background: rgba(241, 196, 15, 0.16);
+            border-color: rgba(241, 196, 15, 0.35);
+            color: #f1c40f;
+            box-shadow: inset 0 0 0 1px rgba(241, 196, 15, 0.08);
+        }
         .email-log-subject {
             color: var(--text);
             font-weight: 600;
@@ -227,10 +261,12 @@ if ($listStmt instanceof SQLite3Stmt) {
             border: 1px solid var(--border);
             border-radius: 8px;
             overflow: hidden;
+            overflow-x: auto;
         }
         .email-log-attachments table {
             width: 100%;
             border-collapse: collapse;
+            min-width: 460px;
         }
         .email-log-attachments th,
         .email-log-attachments td {
@@ -266,22 +302,132 @@ if ($listStmt instanceof SQLite3Stmt) {
             .email-log-grid {
                 grid-template-columns: 1fr;
             }
+            .email-log-summary {
+                padding: 0.9rem 0.9rem;
+            }
         }
         @media (max-width: 640px) {
             .email-toolbar {
                 grid-template-columns: 1fr;
             }
+            .email-toolbar input,
+            .email-toolbar select,
+            .email-toolbar .btn-admin {
+                width: 100%;
+            }
+            .email-toolbar .btn-admin {
+                min-height: 40px;
+            }
+            .stats-row {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.7rem;
+                margin-bottom: 1rem;
+            }
+            .stat-card {
+                padding: 1rem 0.85rem;
+            }
+            .stat-card .stat-card-num {
+                font-size: 1.55rem;
+            }
             .email-log-summary-top {
-                flex-direction: column;
-                align-items: flex-start;
+                align-items: center;
+            }
+            .email-log-summary {
+                gap: 0.55rem;
+                padding: 0.85rem;
+            }
+            .email-log-date {
+                font-size: 0.72rem;
+                margin-left: auto;
+            }
+            .email-status-pill {
+                padding: 0.4rem 0.78rem;
+                font-size: 0.66rem;
+            }
+            .email-log-meta-line {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 0.45rem 0.8rem;
+                font-size: 0.74rem;
+            }
+            .email-log-detail {
+                padding: 0.85rem;
+                gap: 0.85rem;
+            }
+            .email-log-kv {
+                padding: 0.58rem 0.6rem;
+            }
+            .email-log-kv .k {
+                font-size: 0.64rem;
+            }
+            .email-log-kv .v {
+                font-size: 0.78rem;
+            }
+            .email-log-section h3 {
+                font-size: 0.8rem;
+            }
+            .email-log-pre {
+                max-height: 250px;
+                font-size: 0.74rem;
+                padding: 0.62rem;
+            }
+            .email-log-attachments {
+                overflow: visible;
+            }
+            .email-log-attachments table {
+                min-width: 0;
+            }
+            .email-log-attachments thead {
+                display: none;
+            }
+            .email-log-attachments tbody,
+            .email-log-attachments tr,
+            .email-log-attachments td {
+                display: block;
+                width: 100%;
+            }
+            .email-log-attachments tr {
+                border-bottom: 1px solid var(--border);
+                padding: 0.35rem 0.6rem 0.45rem;
+            }
+            .email-log-attachments tr:last-child {
+                border-bottom: none;
+            }
+            .email-log-attachments td {
+                border-bottom: none;
+                padding: 0.26rem 0;
+                font-size: 0.75rem;
+            }
+            .email-log-attachments td::before {
+                content: attr(data-label);
+                display: inline-block;
+                min-width: 96px;
+                margin-right: 0.45rem;
+                font-size: 0.64rem;
+                letter-spacing: 0.8px;
+                text-transform: uppercase;
+                color: var(--dim);
             }
             .email-log-pagination {
                 flex-direction: column;
                 align-items: stretch;
+                gap: 0.5rem;
             }
             .email-log-pagination .btn-admin {
                 width: 100%;
                 text-align: center;
+            }
+            .email-log-pagination > span {
+                text-align: center;
+                font-size: 0.76rem !important;
+            }
+        }
+        @media (max-width: 420px) {
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
+            .email-log-meta-line {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -338,7 +484,7 @@ if ($listStmt instanceof SQLite3Stmt) {
                     $status = strtolower(trim((string) ($log['send_status'] ?? 'failed')));
                     $isSent = $status === 'sent';
                     $statusLabel = $isSent ? 'Gesendet' : 'Fehlgeschlagen';
-                    $statusClass = $isSent ? 'status-confirmed' : 'status-pending';
+                    $statusClass = $isSent ? 'email-status-pill-sent' : 'email-status-pill-failed';
                     $subject = trim((string) ($log['subject'] ?? ''));
                     if ($subject === '') {
                         $subject = '(ohne Betreff)';
@@ -352,7 +498,7 @@ if ($listStmt instanceof SQLite3Stmt) {
                     <details class="email-log-card">
                         <summary class="email-log-summary">
                             <div class="email-log-summary-top">
-                                <span class="status-badge <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>
+                                <span class="email-status-pill <?= e($statusClass) ?>"><?= e($statusLabel) ?></span>
                                 <span class="email-log-date"><?= e($createdLabel) ?></span>
                             </div>
                             <div class="email-log-subject"><?= e($subject) ?></div>
@@ -406,9 +552,9 @@ if ($listStmt instanceof SQLite3Stmt) {
                                             <tbody>
                                                 <?php foreach ($attachments as $attachment): ?>
                                                     <tr>
-                                                        <td><?= e((string) ($attachment['filename'] ?? '')) ?></td>
-                                                        <td><?= e((string) ($attachment['mime'] ?? '')) ?></td>
-                                                        <td><?= (int) ($attachment['bytes'] ?? 0) ?></td>
+                                                        <td data-label="Datei"><?= e((string) ($attachment['filename'] ?? '')) ?></td>
+                                                        <td data-label="MIME"><?= e((string) ($attachment['mime'] ?? '')) ?></td>
+                                                        <td data-label="Groesse"><?= (int) ($attachment['bytes'] ?? 0) ?></td>
                                                     </tr>
                                                 <?php endforeach; ?>
                                             </tbody>
