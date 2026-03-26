@@ -33,6 +33,32 @@ $db->exec("CREATE INDEX IF NOT EXISTS idx_bp_booking ON booking_participants(boo
 $db->exec("\nCREATE TABLE IF NOT EXISTS request_rate_limits (\n    rl_key       TEXT    NOT NULL,\n    client_id    TEXT    NOT NULL,\n    window_start INTEGER NOT NULL,\n    hits         INTEGER NOT NULL DEFAULT 0,\n    PRIMARY KEY (rl_key, client_id)\n);\n");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_request_rate_limits_window_start ON request_rate_limits(window_start);");
 
+$db->exec("
+CREATE TABLE IF NOT EXISTS email_logs (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    transport            TEXT    NOT NULL DEFAULT 'php_mail',
+    send_status          TEXT    NOT NULL DEFAULT 'failed',
+    recipient_email      TEXT    NOT NULL DEFAULT '',
+    sender_email         TEXT    NOT NULL DEFAULT '',
+    sender_name          TEXT    NOT NULL DEFAULT '',
+    subject              TEXT    NOT NULL DEFAULT '',
+    headers_raw          TEXT    NOT NULL DEFAULT '',
+    body_html            TEXT    NOT NULL DEFAULT '',
+    body_text            TEXT    NOT NULL DEFAULT '',
+    attachment_count     INTEGER NOT NULL DEFAULT 0,
+    attachment_meta_json TEXT    NOT NULL DEFAULT '[]',
+    context_label        TEXT    NOT NULL DEFAULT '',
+    request_uri          TEXT    NOT NULL DEFAULT '',
+    client_ip            TEXT    NOT NULL DEFAULT '',
+    error_message        TEXT    NOT NULL DEFAULT '',
+    created_at           DATETIME NOT NULL DEFAULT (datetime('now')),
+    sent_at              DATETIME
+);
+");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at DESC, id DESC);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(send_status, created_at DESC);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_recipient ON email_logs(recipient_email, created_at DESC);");
+
 $db->exec("\nCREATE TABLE IF NOT EXISTS invoice_circles (\n    id           INTEGER PRIMARY KEY AUTOINCREMENT,\n    circle_code  TEXT    NOT NULL UNIQUE,\n    circle_label TEXT    NOT NULL,\n    prefix       TEXT    NOT NULL DEFAULT 'WS',\n    year         INTEGER NOT NULL DEFAULT 0,\n    next_number  INTEGER NOT NULL DEFAULT 1,\n    active       INTEGER NOT NULL DEFAULT 1,\n    created_at   DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at   DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_invoice_circles_active ON invoice_circles(active);");
 

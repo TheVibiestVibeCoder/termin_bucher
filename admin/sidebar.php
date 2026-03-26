@@ -39,6 +39,12 @@ $currentPage = basename($_SERVER['SCRIPT_NAME'], '.php');
             </a>
         </li>
         <li>
+            <a href="<?= e(admin_url('emails')) ?>" class="<?= $currentPage === 'emails' ? 'active' : '' ?>">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                E-Mails
+            </a>
+        </li>
+        <li>
             <a href="<?= e(admin_url('discount-codes')) ?>" class="<?= $currentPage === 'discount-codes' ? 'active' : '' ?>">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41 11 3.83a2 2 0 0 0-1.41-.59H4a2 2 0 0 0-2 2v5.59c0 .53.21 1.04.59 1.41l9.58 9.59a2 2 0 0 0 2.83 0l5.59-5.59a2 2 0 0 0 0-2.83Z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                 Rabattcodes
