@@ -3,27 +3,76 @@ require __DIR__ . '/../includes/config.php';
 require __DIR__ . '/../includes/email.php';
 require_admin();
 
-$workshopFilterRaw = isset($_GET['workshop_id']) ? trim((string) $_GET['workshop_id']) : '0';
-$isArchiveView = strcasecmp($workshopFilterRaw, 'archive') === 0;
-$workshopId = 0;
-if (!$isArchiveView && ctype_digit($workshopFilterRaw)) {
-    $workshopId = (int) $workshopFilterRaw;
+function parse_booking_workshop_filter(string $raw): array {
+    $raw = trim($raw);
+    $isArchive = strcasecmp($raw, 'archive') === 0;
+    $workshopId = 0;
+    $occurrenceId = 0;
+
+    if (!$isArchive) {
+        if (preg_match('/^(\d+):(\d+)$/', $raw, $match) === 1) {
+            $workshopId = (int) $match[1];
+            $occurrenceId = (int) $match[2];
+        } elseif (ctype_digit($raw)) {
+            $workshopId = (int) $raw;
+        }
+    }
+
+    $value = '0';
+    if ($isArchive) {
+        $value = 'archive';
+    } elseif ($workshopId > 0) {
+        $value = $occurrenceId > 0 ? ($workshopId . ':' . $occurrenceId) : (string) $workshopId;
+    }
+
+    return [
+        'is_archive' => $isArchive,
+        'workshop_id' => $workshopId,
+        'occurrence_id' => $occurrenceId,
+        'value' => $value,
+    ];
 }
 
+$workshopFilter = parse_booking_workshop_filter((string) ($_GET['workshop_id'] ?? '0'));
+$isArchiveView = (bool) $workshopFilter['is_archive'];
+$workshopId = (int) $workshopFilter['workshop_id'];
+$occurrenceId = (int) $workshopFilter['occurrence_id'];
+$selectedFilterValue = (string) $workshopFilter['value'];
+
 $workshop = null;
+$selectedOccurrence = null;
+$selectedOccurrenceLabel = '';
 if ($workshopId > 0) {
     $workshop = get_workshop_by_id($db, $workshopId);
+    if (!$workshop) {
+        $workshopId = 0;
+        $occurrenceId = 0;
+        $selectedFilterValue = '0';
+    }
+}
+
+if (!$isArchiveView && $workshop && $occurrenceId > 0) {
+    $selectedOccurrence = get_workshop_occurrence_by_id($db, $workshopId, $occurrenceId, false);
+    if (!$selectedOccurrence) {
+        $occurrenceId = 0;
+        $selectedFilterValue = (string) $workshopId;
+    } else {
+        $selectedOccurrenceLabel = format_event_date(
+            (string) ($selectedOccurrence['start_at'] ?? ''),
+            (string) ($selectedOccurrence['end_at'] ?? '')
+        );
+    }
 }
 
 $returnParams = [];
 if ($isArchiveView) {
     $returnParams['workshop_id'] = 'archive';
-} elseif ($workshopId > 0) {
-    $returnParams['workshop_id'] = $workshopId;
+} elseif ($selectedFilterValue !== '0') {
+    $returnParams['workshop_id'] = $selectedFilterValue;
 }
 $returnUrl = admin_url('bookings', $returnParams);
 
-if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? '') === '1') {
+if (!$isArchiveView && $workshopId > 0 && (string) ($_GET['export_participants'] ?? '') === '1') {
     if (!$workshop) {
         flash('error', 'Workshop nicht gefunden.');
         redirect(admin_url('bookings'));
@@ -33,20 +82,32 @@ if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? 
     $rowKeys = [];
 
     $participantStmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid ORDER BY id ASC');
-    $bookingStmt = $db->prepare('
+    $bookingSql = '
         SELECT
-            id,
-            name,
-            email,
-            participants,
-            booking_mode,
-            confirmed_at,
-            created_at
-        FROM bookings
-        WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0
-        ORDER BY confirmed_at ASC, created_at ASC
-    ');
+            b.id,
+            b.name,
+            b.email,
+            b.participants,
+            b.booking_mode,
+            b.confirmed_at,
+            b.created_at,
+            b.occurrence_id,
+            o.start_at AS occurrence_start_at,
+            o.end_at AS occurrence_end_at
+        FROM bookings b
+        LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = b.workshop_id
+        WHERE b.workshop_id = :wid AND b.confirmed = 1 AND COALESCE(b.archived, 0) = 0
+    ';
+    if ($occurrenceId > 0) {
+        $bookingSql .= ' AND b.occurrence_id = :oid';
+    }
+    $bookingSql .= ' ORDER BY b.confirmed_at ASC, b.created_at ASC';
+
+    $bookingStmt = $db->prepare($bookingSql);
     $bookingStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    if ($occurrenceId > 0) {
+        $bookingStmt->bindValue(':oid', $occurrenceId, SQLITE3_INTEGER);
+    }
     $bookingRes = $bookingStmt->execute();
 
     $appendRow = static function (
@@ -81,6 +142,7 @@ if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? 
             'booking_type' => $participants <= 1 ? 'Einzelbuchung' : 'Gruppenbuchung',
             'booking_mode' => $bookingMode,
             'confirmed_at' => $confirmedAt,
+            'occurrence_date' => '',
         ];
     };
 
@@ -89,6 +151,15 @@ if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? 
         $participants = max(1, (int) ($booking['participants'] ?? 1));
         $bookingMode = (string) ($booking['booking_mode'] ?? 'group');
         $confirmedAt = trim((string) ($booking['confirmed_at'] ?? $booking['created_at'] ?? ''));
+        $occurrenceDateLabel = '';
+        if (!empty($booking['occurrence_start_at'])) {
+            $occurrenceDateLabel = format_event_date(
+                (string) ($booking['occurrence_start_at'] ?? ''),
+                (string) ($booking['occurrence_end_at'] ?? '')
+            );
+        } elseif ($selectedOccurrenceLabel !== '') {
+            $occurrenceDateLabel = $selectedOccurrenceLabel;
+        }
 
         $appendRow(
             $rows,
@@ -101,6 +172,9 @@ if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? 
             $bookingMode,
             $confirmedAt
         );
+        if (!empty($rows)) {
+            $rows[array_key_last($rows)]['occurrence_date'] = $occurrenceDateLabel;
+        }
 
         $participantStmt->bindValue(':bid', $bookingId, SQLITE3_INTEGER);
         $pRes = $participantStmt->execute();
@@ -116,6 +190,9 @@ if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? 
                 $bookingMode,
                 $confirmedAt
             );
+            if (!empty($rows)) {
+                $rows[array_key_last($rows)]['occurrence_date'] = $occurrenceDateLabel;
+            }
         }
     }
 
@@ -128,7 +205,13 @@ if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? 
         $slugPart = 'workshop';
     }
 
-    $filename = 'teilnehmerliste-' . $slugPart . '-' . date('Ymd-His') . '.xls';
+    $filenameSuffix = '';
+    if ($selectedOccurrenceLabel !== '') {
+        $filenameSuffix = '-' . preg_replace('/[^a-z0-9]+/i', '-', strtolower($selectedOccurrenceLabel));
+        $filenameSuffix = trim((string) $filenameSuffix, '-');
+        $filenameSuffix = $filenameSuffix !== '' ? '-' . $filenameSuffix : '';
+    }
+    $filename = 'teilnehmerliste-' . $slugPart . $filenameSuffix . '-' . date('Ymd-His') . '.xls';
     $tableCell = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 
     header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
@@ -141,6 +224,7 @@ if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? 
     echo '<table border="1" cellspacing="0" cellpadding="6">';
     echo '<tr>';
     echo '<th>Workshop</th>';
+    echo '<th>Termin</th>';
     echo '<th>Buchungs-ID</th>';
     echo '<th>Rolle</th>';
     echo '<th>Name</th>';
@@ -153,6 +237,7 @@ if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? 
     if (empty($rows)) {
         echo '<tr>';
         echo '<td>' . $tableCell((string) ($workshop['title'] ?? '')) . '</td>';
+        echo '<td>' . $tableCell($selectedOccurrenceLabel) . '</td>';
         echo '<td></td><td></td><td></td><td></td><td></td><td></td>';
         echo '<td>Keine bestaetigten Buchungen vorhanden.</td>';
         echo '</tr>';
@@ -160,6 +245,7 @@ if (!$isArchiveView && $workshopId && (string) ($_GET['export_participants'] ?? 
         foreach ($rows as $row) {
             echo '<tr>';
             echo '<td>' . $tableCell((string) ($workshop['title'] ?? '')) . '</td>';
+            echo '<td>' . $tableCell((string) ($row['occurrence_date'] ?? '')) . '</td>';
             echo '<td>' . $tableCell((string) $row['booking_id']) . '</td>';
             echo '<td>' . $tableCell((string) $row['role']) . '</td>';
             echo '<td>' . $tableCell((string) $row['name']) . '</td>';
@@ -256,9 +342,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     w.event_date_end,
                     w.location,
                     w.price_netto,
-                    w.price_currency
+                    w.price_currency,
+                    o.start_at AS occurrence_start_at,
+                    o.end_at AS occurrence_end_at
                 FROM bookings b
                 JOIN workshops w ON b.workshop_id = w.id
+                LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = w.id
                 WHERE b.id = :id AND COALESCE(b.archived, 0) = 0
             ');
             $bstmt->bindValue(':id', $bid, SQLITE3_INTEGER);
@@ -270,7 +359,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('success', 'Buchung ist bereits bestätigt.');
             } else {
                 $capacity = (int) $brow['workshop_capacity'];
-                $booked = count_confirmed_bookings($db, (int) $brow['workshop_id']);
+                $booked = count_confirmed_bookings($db, (int) $brow['workshop_id'], ((int) ($brow['occurrence_id'] ?? 0)) > 0 ? (int) $brow['occurrence_id'] : null);
 
                 if ($capacity > 0 && ($booked + (int) $brow['participants']) > $capacity) {
                     flash('error', 'Buchung kann nicht bestätigt werden: Kapazität erreicht.');
@@ -306,12 +395,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $emailParticipants[] = $p;
             }
 
+            $workshopForEmail = $sendConfirmationEmail;
+            if (!empty($sendConfirmationEmail['occurrence_start_at'])) {
+                $workshopForEmail['event_date'] = (string) $sendConfirmationEmail['occurrence_start_at'];
+                $workshopForEmail['event_date_end'] = (string) ($sendConfirmationEmail['occurrence_end_at'] ?? '');
+            }
+
             if (!send_booking_confirmed_email(
                 $sendConfirmationEmail['email'],
                 $sendConfirmationEmail['name'],
                 $sendConfirmationEmail['workshop_title'],
                 $sendConfirmationEmail,
-                $sendConfirmationEmail,
+                $workshopForEmail,
                 $emailParticipants
             )) {
                 flash('error', 'Bestätigungs-E-Mail konnte nicht gesendet werden.');
@@ -347,6 +442,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Send per-booking Rechnungen for a workshop
     if (isset($_POST['rechnung_submit'])) {
         $rwid = (int) ($_POST['rechnung_workshop_id'] ?? 0);
+        $roccurrenceId = max(0, (int) ($_POST['rechnung_occurrence_id'] ?? 0));
         if (!$rwid) {
             flash('error', 'Kein Workshop ausgewählt.');
         } else {
@@ -393,9 +489,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $discountCode = '';
                 $discountAmount = 0.0;
                 if ($bookingId > 0) {
-                    $rbStmt = $db->prepare('SELECT discount_code, discount_amount FROM bookings WHERE id = :id AND workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 LIMIT 1');
+                    $rbSql = 'SELECT discount_code, discount_amount FROM bookings WHERE id = :id AND workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0';
+                    if ($roccurrenceId > 0) {
+                        $rbSql .= ' AND occurrence_id = :oid';
+                    }
+                    $rbSql .= ' LIMIT 1';
+                    $rbStmt = $db->prepare($rbSql);
                     $rbStmt->bindValue(':id', $bookingId, SQLITE3_INTEGER);
                     $rbStmt->bindValue(':wid', $rwid, SQLITE3_INTEGER);
+                    if ($roccurrenceId > 0) {
+                        $rbStmt->bindValue(':oid', $roccurrenceId, SQLITE3_INTEGER);
+                    }
                     $rbRow = $rbStmt->execute()->fetchArray(SQLITE3_ASSOC);
                     if ($rbRow) {
                         $discountCode = trim((string) ($rbRow['discount_code'] ?? ''));
@@ -443,6 +547,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Bulk email to ALL participants of a workshop
     if (isset($_POST['email_all_submit'])) {
         $bulkWid     = (int) ($_POST['bulk_workshop_id'] ?? 0);
+        $bulkOccurrenceId = max(0, (int) ($_POST['bulk_occurrence_id'] ?? 0));
         $bulkSubject = trim($_POST['bulk_subject'] ?? '');
         $bulkMessage = trim($_POST['bulk_message'] ?? '');
 
@@ -455,20 +560,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $emails = [];
 
             // Booker emails (confirmed bookings)
-            $bstmt = $db->prepare('SELECT DISTINCT email FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0');
+            $bookerSql = 'SELECT DISTINCT email FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0';
+            if ($bulkOccurrenceId > 0) {
+                $bookerSql .= ' AND occurrence_id = :oid';
+            }
+            $bstmt = $db->prepare($bookerSql);
             $bstmt->bindValue(':wid', $bulkWid, SQLITE3_INTEGER);
+            if ($bulkOccurrenceId > 0) {
+                $bstmt->bindValue(':oid', $bulkOccurrenceId, SQLITE3_INTEGER);
+            }
             $bres = $bstmt->execute();
             while ($br = $bres->fetchArray(SQLITE3_ASSOC)) {
                 $emails[strtolower($br['email'])] = $br['email'];
             }
 
             // Individual participant emails
-            $pstmt = $db->prepare('
+            $participantSql = '
                 SELECT DISTINCT bp.email FROM booking_participants bp
                 JOIN bookings b ON bp.booking_id = b.id
                 WHERE b.workshop_id = :wid AND b.confirmed = 1 AND COALESCE(b.archived, 0) = 0
-            ');
+            ';
+            if ($bulkOccurrenceId > 0) {
+                $participantSql .= ' AND b.occurrence_id = :oid';
+            }
+            $pstmt = $db->prepare($participantSql);
             $pstmt->bindValue(':wid', $bulkWid, SQLITE3_INTEGER);
+            if ($bulkOccurrenceId > 0) {
+                $pstmt->bindValue(':oid', $bulkOccurrenceId, SQLITE3_INTEGER);
+            }
             $pres = $pstmt->execute();
             while ($pr = $pres->fetchArray(SQLITE3_ASSOC)) {
                 $emails[strtolower($pr['email'])] = $pr['email'];
@@ -488,9 +607,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // -- Fetch bookings ----------------------------------------------------------
 $sql = '
-    SELECT b.*, w.title AS workshop_title, w.slug AS workshop_slug, w.price_currency AS workshop_currency
+    SELECT
+        b.*,
+        w.title AS workshop_title,
+        w.slug AS workshop_slug,
+        w.price_currency AS workshop_currency,
+        o.start_at AS occurrence_start_at,
+        o.end_at AS occurrence_end_at
     FROM bookings b
     JOIN workshops w ON b.workshop_id = w.id
+    LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = w.id
 ';
 $params = [];
 $where = [];
@@ -502,6 +628,10 @@ if ($isArchiveView) {
     if ($workshopId > 0) {
         $where[] = 'b.workshop_id = :wid';
         $params[':wid'] = $workshopId;
+        if ($occurrenceId > 0) {
+            $where[] = 'b.occurrence_id = :oid';
+            $params[':oid'] = $occurrenceId;
+        }
     }
 }
 
@@ -534,18 +664,92 @@ if (!empty($bookings)) {
     }
 }
 
-// Workshops list for filter dropdown
-$wsResult = $db->query('SELECT id, title FROM workshops ORDER BY sort_order ASC, title ASC');
-$allWorkshops = [];
+// Workshop filter options (workshop + occurrence entries)
+$wsResult = $db->query('SELECT id, title, workshop_type, event_date, event_date_end FROM workshops ORDER BY sort_order ASC, title ASC');
+$allWorkshopFilters = [];
 while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
-    $allWorkshops[] = $row;
+    $wid = (int) ($row['id'] ?? 0);
+    $title = trim((string) ($row['title'] ?? ''));
+    if ($wid <= 0 || $title === '') {
+        continue;
+    }
+
+    $isOpenWorkshop = ((string) ($row['workshop_type'] ?? '') === 'open');
+    $occurrencesForFilter = [];
+
+    if ($isOpenWorkshop) {
+        $occurrencesForFilter = get_workshop_occurrences($db, $wid, true);
+        if (empty($occurrencesForFilter) && trim((string) ($row['event_date'] ?? '')) !== '') {
+            $occurrencesForFilter[] = [
+                'id' => 0,
+                'start_at' => (string) ($row['event_date'] ?? ''),
+                'end_at' => (string) ($row['event_date_end'] ?? ''),
+            ];
+        }
+    }
+
+    if (!$isOpenWorkshop) {
+        $allWorkshopFilters[] = [
+            'value' => (string) $wid,
+            'label' => $title,
+        ];
+        continue;
+    }
+
+    if (count($occurrencesForFilter) <= 1) {
+        $allWorkshopFilters[] = [
+            'value' => (string) $wid,
+            'label' => $title,
+        ];
+        continue;
+    }
+
+    foreach ($occurrencesForFilter as $occurrenceRow) {
+        $oid = (int) ($occurrenceRow['id'] ?? 0);
+        if ($oid <= 0) {
+            continue;
+        }
+
+        $dateLabel = format_event_date(
+            (string) ($occurrenceRow['start_at'] ?? ''),
+            (string) ($occurrenceRow['end_at'] ?? '')
+        );
+        if ($dateLabel === '') {
+            continue;
+        }
+
+        $allWorkshopFilters[] = [
+            'value' => $wid . ':' . $oid,
+            'label' => $title . ' - ' . $dateLabel,
+        ];
+    }
 }
 
 // Confirmed bookings for Rechnung modal (one card per booking)
 $confirmedBookingsForRechnung = [];
 if ($workshop && !$isArchiveView) {
-    $rcStmt = $db->prepare('SELECT id, name, email, organization FROM bookings WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0 ORDER BY confirmed_at ASC, created_at ASC');
+    $rcSql = '
+        SELECT
+            b.id,
+            b.name,
+            b.email,
+            b.organization,
+            o.start_at AS occurrence_start_at,
+            o.end_at AS occurrence_end_at
+        FROM bookings b
+        LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = b.workshop_id
+        WHERE b.workshop_id = :wid AND b.confirmed = 1 AND COALESCE(b.archived, 0) = 0
+    ';
+    if ($occurrenceId > 0) {
+        $rcSql .= ' AND b.occurrence_id = :oid';
+    }
+    $rcSql .= ' ORDER BY b.confirmed_at ASC, b.created_at ASC';
+
+    $rcStmt = $db->prepare($rcSql);
     $rcStmt->bindValue(':wid', $workshopId, SQLITE3_INTEGER);
+    if ($occurrenceId > 0) {
+        $rcStmt->bindValue(':oid', $occurrenceId, SQLITE3_INTEGER);
+    }
     $rcResult = $rcStmt->execute();
     while ($rcRow = $rcResult->fetchArray(SQLITE3_ASSOC)) {
         $confirmedBookingsForRechnung[] = $rcRow;
@@ -879,7 +1083,7 @@ if ($workshop && !$isArchiveView) {
             <h1>
                 Buchungen
                 <?php if ($workshop && !$isArchiveView): ?>
-                    <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - <?= e($workshop['title']) ?></span>
+                    <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - <?= e($workshop['title']) ?><?php if ($selectedOccurrenceLabel !== ''): ?> - <?= e($selectedOccurrenceLabel) ?><?php endif; ?></span>
                 <?php elseif ($isArchiveView): ?>
                     <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - Archiv</span>
                 <?php endif; ?>
@@ -892,10 +1096,11 @@ if ($workshop && !$isArchiveView) {
         <div class="booking-filter-bar">
             <form method="GET" class="booking-filter-form">
                 <select name="workshop_id" class="booking-filter-select">
-                    <option value="0" <?= !$isArchiveView && $workshopId === 0 ? 'selected' : '' ?>>Alle Workshops</option>
+                    <option value="0" <?= !$isArchiveView && $selectedFilterValue === '0' ? 'selected' : '' ?>>Alle Workshops</option>
                     <option value="archive" <?= $isArchiveView ? 'selected' : '' ?>>Archiv</option>
-                    <?php foreach ($allWorkshops as $ws): ?>
-                        <option value="<?= $ws['id'] ?>" <?= !$isArchiveView && $workshopId === (int) $ws['id'] ? 'selected' : '' ?>><?= e($ws['title']) ?></option>
+                    <?php foreach ($allWorkshopFilters as $wsFilter): ?>
+                        <?php $filterValue = (string) ($wsFilter['value'] ?? '0'); ?>
+                        <option value="<?= e($filterValue) ?>" <?= !$isArchiveView && $selectedFilterValue === $filterValue ? 'selected' : '' ?>><?= e((string) ($wsFilter['label'] ?? '')) ?></option>
                     <?php endforeach; ?>
                 </select>
                 <button type="submit" class="btn-admin">Filtern</button>
@@ -919,7 +1124,7 @@ if ($workshop && !$isArchiveView) {
                         <span class="workshop-action-sub">Eine Sammelnachricht an alle bestaetigten Kontakte senden.</span>
                     </span>
                 </button>
-                <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $workshop['id'], 'export_participants' => 1])) ?>" class="btn-admin workshop-action-btn action-export">
+                <a href="<?= e(admin_url('bookings', ['workshop_id' => $selectedFilterValue, 'export_participants' => 1])) ?>" class="btn-admin workshop-action-btn action-export">
                     <span class="workshop-action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 16 2 2 4-4"/></svg></span>
                     <span class="workshop-action-copy">
                         <span class="workshop-action-label">Teilnehmerliste exportieren</span>
@@ -966,7 +1171,12 @@ if ($workshop && !$isArchiveView) {
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><a href="mailto:<?= e($b['email']) ?>" style="color:var(--muted);"><?= e($b['email']) ?></a></td>
                         <td><?= e($b['organization']) ?></td>
-                        <td><?= e($b['workshop_title']) ?></td>
+                        <td>
+                            <?= e($b['workshop_title']) ?>
+                            <?php if (!empty($b['occurrence_start_at'])): ?>
+                                <div style="font-size:0.72rem;color:var(--dim);"><?= e(format_event_date((string) ($b['occurrence_start_at'] ?? ''), (string) ($b['occurrence_end_at'] ?? ''))) ?></div>
+                            <?php endif; ?>
+                        </td>
                         <td>
     <?= (int) $b['participants'] ?>
     <?php if ($isIndividual && !empty($bParts)): ?>
@@ -1074,9 +1284,9 @@ if ($workshop && !$isArchiveView) {
 </div>
 
 <?php if ($workshop && !$isArchiveView):
-    $evtDateDefault   = !empty($workshop['event_date'])
-        ? format_event_date($workshop['event_date'], $workshop['event_date_end'] ?? '')
-        : '';
+    $evtDateDefault   = $selectedOccurrenceLabel !== ''
+        ? $selectedOccurrenceLabel
+        : (!empty($workshop['event_date']) ? format_event_date($workshop['event_date'], $workshop['event_date_end'] ?? '') : '');
     $pos1LabelDefault  = !empty($workshop['tag_label']) ? $workshop['tag_label'] : $workshop['title'];
     $pos1BetragDefault = !empty($workshop['price_netto'])
         ? number_format((float)$workshop['price_netto'], 2, ',', '.')
@@ -1097,6 +1307,7 @@ if ($workshop && !$isArchiveView) {
             <?= csrf_field() ?>
             <input type="hidden" name="email_all_submit" value="1">
             <input type="hidden" name="bulk_workshop_id" value="<?= $workshop['id'] ?>">
+            <input type="hidden" name="bulk_occurrence_id" value="<?= (int) $occurrenceId ?>">
             <div class="form-group">
                 <label for="bulk_subject">Betreff</label>
                 <input type="text" id="bulk_subject" name="bulk_subject" required placeholder="Betreff der E-Mail">
@@ -1132,6 +1343,7 @@ if ($workshop && !$isArchiveView) {
         <?= csrf_field() ?>
         <input type="hidden" name="rechnung_submit" value="1">
         <input type="hidden" name="rechnung_workshop_id" value="<?= $workshop['id'] ?>">
+        <input type="hidden" name="rechnung_occurrence_id" value="<?= (int) $occurrenceId ?>">
 
         <!-- -- Gemeinsame Felder ----------------------------------------- -->
         <div class="rechnung-section-label" style="margin-top:0;">Gemeinsame Rechnungsdaten</div>

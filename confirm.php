@@ -27,9 +27,12 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                 w.event_date_end,
                 w.location,
                 w.price_netto,
-                w.price_currency
+                w.price_currency,
+                o.start_at AS occurrence_start_at,
+                o.end_at AS occurrence_end_at
             FROM bookings b
             JOIN workshops w ON b.workshop_id = w.id
+            LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = w.id
             WHERE b.token = :token AND COALESCE(b.archived, 0) = 0
         ');
         $stmt->bindValue(':token', $token, SQLITE3_TEXT);
@@ -47,7 +50,7 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                 if ($created === false || time() - $created > 48 * 3600) {
                     $status = 'expired';
                 } else {
-                    $booked = count_confirmed_bookings($db, (int) $booking['workshop_id']);
+                    $booked = count_confirmed_bookings($db, (int) $booking['workshop_id'], ((int) ($booking['occurrence_id'] ?? 0)) > 0 ? (int) $booking['occurrence_id'] : null);
                     $capacity = (int) $booking['workshop_capacity'];
 
                     if ($capacity > 0 && ($booked + (int) $booking['participants']) > $capacity) {
@@ -80,6 +83,12 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
     if ($status === 'confirmed' && is_array($confirmedBooking)) {
         $participants = [];
 
+        $workshopForEmail = $confirmedBooking;
+        if (!empty($confirmedBooking['occurrence_start_at'])) {
+            $workshopForEmail['event_date'] = (string) $confirmedBooking['occurrence_start_at'];
+            $workshopForEmail['event_date_end'] = (string) ($confirmedBooking['occurrence_end_at'] ?? '');
+        }
+
         $pstmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid');
         $pstmt->bindValue(':bid', (int) $confirmedBooking['id'], SQLITE3_INTEGER);
         $pres = $pstmt->execute();
@@ -96,7 +105,7 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                     $workshopTitle,
                     $confirmedBooking['name'],
                     $participantBookingView,
-                    $confirmedBooking
+                    $workshopForEmail
                 );
             }
         }
@@ -106,11 +115,11 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
             $confirmedBooking['name'],
             $workshopTitle,
             $confirmedBooking,
-            $confirmedBooking,
+            $workshopForEmail,
             $participants
         );
 
-        send_admin_notification($workshopTitle, $confirmedBooking, $confirmedBooking, $participants);
+        send_admin_notification($workshopTitle, $confirmedBooking, $workshopForEmail, $participants);
     }
 }
 
@@ -179,3 +188,4 @@ $msg = $messages[$status];
 
 </body>
 </html>
+

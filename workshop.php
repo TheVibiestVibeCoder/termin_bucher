@@ -11,24 +11,189 @@ if (!$workshop) {
     redirect(app_url());
 }
 
-$booked       = count_confirmed_bookings($db, $workshop['id']);
 $capacity     = (int) $workshop['capacity'];
-$spotsLeft    = $capacity > 0 ? max(0, $capacity - $booked) : null;
-$fillPct      = ($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0;
-$fillClass    = ($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : '');
-$isFull       = $capacity > 0 && $spotsLeft <= 0;
 $audLabels    = array_filter(array_map('trim', explode(',', $workshop['audience_labels'])));
 $isOpen       = ($workshop['workshop_type'] ?? 'auf_anfrage') === 'open';
 $price        = (float) ($workshop['price_netto'] ?? 0);
 $currency     = $workshop['price_currency'] ?? 'EUR';
 $minP         = (int) ($workshop['min_participants'] ?? 0);
-$minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
-$belowMin     = ($minP > 0 && $capacity > 0 && $booked < $minP);
-$aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
-$isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
-$eventDate    = $workshop['event_date']     ?? '';
-$eventDateEnd = $workshop['event_date_end'] ?? '';
 $location     = $workshop['location']       ?? '';
+
+$occurrences = [];
+$selectedOccurrence = null;
+$selectedOccurrenceId = (int) ($_POST['occurrence_id'] ?? $_GET['occurrence'] ?? 0);
+$legacyOccurrenceBooked = 0;
+
+if ($isOpen) {
+    $occurrences = get_workshop_occurrences($db, (int) $workshop['id'], true);
+    if (empty($occurrences) && trim((string) ($workshop['event_date'] ?? '')) !== '') {
+        $occurrences[] = [
+            'id' => 0,
+            'start_at' => (string) ($workshop['event_date'] ?? ''),
+            'end_at' => (string) ($workshop['event_date_end'] ?? ''),
+            'sort_order' => 0,
+            'active' => 1,
+        ];
+    }
+
+    if (!empty($occurrences)) {
+        $bookedByOccurrenceId = [];
+        $occBookedStmt = $db->prepare('
+            SELECT occurrence_id, COALESCE(SUM(participants), 0) AS booked
+            FROM bookings
+            WHERE workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0
+            GROUP BY occurrence_id
+        ');
+        $occBookedStmt->bindValue(':wid', (int) $workshop['id'], SQLITE3_INTEGER);
+        $occBookedRes = $occBookedStmt->execute();
+        while ($occBookedRow = $occBookedRes->fetchArray(SQLITE3_ASSOC)) {
+            $bookedCount = (int) ($occBookedRow['booked'] ?? 0);
+            $occurrenceKeyRaw = $occBookedRow['occurrence_id'] ?? null;
+
+            if ($occurrenceKeyRaw === null || (int) $occurrenceKeyRaw === 0) {
+                $legacyOccurrenceBooked += $bookedCount;
+            } else {
+                $bookedByOccurrenceId[(int) $occurrenceKeyRaw] = $bookedCount;
+            }
+        }
+
+        if ($legacyOccurrenceBooked > 0 && !empty($occurrences)) {
+            $firstOccurrenceId = (int) ($occurrences[0]['id'] ?? 0);
+            if ($firstOccurrenceId > 0) {
+                $bookedByOccurrenceId[$firstOccurrenceId] = ($bookedByOccurrenceId[$firstOccurrenceId] ?? 0) + $legacyOccurrenceBooked;
+            }
+        }
+
+        foreach ($occurrences as $index => $occurrenceRow) {
+            $occurrenceId = (int) ($occurrenceRow['id'] ?? 0);
+            $occurrenceBooked = $occurrenceId > 0
+                ? (int) ($bookedByOccurrenceId[$occurrenceId] ?? 0)
+                : $legacyOccurrenceBooked;
+
+            $occurrenceSpotsLeft = $capacity > 0 ? max(0, $capacity - $occurrenceBooked) : null;
+            $occurrenceFillPct = ($capacity > 0) ? min(100, round(($occurrenceBooked / $capacity) * 100)) : 0;
+            $occurrenceFillClass = ($occurrenceFillPct >= 85) ? 'high' : (($occurrenceFillPct >= 50) ? 'medium' : '');
+
+            $occurrenceRow['booked'] = $occurrenceBooked;
+            $occurrenceRow['spots_left'] = $occurrenceSpotsLeft;
+            $occurrenceRow['fill_pct'] = $occurrenceFillPct;
+            $occurrenceRow['fill_class'] = $occurrenceFillClass;
+            $occurrenceRow['is_full'] = ($capacity > 0 && $occurrenceSpotsLeft <= 0);
+            $occurrenceRow['formatted_date'] = format_event_date(
+                (string) ($occurrenceRow['start_at'] ?? ''),
+                (string) ($occurrenceRow['end_at'] ?? '')
+            );
+            $occurrenceRow['is_guaranteed'] = ($minP > 0 && $occurrenceBooked >= $minP);
+            $occurrenceRow['below_min'] = ($minP > 0 && $capacity > 0 && $occurrenceBooked < $minP);
+            $occurrenceRow['above_min'] = ($minP > 0 && $capacity > 0 && $occurrenceBooked >= $minP);
+
+            $occurrences[$index] = $occurrenceRow;
+        }
+
+        $selectedOccurrence = $occurrences[0];
+        if ($selectedOccurrenceId > 0) {
+            foreach ($occurrences as $occurrenceRow) {
+                if ((int) ($occurrenceRow['id'] ?? 0) === $selectedOccurrenceId) {
+                    $selectedOccurrence = $occurrenceRow;
+                    break;
+                }
+            }
+        }
+
+        $selectedOccurrenceId = (int) ($selectedOccurrence['id'] ?? 0);
+    }
+}
+
+if ($selectedOccurrence !== null) {
+    $booked = (int) ($selectedOccurrence['booked'] ?? 0);
+    $spotsLeft = $selectedOccurrence['spots_left'] ?? null;
+    $fillPct = (int) ($selectedOccurrence['fill_pct'] ?? 0);
+    $fillClass = (string) ($selectedOccurrence['fill_class'] ?? '');
+    $isFull = (bool) ($selectedOccurrence['is_full'] ?? false);
+    $eventDate = (string) ($selectedOccurrence['start_at'] ?? '');
+    $eventDateEnd = (string) ($selectedOccurrence['end_at'] ?? '');
+    $belowMin = (bool) ($selectedOccurrence['below_min'] ?? false);
+    $aboveMin = (bool) ($selectedOccurrence['above_min'] ?? false);
+} else {
+    $booked = count_confirmed_bookings($db, (int) $workshop['id']);
+    $spotsLeft = $capacity > 0 ? max(0, $capacity - $booked) : null;
+    $fillPct = ($capacity > 0) ? min(100, round(($booked / $capacity) * 100)) : 0;
+    $fillClass = ($fillPct >= 85) ? 'high' : (($fillPct >= 50) ? 'medium' : '');
+    $isFull = $capacity > 0 && $spotsLeft <= 0;
+    $eventDate = $workshop['event_date'] ?? '';
+    $eventDateEnd = $workshop['event_date_end'] ?? '';
+    $belowMin = ($minP > 0 && $capacity > 0 && $booked < $minP);
+    $aboveMin = ($minP > 0 && $capacity > 0 && $booked >= $minP);
+}
+
+$minPct = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
+$isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
+$participantsMax = $capacity > 0 ? max(1, min(20, (int) $spotsLeft)) : 20;
+
+$workshopPageParams = ['slug' => (string) $slug];
+if ($selectedOccurrenceId > 0) {
+    $workshopPageParams['occurrence'] = $selectedOccurrenceId;
+}
+$workshopPageUrl = app_url('workshop', $workshopPageParams);
+
+$detailOccurrencePayload = [];
+if (!empty($occurrences)) {
+    foreach ($occurrences as $occurrenceRow) {
+        $occurrenceId = (int) ($occurrenceRow['id'] ?? 0);
+        $payloadQuery = ['slug' => (string) $slug];
+        if ($occurrenceId > 0) {
+            $payloadQuery['occurrence'] = $occurrenceId;
+        }
+
+        $detailOccurrencePayload[] = [
+            'id' => $occurrenceId,
+            'date' => (string) ($occurrenceRow['formatted_date'] ?? ''),
+            'start' => (string) ($occurrenceRow['start_at'] ?? ''),
+            'end' => (string) ($occurrenceRow['end_at'] ?? ''),
+            'booked' => (int) ($occurrenceRow['booked'] ?? 0),
+            'spotsLeft' => $occurrenceRow['spots_left'],
+            'fillPct' => (int) ($occurrenceRow['fill_pct'] ?? 0),
+            'fillClass' => (string) ($occurrenceRow['fill_class'] ?? ''),
+            'isFull' => (bool) ($occurrenceRow['is_full'] ?? false),
+            'isGuaranteed' => (bool) ($occurrenceRow['is_guaranteed'] ?? false),
+            'belowMin' => (bool) ($occurrenceRow['below_min'] ?? false),
+            'aboveMin' => (bool) ($occurrenceRow['above_min'] ?? false),
+            'url' => app_url('workshop', $payloadQuery),
+        ];
+    }
+}
+$selectedOccurrenceIndex = 0;
+if (!empty($occurrences)) {
+    foreach ($occurrences as $occurrenceIdx => $occurrenceRow) {
+        if ((int) ($occurrenceRow['id'] ?? 0) === $selectedOccurrenceId) {
+            $selectedOccurrenceIndex = $occurrenceIdx;
+            break;
+        }
+    }
+}
+
+$hasMultipleOccurrences = count($occurrences) > 1;
+$prevOccurrenceUrl = '';
+$nextOccurrenceUrl = '';
+if ($hasMultipleOccurrences) {
+    $prevIndex = ($selectedOccurrenceIndex - 1 + count($occurrences)) % count($occurrences);
+    $nextIndex = ($selectedOccurrenceIndex + 1) % count($occurrences);
+
+    $prevOccurrenceId = (int) ($occurrences[$prevIndex]['id'] ?? 0);
+    $nextOccurrenceId = (int) ($occurrences[$nextIndex]['id'] ?? 0);
+
+    $prevQuery = ['slug' => (string) $slug];
+    $nextQuery = ['slug' => (string) $slug];
+    if ($prevOccurrenceId > 0) {
+        $prevQuery['occurrence'] = $prevOccurrenceId;
+    }
+    if ($nextOccurrenceId > 0) {
+        $nextQuery['occurrence'] = $nextOccurrenceId;
+    }
+
+    $prevOccurrenceUrl = app_url('workshop', $prevQuery);
+    $nextOccurrenceUrl = app_url('workshop', $nextQuery);
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['discount_preview'])) {
     header('Content-Type: application/json; charset=UTF-8');
 
@@ -147,6 +312,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     $formData['booking_mode'] = ($_POST['booking_mode'] ?? 'group') === 'individual' ? 'individual' : 'group';
     $formData['discount_code'] = normalize_discount_code((string) ($_POST['discount_code'] ?? ''));
 
+    $activeOccurrenceId = $selectedOccurrenceId > 0 ? $selectedOccurrenceId : 0;
+    if ($isOpen && !empty($occurrences)) {
+        $hasOccurrenceMatch = false;
+        foreach ($occurrences as $occurrenceRow) {
+            if ((int) ($occurrenceRow['id'] ?? 0) === $activeOccurrenceId) {
+                $hasOccurrenceMatch = true;
+                break;
+            }
+        }
+
+        if (!$hasOccurrenceMatch) {
+            $hasLegacyOccurrence = false;
+            foreach ($occurrences as $occurrenceRow) {
+                if ((int) ($occurrenceRow['id'] ?? 0) === 0) {
+                    $hasLegacyOccurrence = true;
+                    break;
+                }
+            }
+
+            if ($activeOccurrenceId === 0 && $hasLegacyOccurrence) {
+                $hasOccurrenceMatch = true;
+            }
+        }
+
+        if (!$hasOccurrenceMatch) {
+            $errors[] = 'Der ausgewaehlte Termin ist nicht mehr verfuegbar.';
+        }
+    }
+
     if ($formData['booking_mode'] === 'individual') {
         $participantNames  = array_map('trim', (array)($_POST['participant_name']  ?? []));
         $participantEmails = array_map('trim', (array)($_POST['participant_email'] ?? []));
@@ -179,8 +373,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         }
     }
 
-    if ($capacity > 0 && $formData['participants'] > $spotsLeft) {
-        $errors[] = "Leider sind nur noch {$spotsLeft} Plätze verfügbar.";
+    if ($capacity > 0) {
+        $currentBooked = count_confirmed_bookings(
+            $db,
+            (int) $workshop['id'],
+            $activeOccurrenceId > 0 ? $activeOccurrenceId : null
+        );
+        $currentSpotsLeft = max(0, $capacity - $currentBooked);
+
+        if ($formData['participants'] > $currentSpotsLeft) {
+            $errors[] = "Leider sind nur noch {$currentSpotsLeft} Pl�tze verf�gbar.";
+        }
     }
 
     $pricingSummary = calculate_booking_totals($price, (int) $formData['participants']);
@@ -224,6 +427,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         $stmt = $db->prepare('
             INSERT INTO bookings (
                 workshop_id,
+                occurrence_id,
                 name,
                 email,
                 organization,
@@ -244,6 +448,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             )
             VALUES (
                 :wid,
+                :oid,
                 :name,
                 :email,
                 :org,
@@ -264,6 +469,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             )
         ');
         $stmt->bindValue(':wid',          $workshop['id'],           SQLITE3_INTEGER);
+        if ($activeOccurrenceId > 0) {
+            $stmt->bindValue(':oid', $activeOccurrenceId, SQLITE3_INTEGER);
+        } else {
+            $stmt->bindValue(':oid', null, SQLITE3_NULL);
+        }
         $stmt->bindValue(':name',         $formData['name'],         SQLITE3_TEXT);
         $stmt->bindValue(':email',        $formData['email'],        SQLITE3_TEXT);
         $stmt->bindValue(':org',          $formData['organization'], SQLITE3_TEXT);
@@ -311,6 +521,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             }
 
             $bookingForEmail = $formData;
+            if ($activeOccurrenceId > 0) {
+                $bookingForEmail['occurrence_id'] = $activeOccurrenceId;
+            }
             $bookingForEmail['price_per_person_netto'] = (float) $price;
             $bookingForEmail['booking_currency'] = $currency;
             $bookingForEmail['discount_code'] = $discountCodeText;
@@ -320,13 +533,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             $bookingForEmail['subtotal_netto'] = (float) $pricingSummary['subtotal'];
             $bookingForEmail['total_netto'] = (float) $pricingSummary['total'];
 
+            $workshopForEmail = $workshop;
+            if ($isOpen) {
+                $occurrenceForEmail = null;
+                foreach ($occurrences as $occurrenceRow) {
+                    $rowOccurrenceId = (int) ($occurrenceRow['id'] ?? 0);
+                    if ($rowOccurrenceId === $activeOccurrenceId) {
+                        $occurrenceForEmail = $occurrenceRow;
+                        break;
+                    }
+                    if ($activeOccurrenceId === 0 && $rowOccurrenceId === 0) {
+                        $occurrenceForEmail = $occurrenceRow;
+                    }
+                }
+
+                if ($occurrenceForEmail === null && $selectedOccurrence !== null) {
+                    $occurrenceForEmail = $selectedOccurrence;
+                }
+
+                if (is_array($occurrenceForEmail)) {
+                    $workshopForEmail['event_date'] = (string) ($occurrenceForEmail['start_at'] ?? '');
+                    $workshopForEmail['event_date_end'] = (string) ($occurrenceForEmail['end_at'] ?? '');
+                }
+            }
+
             if (!send_confirmation_email(
                 $formData['email'],
                 $formData['name'],
                 $workshop['title'],
                 $token,
                 $bookingForEmail,
-                $workshop,
+                $workshopForEmail,
                 $bookingParticipantsForEmail
             )) {
                 $rollbackStmt = $db->prepare('DELETE FROM bookings WHERE id = :id');
@@ -335,7 +572,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 $errors[] = 'Die Bestätigungs-E-Mail konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
             } else {
                 flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschließen.');
-                redirect(app_url('workshop', ['slug' => $slug]));
+                redirect($workshopPageUrl);
             }
         }
     }
@@ -370,6 +607,7 @@ if ($isOpen && $eventDate) {
     $detailMetaItems[] = [
         'label' => 'Datum & Uhrzeit',
         'value' => format_event_date($eventDate, $eventDateEnd),
+        'field' => 'date',
     ];
 }
 if ($isOpen && $location) {
@@ -387,6 +625,7 @@ if ($isOpen && $minP > 0) {
     $detailMetaItems[] = [
         'label' => 'Status',
         'value' => $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen',
+        'field' => 'status',
     ];
 }
 $detailMetaItems[] = [
@@ -405,6 +644,7 @@ if ($capacity > 0) {
     $detailMetaItems[] = [
         'label' => 'Verfügbar',
         'value' => $isFull ? 'Ausgebucht' : ($spotsLeft . ' frei'),
+        'field' => 'availability',
     ];
 }
 if ($minP > 0) {
@@ -493,6 +733,40 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                 </div>
 
                 <h1><?= e($workshop['title']) ?></h1>
+
+                <?php if ($isOpen && $hasMultipleOccurrences): ?>
+                <div class="detail-occurrence-slider"
+                     data-detail-occurrence-slider
+                     data-occurrence-payload="<?= e(json_for_html($detailOccurrencePayload)) ?>"
+                     data-occurrence-index="<?= (int) $selectedOccurrenceIndex ?>"
+                     data-min-participants="<?= (int) $minP ?>"
+                     data-capacity="<?= (int) $capacity ?>"
+                     aria-label="Workshop-Termine">
+                    <a href="<?= e($prevOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-prev" data-detail-occurrence-prev aria-label="Vorheriger Termin">
+                        &#10094;
+                    </a>
+                    <div class="detail-occurrence-stack">
+                        <?php foreach ($occurrences as $occurrenceIdx => $occurrenceRow):
+                            $cardClass = ($occurrenceIdx === $selectedOccurrenceIndex) ? 'is-active' : 'is-hidden';
+                        ?>
+                        <article class="detail-occurrence-card <?= e($cardClass) ?>" data-detail-occurrence-card data-occurrence-id="<?= (int) ($occurrenceRow['id'] ?? 0) ?>">
+                            <div class="detail-occurrence-kicker">Termin <?= ($occurrenceIdx + 1) ?> von <?= count($occurrences) ?></div>
+                            <div class="detail-occurrence-date"><?= e((string) ($occurrenceRow['formatted_date'] ?? '')) ?></div>
+                            <div class="detail-occurrence-meta">
+                                <?php if ($capacity > 0): ?>
+                                    <?= (int) ($occurrenceRow['booked'] ?? 0) ?> / <?= $capacity ?> gebucht
+                                <?php else: ?>
+                                    Offen fuer Buchung
+                                <?php endif; ?>
+                            </div>
+                        </article>
+                        <?php endforeach; ?>
+                    </div>
+                    <a href="<?= e($nextOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-next" data-detail-occurrence-next aria-label="Naechster Termin">
+                        &#10095;
+                    </a>
+                </div>
+                <?php endif; ?>
                 <div class="detail-desc-wrap" id="detailDescWrap">
                     <div class="detail-desc-content">
                         <p class="detail-desc"><?= nl2br(e($workshop['description'])) ?></p>
@@ -518,16 +792,19 @@ $hasMoreMetaItems = !empty($extraMetaItems);
 
                 <div class="detail-meta-grid detail-meta-grid-main">
                     <?php foreach ($primaryMetaItems as $metaItem): ?>
-                    <?php $metaHref = trim((string) ($metaItem['href'] ?? '')); ?>
+                    <?php
+                        $metaHref = trim((string) ($metaItem['href'] ?? ''));
+                        $metaField = trim((string) ($metaItem['field'] ?? ''));
+                    ?>
                     <div class="detail-meta-item<?= $metaHref !== '' ? ' detail-meta-item-link' : '' ?>">
                         <?php if ($metaHref !== ''): ?>
                         <a href="<?= e($metaHref) ?>" class="detail-meta-link detail-location-link" aria-label="Route mit Öffis zu dieser Adresse in Google Maps öffnen">
                             <span class="label"><?= e($metaItem['label']) ?></span>
-                            <span class="value"><?= e($metaItem['value']) ?></span>
+                            <span class="value"<?= $metaField !== '' ? ' data-detail-field="' . e($metaField) . '"' : '' ?>><?= e($metaItem['value']) ?></span>
                         </a>
                         <?php else: ?>
                         <div class="label"><?= e($metaItem['label']) ?></div>
-                        <div class="value"><?= e($metaItem['value']) ?></div>
+                        <div class="value"<?= $metaField !== '' ? ' data-detail-field="' . e($metaField) . '"' : '' ?>><?= e($metaItem['value']) ?></div>
                         <?php endif; ?>
                     </div>
                     <?php endforeach; ?>
@@ -568,16 +845,19 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                         <div class="detail-meta-grid detail-meta-grid-overlay">
                             <?php foreach ($extraMetaItems as $metaItem): ?>
-                            <?php $metaHref = trim((string) ($metaItem['href'] ?? '')); ?>
+                            <?php
+                                $metaHref = trim((string) ($metaItem['href'] ?? ''));
+                                $metaField = trim((string) ($metaItem['field'] ?? ''));
+                            ?>
                             <div class="detail-meta-item<?= $metaHref !== '' ? ' detail-meta-item-link' : '' ?>">
                                 <?php if ($metaHref !== ''): ?>
                                 <a href="<?= e($metaHref) ?>" class="detail-meta-link detail-location-link" aria-label="Route mit Öffis zu dieser Adresse in Google Maps öffnen">
                                     <span class="label"><?= e($metaItem['label']) ?></span>
-                                    <span class="value"><?= e($metaItem['value']) ?></span>
+                                    <span class="value"<?= $metaField !== '' ? ' data-detail-field="' . e($metaField) . '"' : '' ?>><?= e($metaItem['value']) ?></span>
                                 </a>
                                 <?php else: ?>
                                 <div class="label"><?= e($metaItem['label']) ?></div>
-                                <div class="value"><?= e($metaItem['value']) ?></div>
+                                <div class="value"<?= $metaField !== '' ? ' data-detail-field="' . e($metaField) . '"' : '' ?>><?= e($metaItem['value']) ?></div>
                                 <?php endif; ?>
                             </div>
                             <?php endforeach; ?>
@@ -587,21 +867,21 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                 <?php endif; ?>
 
                 <?php if ($minP > 0): ?>
-                <div class="min-participants-note" style="margin-bottom:1.5rem;">
+                <div class="min-participants-note js-detail-min-note" style="margin-bottom:1.5rem;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    <?= $isGuaranteed
+                    <span class="js-detail-min-note-text"><?= $isGuaranteed
                         ? 'Mindestanzahl erreicht: Dieser Workshop findet statt.'
-                        : ('Dieser Workshop findet statt, sobald mindestens ' . $minP . ' Teilnehmer:innen gebucht sind.') ?>
+                        : ('Dieser Workshop findet statt, sobald mindestens ' . $minP . ' Teilnehmer:innen gebucht sind.') ?></span>
                 </div>
                 <?php endif; ?>
 
                 <?php if ($capacity > 0): ?>
-                <div class="seats-indicator <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
+                <div class="seats-indicator js-detail-seats <?= $belowMin ? 'below-min' : ($aboveMin ? 'above-min' : '') ?>"
                      style="max-width:400px;margin-bottom:2rem;"
                      <?= ($minP > 0) ? 'title="Mindest-Teilnehmende: ' . $minP . '"' : '' ?>>
                     <div class="seats-bar">
                         <div class="seats-bar-track">
-                            <div class="seats-bar-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
+                            <div class="seats-bar-fill js-detail-seats-fill <?= $fillClass ?>" style="width:<?= $fillPct ?>%"></div>
                         </div>
                         <?php if ($minP > 0 && $capacity > 0): ?>
                         <div class="seats-bar-marker" style="left:<?= $minPct ?>%">
@@ -609,7 +889,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                         <?php endif; ?>
                     </div>
-                    <span class="seats-text"><?= $booked ?> / <?= $capacity ?> gebucht</span>
+                    <span class="seats-text js-detail-seats-text"><?= $booked ?> / <?= $capacity ?> gebucht</span>
                 </div>
                 <?php endif; ?>
 
@@ -649,9 +929,12 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                     <?php endif; ?>
 
-                    <form method="POST" action="<?= e(app_url('workshop', ['slug' => (string) $slug])) ?>">
+                    <form method="POST" action="<?= e($workshopPageUrl) ?>" id="bookingForm">
+                        <input type="hidden" name="occurrence_id" id="occurrence_id" value="<?= (int) $selectedOccurrenceId ?>">
                         <?= csrf_field() ?>
                         <input type="hidden" name="book" value="1">
+
+                        <div class="flash flash-error" id="detailBookingUnavailable" hidden style="margin-bottom:0.9rem;">Dieser Termin ist aktuell ausgebucht. Bitte waehlen Sie einen anderen Termin.</div>
 
                         <div class="form-group">
                             <label for="name">Name *</label>
@@ -676,7 +959,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         <div class="form-group">
                             <label for="participants">Anzahl Teilnehmer:innen</label>
                             <select id="participants" name="participants">
-                                <?php for ($i = 1; $i <= min(20, $spotsLeft ?? 20); $i++): ?>
+                                <?php for ($i = 1; $i <= $participantsMax; $i++): ?>
                                     <option value="<?= $i ?>" <?= $formData['participants'] == $i ? 'selected' : '' ?>><?= $i ?></option>
                                 <?php endfor; ?>
                             </select>
@@ -742,7 +1025,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                         <?php endif; ?>
 
-                        <button type="submit" class="btn-submit">Buchung anfragen &rarr;</button>
+                        <button type="submit" class="btn-submit" id="bookingSubmitBtn">Buchung anfragen &rarr;</button>
 
                         <p class="form-disclaimer">
                             Mit dem Absenden erklären Sie sich mit unserer
@@ -787,7 +1070,7 @@ const discountInput = document.getElementById('discount_code');
 const discountFeedbackEl = document.getElementById('discount-feedback');
 const emailInput = document.getElementById('email');
 const csrfTokenInput = document.querySelector('form input[name="_token"]');
-const discountPreviewUrl = <?= json_for_html(app_url('workshop', ['slug' => (string) $slug])) ?>;
+const discountPreviewUrl = <?= json_for_html($workshopPageUrl) ?>;
 const currency = <?= json_for_html($currency) ?>;
 const defaultDiscountHint = 'Code wird beim Absenden final geprüft.';
 const symbols = { EUR: 'EUR', CHF: 'CHF', USD: 'USD' };
@@ -1103,6 +1386,239 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     buildParticipantFields();
 })();
 
+(function () {
+    const slider = document.querySelector('[data-detail-occurrence-slider]');
+    if (!slider) {
+        return;
+    }
+
+    let payload = [];
+    try {
+        payload = JSON.parse(slider.getAttribute('data-occurrence-payload') || '[]');
+    } catch (error) {
+        payload = [];
+    }
+
+    if (!Array.isArray(payload) || payload.length <= 1) {
+        return;
+    }
+
+    const cards = Array.from(slider.querySelectorAll('[data-detail-occurrence-card]'));
+    const prevBtn = slider.querySelector('[data-detail-occurrence-prev]');
+    const nextBtn = slider.querySelector('[data-detail-occurrence-next]');
+    const minParticipants = parseInt(slider.getAttribute('data-min-participants') || '0', 10) || 0;
+    const capacity = parseInt(slider.getAttribute('data-capacity') || '0', 10) || 0;
+
+    const dateFields = document.querySelectorAll('[data-detail-field="date"]');
+    const statusFields = document.querySelectorAll('[data-detail-field="status"]');
+    const availabilityFields = document.querySelectorAll('[data-detail-field="availability"]');
+    const minNoteText = document.querySelector('.js-detail-min-note-text');
+    const seatsWrap = document.querySelector('.js-detail-seats');
+    const seatsFill = document.querySelector('.js-detail-seats-fill');
+    const seatsText = document.querySelector('.js-detail-seats-text');
+    const occurrenceInput = document.getElementById('occurrence_id');
+    const bookingForm = document.getElementById('bookingForm');
+    const bookingSubmitBtn = document.getElementById('bookingSubmitBtn');
+    const bookingUnavailable = document.getElementById('detailBookingUnavailable');
+    const canSwitchClientSide = Boolean(bookingForm);
+
+    let index = parseInt(slider.getAttribute('data-occurrence-index') || '0', 10);
+    if (!Number.isFinite(index) || index < 0 || index >= payload.length) {
+        index = 0;
+    }
+
+    let animating = false;
+    let resetTimer = null;
+
+    const normalizeIndex = (value) => ((value % payload.length) + payload.length) % payload.length;
+
+    const updateNavTargets = () => {
+        const prevIndex = normalizeIndex(index - 1);
+        const nextIndex = normalizeIndex(index + 1);
+        const prevOccurrence = payload[prevIndex] || {};
+        const nextOccurrence = payload[nextIndex] || {};
+
+        if (prevBtn && prevOccurrence.url) {
+            prevBtn.setAttribute('href', String(prevOccurrence.url));
+        }
+        if (nextBtn && nextOccurrence.url) {
+            nextBtn.setAttribute('href', String(nextOccurrence.url));
+        }
+    };
+
+    const updateUi = (occurrence) => {
+        if (!occurrence || typeof occurrence !== 'object') {
+            return;
+        }
+
+        const booked = Number(occurrence.booked || 0);
+        const spotsLeft = (occurrence.spotsLeft === null || typeof occurrence.spotsLeft === 'undefined')
+            ? Math.max(0, capacity - booked)
+            : Number(occurrence.spotsLeft || 0);
+
+        dateFields.forEach((el) => {
+            el.textContent = String(occurrence.date || '');
+        });
+
+        if (statusFields.length > 0 && minParticipants > 0) {
+            const statusText = occurrence.isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen';
+            statusFields.forEach((el) => {
+                el.textContent = statusText;
+            });
+        }
+
+        availabilityFields.forEach((el) => {
+            el.textContent = occurrence.isFull ? 'Ausgebucht' : (String(spotsLeft) + ' frei');
+        });
+
+        if (minNoteText && minParticipants > 0) {
+            minNoteText.textContent = occurrence.isGuaranteed
+                ? 'Mindestanzahl erreicht: Dieser Workshop findet statt.'
+                : ('Dieser Workshop findet statt, sobald mindestens ' + minParticipants + ' Teilnehmer:innen gebucht sind.');
+        }
+
+        if (seatsWrap) {
+            seatsWrap.classList.remove('below-min', 'above-min');
+            if (occurrence.belowMin) {
+                seatsWrap.classList.add('below-min');
+            }
+            if (occurrence.aboveMin) {
+                seatsWrap.classList.add('above-min');
+            }
+        }
+
+        if (seatsFill) {
+            const fillPct = Number(occurrence.fillPct || 0);
+            seatsFill.style.width = String(Math.max(0, Math.min(100, fillPct))) + '%';
+            seatsFill.classList.remove('high', 'medium');
+            if (occurrence.fillClass === 'high' || occurrence.fillClass === 'medium') {
+                seatsFill.classList.add(occurrence.fillClass);
+            }
+        }
+
+        if (seatsText && capacity > 0) {
+            seatsText.textContent = String(booked) + ' / ' + String(capacity) + ' gebucht';
+        }
+
+        if (occurrenceInput) {
+            occurrenceInput.value = String(parseInt(occurrence.id || 0, 10) || 0);
+        }
+
+        if (bookingForm && occurrence.url) {
+            bookingForm.setAttribute('action', String(occurrence.url));
+        }
+
+        if (bookingSubmitBtn) {
+            const occurrenceIsFull = Boolean(occurrence.isFull);
+            bookingSubmitBtn.disabled = occurrenceIsFull;
+            if (bookingUnavailable) {
+                bookingUnavailable.hidden = !occurrenceIsFull;
+            }
+        }
+
+        if (occurrence.url && window.history && typeof window.history.replaceState === 'function') {
+            const targetUrl = String(occurrence.url);
+            if (targetUrl !== window.location.pathname + window.location.search) {
+                window.history.replaceState(null, '', targetUrl);
+            }
+        }
+    };
+
+    const finalizeCards = () => {
+        cards.forEach((card, cardIndex) => {
+            card.classList.remove('is-entering-next', 'is-entering-prev', 'is-leaving-next', 'is-leaving-prev');
+            if (cardIndex === index) {
+                card.classList.add('is-active');
+                card.classList.remove('is-hidden');
+            } else {
+                card.classList.remove('is-active');
+                card.classList.add('is-hidden');
+            }
+        });
+    };
+
+    const switchTo = (nextIndex, direction) => {
+        const targetIndex = normalizeIndex(nextIndex);
+        if (targetIndex === index || animating) {
+            return;
+        }
+
+        const currentCard = cards[index];
+        const nextCard = cards[targetIndex];
+        if (!currentCard || !nextCard) {
+            index = targetIndex;
+            slider.setAttribute('data-occurrence-index', String(index));
+            updateUi(payload[index]);
+            updateNavTargets();
+            finalizeCards();
+            return;
+        }
+
+        animating = true;
+        if (resetTimer) {
+            window.clearTimeout(resetTimer);
+        }
+
+        currentCard.classList.remove('is-active');
+        currentCard.classList.add(direction === 'next' ? 'is-leaving-next' : 'is-leaving-prev');
+
+        nextCard.classList.remove('is-hidden', 'is-leaving-next', 'is-leaving-prev', 'is-entering-next', 'is-entering-prev');
+        nextCard.classList.add(direction === 'next' ? 'is-entering-next' : 'is-entering-prev');
+
+        void nextCard.offsetWidth;
+        nextCard.classList.add('is-active');
+        nextCard.classList.remove('is-entering-next', 'is-entering-prev');
+
+        index = targetIndex;
+        slider.setAttribute('data-occurrence-index', String(index));
+        updateUi(payload[index]);
+        updateNavTargets();
+
+        resetTimer = window.setTimeout(() => {
+            finalizeCards();
+            animating = false;
+        }, 430);
+    };
+
+    if (prevBtn) {
+        prevBtn.addEventListener('click', (event) => {
+            if (!canSwitchClientSide) {
+                return;
+            }
+            event.preventDefault();
+            switchTo(index - 1, 'prev');
+        });
+    }
+
+    if (nextBtn) {
+        nextBtn.addEventListener('click', (event) => {
+            if (!canSwitchClientSide) {
+                return;
+            }
+            event.preventDefault();
+            switchTo(index + 1, 'next');
+        });
+    }
+
+    slider.addEventListener('keydown', (event) => {
+        if (!canSwitchClientSide) {
+            return;
+        }
+
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            switchTo(index - 1, 'prev');
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            switchTo(index + 1, 'next');
+        }
+    });
+
+    finalizeCards();
+    updateUi(payload[index]);
+    updateNavTargets();
+})();
+
 // Detail "more details" interaction (click/tap)
 (function () {
     const moreToggle = document.getElementById('detailMoreToggle');
@@ -1203,3 +1719,4 @@ if (descToggle && descWrap) {
 
 </body>
 </html>
+

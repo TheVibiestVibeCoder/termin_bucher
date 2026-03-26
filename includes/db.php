@@ -4,7 +4,7 @@
  * Uses PRAGMA table_info to detect and apply new columns (migrations).
  */
 
-$db->exec("\nCREATE TABLE IF NOT EXISTS workshops (\n    id            INTEGER PRIMARY KEY AUTOINCREMENT,\n    title         TEXT    NOT NULL,\n    slug          TEXT    NOT NULL UNIQUE,\n    description   TEXT    NOT NULL DEFAULT '',\n    tag_label     TEXT    NOT NULL DEFAULT '',\n    capacity      INTEGER NOT NULL DEFAULT 0,\n    audiences     TEXT    NOT NULL DEFAULT '',\n    audience_labels TEXT  NOT NULL DEFAULT '',\n    format        TEXT    NOT NULL DEFAULT '',\n    featured      INTEGER NOT NULL DEFAULT 0,\n    sort_order    INTEGER NOT NULL DEFAULT 0,\n    active        INTEGER NOT NULL DEFAULT 1,\n    created_at    DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at    DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
+$db->exec("\nCREATE TABLE IF NOT EXISTS workshops (\n    id            INTEGER PRIMARY KEY AUTOINCREMENT,\n    title         TEXT    NOT NULL,\n    slug          TEXT    NOT NULL UNIQUE,\n    description   TEXT    NOT NULL DEFAULT '',\n    tag_label     TEXT    NOT NULL DEFAULT '',\n    capacity      INTEGER NOT NULL DEFAULT 0,\n    audiences     TEXT    NOT NULL DEFAULT '',\n    audience_labels TEXT  NOT NULL DEFAULT '',\n    format        TEXT    NOT NULL DEFAULT '',\n    featured      INTEGER NOT NULL DEFAULT 0,\n    sort_order    INTEGER NOT NULL DEFAULT 0,\n    active        INTEGER NOT NULL DEFAULT 1,\n    archived      INTEGER NOT NULL DEFAULT 0,\n    archived_at   DATETIME,\n    archived_by   TEXT    NOT NULL DEFAULT '',\n    archive_note  TEXT    NOT NULL DEFAULT '',\n    created_at    DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at    DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
 
 $db->exec("\nCREATE TABLE IF NOT EXISTS workshop_groups (\n    id           INTEGER PRIMARY KEY AUTOINCREMENT,\n    name         TEXT    NOT NULL,\n    slug         TEXT    NOT NULL UNIQUE,\n    description  TEXT    NOT NULL DEFAULT '',\n    sort_order   INTEGER NOT NULL DEFAULT 0,\n    active       INTEGER NOT NULL DEFAULT 1,\n    created_at   DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at   DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
 
@@ -20,6 +20,8 @@ $db->exec("CREATE INDEX IF NOT EXISTS idx_workshop_groups_active_order ON worksh
 $db->exec("CREATE INDEX IF NOT EXISTS idx_wgw_group_order ON workshop_group_workshops(group_id, sort_order);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_wgw_workshop ON workshop_group_workshops(workshop_id);");
 
+$db->exec("\nCREATE TABLE IF NOT EXISTS workshop_occurrences (\n    id          INTEGER PRIMARY KEY AUTOINCREMENT,\n    workshop_id INTEGER NOT NULL,\n    start_at    TEXT    NOT NULL DEFAULT '',\n    end_at      TEXT    NOT NULL DEFAULT '',\n    sort_order  INTEGER NOT NULL DEFAULT 0,\n    active      INTEGER NOT NULL DEFAULT 1,\n    created_at  DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at  DATETIME NOT NULL DEFAULT (datetime('now')),\n    FOREIGN KEY (workshop_id) REFERENCES workshops(id) ON DELETE CASCADE\n);\n");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_workshop_occurrences_workshop ON workshop_occurrences(workshop_id, active, sort_order, id);");
 $db->exec("\nCREATE TABLE IF NOT EXISTS discount_codes (\n    id                   INTEGER PRIMARY KEY AUTOINCREMENT,\n    code                 TEXT    NOT NULL UNIQUE COLLATE NOCASE,\n    label                TEXT    NOT NULL DEFAULT '',\n    discount_type        TEXT    NOT NULL DEFAULT 'percent',\n    discount_value       REAL    NOT NULL DEFAULT 0,\n    active               INTEGER NOT NULL DEFAULT 1,\n    starts_at            TEXT    NOT NULL DEFAULT '',\n    expires_at           TEXT    NOT NULL DEFAULT '',\n    max_total_uses       INTEGER NOT NULL DEFAULT 0,\n    max_uses_per_email   INTEGER NOT NULL DEFAULT 0,\n    min_participants     INTEGER NOT NULL DEFAULT 0,\n    allowed_emails       TEXT    NOT NULL DEFAULT '',\n    allowed_workshop_ids TEXT    NOT NULL DEFAULT '',\n    created_at           DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at           DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_discount_codes_code   ON discount_codes(code);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_discount_codes_active ON discount_codes(active);");
@@ -57,6 +59,7 @@ function _col_exists(SQLite3 $db, string $table, string $col): bool {
 $migrations = [
     // booking mode: 'group' (all together) | 'individual' (separate names/emails per person)
     ['bookings', 'booking_mode',            "TEXT NOT NULL DEFAULT 'group'"],
+    ['bookings', 'occurrence_id',             "INTEGER"],
     // booking price snapshot + optional discount snapshot
     ['bookings', 'price_per_person_netto',  "REAL NOT NULL DEFAULT 0"],
     ['bookings', 'booking_currency',        "TEXT NOT NULL DEFAULT ''"],
@@ -86,6 +89,10 @@ $migrations = [
     // price per person, netto (0 = free / included / on request)
     ['workshops', 'price_netto',      "REAL NOT NULL DEFAULT 0"],
     ['workshops', 'price_currency',   "TEXT NOT NULL DEFAULT 'EUR'"],
+    ['workshops', 'archived',         "INTEGER NOT NULL DEFAULT 0"],
+    ['workshops', 'archived_at',      "DATETIME"],
+    ['workshops', 'archived_by',      "TEXT NOT NULL DEFAULT ''"],
+    ['workshops', 'archive_note',     "TEXT NOT NULL DEFAULT ''"],
 
     // discount code columns for earlier installs
     ['discount_codes', 'label',                "TEXT NOT NULL DEFAULT ''"],
@@ -110,4 +117,63 @@ foreach ($migrations as [$table, $col, $def]) {
 
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_discount_code_id ON bookings(discount_code_id);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_archived_workshop ON bookings(archived, workshop_id, confirmed);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_occurrence ON bookings(occurrence_id, confirmed, archived);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_workshops_archived_active ON workshops(archived, active, sort_order, id);");
+
+
+// Backfill legacy single-date workshops into the new occurrences table.
+// This keeps existing installations compatible without manual data migration.
+$legacyWorkshopsRes = $db->query("
+    SELECT id, event_date, event_date_end
+    FROM workshops
+    WHERE workshop_type = 'open' AND TRIM(COALESCE(event_date, '')) <> ''
+");
+while ($legacyWorkshop = $legacyWorkshopsRes->fetchArray(SQLITE3_ASSOC)) {
+    $legacyWorkshopId = (int) ($legacyWorkshop['id'] ?? 0);
+    if ($legacyWorkshopId <= 0) {
+        continue;
+    }
+
+    $existingOccStmt = $db->prepare('SELECT COUNT(*) AS cnt FROM workshop_occurrences WHERE workshop_id = :wid');
+    $existingOccStmt->bindValue(':wid', $legacyWorkshopId, SQLITE3_INTEGER);
+    $existingOccRow = $existingOccStmt->execute()->fetchArray(SQLITE3_ASSOC);
+    $existingCount = (int) ($existingOccRow['cnt'] ?? 0);
+    if ($existingCount > 0) {
+        continue;
+    }
+
+    $insertLegacyOcc = $db->prepare("
+        INSERT INTO workshop_occurrences (workshop_id, start_at, end_at, sort_order, active)
+        VALUES (:wid, :start_at, :end_at, 0, 1)
+    ");
+    $insertLegacyOcc->bindValue(':wid', $legacyWorkshopId, SQLITE3_INTEGER);
+    $insertLegacyOcc->bindValue(':start_at', (string) ($legacyWorkshop['event_date'] ?? ''), SQLITE3_TEXT);
+    $insertLegacyOcc->bindValue(':end_at', (string) ($legacyWorkshop['event_date_end'] ?? ''), SQLITE3_TEXT);
+    $insertLegacyOcc->execute();
+}
+
+// Map legacy bookings (without occurrence_id) to the only occurrence of a workshop.
+// This is safe if and only if exactly one occurrence exists.
+$singleOccurrenceRes = $db->query("
+    SELECT workshop_id, MIN(id) AS occurrence_id
+    FROM workshop_occurrences
+    GROUP BY workshop_id
+    HAVING COUNT(*) = 1
+");
+while ($singleOccurrence = $singleOccurrenceRes->fetchArray(SQLITE3_ASSOC)) {
+    $legacyWorkshopId = (int) ($singleOccurrence['workshop_id'] ?? 0);
+    $occurrenceId = (int) ($singleOccurrence['occurrence_id'] ?? 0);
+    if ($legacyWorkshopId <= 0 || $occurrenceId <= 0) {
+        continue;
+    }
+
+    $mapStmt = $db->prepare("
+        UPDATE bookings
+        SET occurrence_id = :oid
+        WHERE workshop_id = :wid AND occurrence_id IS NULL
+    ");
+    $mapStmt->bindValue(':oid', $occurrenceId, SQLITE3_INTEGER);
+    $mapStmt->bindValue(':wid', $legacyWorkshopId, SQLITE3_INTEGER);
+    $mapStmt->execute();
+}
 
