@@ -634,14 +634,14 @@ function discount_code_status(array $code, ?int $now = null): string {
 
 function count_discount_code_usages(SQLite3 $db, int $discountCodeId, ?string $email = null): int {
     if ($email !== null && $email !== '') {
-        $stmt = $db->prepare('SELECT COUNT(*) FROM bookings WHERE discount_code_id = :cid AND confirmed = 1 AND COALESCE(archived, 0) = 0 AND lower(email) = :mail');
+        $stmt = $db->prepare('SELECT COUNT(*) FROM bookings WHERE discount_code_id = :cid AND COALESCE(archived, 0) = 0 AND lower(email) = :mail');
         $stmt->bindValue(':cid', $discountCodeId, SQLITE3_INTEGER);
         $stmt->bindValue(':mail', strtolower(trim($email)), SQLITE3_TEXT);
 
         return (int) $stmt->execute()->fetchArray(SQLITE3_NUM)[0];
     }
 
-    $stmt = $db->prepare('SELECT COUNT(*) FROM bookings WHERE discount_code_id = :cid AND confirmed = 1 AND COALESCE(archived, 0) = 0');
+    $stmt = $db->prepare('SELECT COUNT(*) FROM bookings WHERE discount_code_id = :cid AND COALESCE(archived, 0) = 0');
     $stmt->bindValue(':cid', $discountCodeId, SQLITE3_INTEGER);
 
     return (int) $stmt->execute()->fetchArray(SQLITE3_NUM)[0];
