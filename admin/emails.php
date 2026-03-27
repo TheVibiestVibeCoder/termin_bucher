@@ -196,6 +196,54 @@ if ($listStmt instanceof SQLite3Stmt) {
             grid-template-columns: minmax(220px, 1fr) 170px 190px auto auto;
             margin-bottom: 1.15rem;
         }
+        .email-toolbar input[type="text"],
+        .email-toolbar select {
+            width: 100%;
+            min-height: 42px;
+            margin: 0;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: linear-gradient(180deg, var(--surface-soft) 0%, var(--surface) 100%);
+            color: var(--text);
+            font-family: var(--font-b);
+            font-size: 0.86rem;
+            line-height: 1.2;
+            padding: 0.62rem 0.78rem;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+            transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+        }
+        .email-toolbar input[type="text"]::placeholder {
+            color: var(--dim);
+            opacity: 1;
+        }
+        .email-toolbar input[type="text"]:hover,
+        .email-toolbar select:hover {
+            border-color: var(--border-h);
+        }
+        .email-toolbar input[type="text"]:focus-visible,
+        .email-toolbar select:focus-visible {
+            outline: none;
+            border-color: rgba(46, 204, 113, 0.55);
+            box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.16);
+            background: linear-gradient(180deg, var(--surface) 0%, var(--surface-soft) 100%);
+        }
+        .email-toolbar select {
+            -webkit-appearance: none;
+            appearance: none;
+            padding-right: 2.2rem;
+            background-image:
+                linear-gradient(45deg, transparent 50%, var(--dim) 50%),
+                linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+            background-position:
+                calc(100% - 16px) calc(50% - 2px),
+                calc(100% - 11px) calc(50% - 2px);
+            background-size: 5px 5px, 5px 5px;
+            background-repeat: no-repeat;
+        }
+        .email-toolbar .btn-admin {
+            min-height: 42px;
+            white-space: nowrap;
+        }
         .email-log-list {
             display: grid;
             gap: 0.8rem;
