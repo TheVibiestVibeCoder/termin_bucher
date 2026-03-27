@@ -165,6 +165,52 @@ function email_log_context_label(): string {
     return '';
 }
 
+function email_log_type_from_context(string $contextLabel, string $subject = ''): string {
+    $ctx = strtolower(trim($contextLabel));
+    $subj = strtolower(trim($subject));
+
+    if ($ctx === 'booking_cancellation' || $ctx === 'send_booking_cancelled_email') {
+        return 'storno';
+    }
+    if (
+        $ctx === 'booking_confirmation_request'
+        || $ctx === 'booking_confirmed'
+        || $ctx === 'participant_confirmed'
+        || $ctx === 'send_confirmation_email'
+        || $ctx === 'send_booking_confirmed_email'
+        || $ctx === 'send_participant_confirmed_email'
+    ) {
+        return 'bestaetigung';
+    }
+    if ($ctx === 'contact_admin' || $ctx === 'contact_reply' || $ctx === 'kontakt.php') {
+        return 'kontakt';
+    }
+    if ($ctx === 'admin_custom' || $ctx === 'send_custom_email') {
+        return 'individuell';
+    }
+    if ($ctx === 'invoice' || $ctx === 'send_rechnung_email') {
+        return 'rechnung';
+    }
+    if ($ctx === 'booking_admin_notification' || $ctx === 'send_admin_notification') {
+        return 'admin';
+    }
+
+    if (str_starts_with($subj, 'buchung storniert:')) {
+        return 'storno';
+    }
+    if (str_starts_with($subj, 'kontaktanfrage:') || str_starts_with($subj, 'ihre anfrage:')) {
+        return 'kontakt';
+    }
+    if (str_starts_with($subj, 'rechnung:')) {
+        return 'rechnung';
+    }
+    if (str_starts_with($subj, 'neue buchung:')) {
+        return 'admin';
+    }
+
+    return 'other';
+}
+
 function email_log_write(array $payload): void {
     try {
         $db = $GLOBALS['db'] ?? null;
@@ -185,6 +231,10 @@ function email_log_write(array $payload): void {
         if ($contextLabel === '') {
             $contextLabel = email_log_context_label();
         }
+        $mailType = strtolower(trim((string) ($payload['mail_type'] ?? '')));
+        if (!in_array($mailType, ['storno', 'bestaetigung', 'kontakt', 'individuell', 'rechnung', 'admin', 'other'], true)) {
+            $mailType = email_log_type_from_context($contextLabel, (string) ($payload['subject'] ?? ''));
+        }
 
         $requestUri = trim((string) ($_SERVER['REQUEST_URI'] ?? ''));
         $clientIp = '';
@@ -201,6 +251,7 @@ function email_log_write(array $payload): void {
             INSERT INTO email_logs (
                 transport,
                 send_status,
+                mail_type,
                 recipient_email,
                 sender_email,
                 sender_name,
@@ -219,6 +270,7 @@ function email_log_write(array $payload): void {
             VALUES (
                 :transport,
                 :send_status,
+                :mail_type,
                 :recipient_email,
                 :sender_email,
                 :sender_name,
@@ -242,6 +294,7 @@ function email_log_write(array $payload): void {
 
         $stmt->bindValue(':transport', email_log_truncate((string) ($payload['transport'] ?? 'php_mail'), 40), SQLITE3_TEXT);
         $stmt->bindValue(':send_status', email_log_truncate($status, 20), SQLITE3_TEXT);
+        $stmt->bindValue(':mail_type', email_log_truncate($mailType, 30), SQLITE3_TEXT);
         $stmt->bindValue(':recipient_email', email_log_truncate((string) ($payload['recipient_email'] ?? ''), 254), SQLITE3_TEXT);
         $stmt->bindValue(':sender_email', email_log_truncate((string) ($payload['sender_email'] ?? ''), 254), SQLITE3_TEXT);
         $stmt->bindValue(':sender_name', email_log_truncate((string) ($payload['sender_name'] ?? ''), 160), SQLITE3_TEXT);
@@ -267,7 +320,7 @@ function email_log_write(array $payload): void {
     }
 }
 
-function send_email_with_attachments(string $to, string $subject, string $htmlBody, array $attachments = []): bool {
+function send_email_with_attachments(string $to, string $subject, string $htmlBody, array $attachments = [], string $contextLabel = ''): bool {
     $to = sanitize_email_address($to);
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         email_log_write([
@@ -281,6 +334,7 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
             'body_text' => build_plain_text_email_body($htmlBody),
             'attachment_count' => is_array($attachments) ? count($attachments) : 0,
             'attachment_meta' => [],
+            'context_label' => $contextLabel,
             'error_message' => 'invalid_recipient_email',
         ]);
         return false;
@@ -299,6 +353,7 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
             'body_text' => build_plain_text_email_body($htmlBody),
             'attachment_count' => is_array($attachments) ? count($attachments) : 0,
             'attachment_meta' => [],
+            'context_label' => $contextLabel,
             'error_message' => 'invalid_sender_email',
         ]);
         return false;
@@ -322,6 +377,7 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
             'body_text' => build_plain_text_email_body($htmlBody),
             'attachment_count' => is_array($attachments) ? count($attachments) : 0,
             'attachment_meta' => [],
+            'context_label' => $contextLabel,
             'error_message' => 'empty_subject',
         ]);
         return false;
@@ -441,14 +497,15 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
         'body_text' => $textBody,
         'attachment_count' => count($attachmentMeta),
         'attachment_meta' => $attachmentMeta,
+        'context_label' => $contextLabel,
         'error_message' => $errorMessage,
     ]);
 
     return $sent;
 }
 
-function send_email(string $to, string $subject, string $htmlBody): bool {
-    return send_email_with_attachments($to, $subject, $htmlBody, []);
+function send_email(string $to, string $subject, string $htmlBody, string $contextLabel = ''): bool {
+    return send_email_with_attachments($to, $subject, $htmlBody, [], $contextLabel);
 }
 /**
  * Wrap booking emails in a mobile-safe shell.
@@ -714,7 +771,7 @@ function send_confirmation_email(
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Buchung bestätigen: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'Buchung bestätigen: ' . $workshopTitle, render_booking_email_shell($content), 'booking_confirmation_request');
 }
 
 /**
@@ -747,7 +804,7 @@ function send_booking_confirmed_email(
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Bestätigt: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'Bestätigt: ' . $workshopTitle, render_booking_email_shell($content), 'booking_confirmed');
 }
 
 /**
@@ -772,7 +829,7 @@ function send_admin_notification(
         ' . $participantsBlock . '
         <p style="margin:14px 0 0;color:#8c8c8c;font-size:12px;">Automatische Admin-Benachrichtigung</p>';
 
-    return send_email(MAIL_FROM, 'Neue Buchung: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email(MAIL_FROM, 'Neue Buchung: ' . $workshopTitle, render_booking_email_shell($content), 'booking_admin_notification');
 }
 
 /**
@@ -804,7 +861,7 @@ function send_participant_confirmed_email(
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Ihre Teilnahme wurde bestätigt: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'Ihre Teilnahme wurde bestätigt: ' . $workshopTitle, render_booking_email_shell($content), 'participant_confirmed');
 }
 
 /**
@@ -820,7 +877,7 @@ function send_booking_cancelled_email(string $to, string $name, string $workshop
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Buchung storniert: ' . $workshopTitle, render_booking_email_shell($content));
+    return send_email($to, 'Buchung storniert: ' . $workshopTitle, render_booking_email_shell($content), 'booking_cancellation');
 }
 
 /**
@@ -1530,7 +1587,7 @@ function send_rechnung_email(string $to, array $d): bool {
             'mime' => 'application/pdf',
             'content' => $pdfContent,
         ],
-    ]);
+    ], 'invoice');
 }
 /**
  * Send a custom email from admin.
@@ -1541,5 +1598,5 @@ function send_custom_email(string $to, string $subject, string $messageText): bo
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, $subject, render_booking_email_shell($content));
+    return send_email($to, $subject, render_booking_email_shell($content), 'admin_custom');
 }

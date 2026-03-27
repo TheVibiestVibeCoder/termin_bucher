@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
             <p><strong>Nachricht:</strong></p>
             <div style="background:#f5f5f5;padding:12px;border-radius:4px;white-space:pre-wrap;">' . e($formData['message']) . '</div>
         </div>';
-        $adminSent = send_email(MAIL_FROM, 'Kontaktanfrage: ' . $formData['subject'], $adminHtml);
+        $adminSent = send_email(MAIL_FROM, 'Kontaktanfrage: ' . $formData['subject'], $adminHtml, 'contact_admin');
 
         // Auto-reply to sender
         $replyHtml = '
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['contact_submit'])) {
             <hr style="border: none; border-top: 1px solid #222; margin: 30px 0;">
             <p style="color: #666; font-size: 12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>
         </div>';
-        $replySent = send_email($formData['email'], 'Ihre Anfrage: ' . $formData['subject'], $replyHtml);
+        $replySent = send_email($formData['email'], 'Ihre Anfrage: ' . $formData['subject'], $replyHtml, 'contact_reply');
 
         if (!$adminSent || !$replySent) {
             $errors[] = 'Ihre Nachricht konnte aktuell nicht zugestellt werden. Bitte versuchen Sie es erneut.';

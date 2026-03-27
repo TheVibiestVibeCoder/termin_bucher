@@ -7,15 +7,71 @@ if (!in_array($statusFilter, ['all', 'sent', 'failed'], true)) {
     $statusFilter = 'all';
 }
 
+$mailTypeLabels = [
+    'all' => 'Alle Typen',
+    'storno' => 'Storno',
+    'bestaetigung' => 'Bestätigung',
+    'kontakt' => 'Kontakt',
+    'individuell' => 'Individuell',
+    'rechnung' => 'Rechnung',
+    'admin' => 'Admin',
+    'other' => 'Sonstige',
+];
+$typeFilter = strtolower(trim((string) ($_GET['type'] ?? 'all')));
+if (!array_key_exists($typeFilter, $mailTypeLabels)) {
+    $typeFilter = 'all';
+}
+
 $searchQuery = trim((string) ($_GET['q'] ?? ''));
 $page = max(1, (int) ($_GET['page'] ?? 1));
 $perPage = 25;
+
+$mailTypeSqlExpr = "
+CASE
+    WHEN lower(trim(COALESCE(mail_type, ''))) IN ('storno', 'bestaetigung', 'kontakt', 'individuell', 'rechnung', 'admin')
+        THEN lower(trim(COALESCE(mail_type, '')))
+    WHEN lower(COALESCE(context_label, '')) IN ('booking_cancellation', 'send_booking_cancelled_email')
+        THEN 'storno'
+    WHEN lower(COALESCE(context_label, '')) IN (
+        'booking_confirmation_request',
+        'booking_confirmed',
+        'participant_confirmed',
+        'send_confirmation_email',
+        'send_booking_confirmed_email',
+        'send_participant_confirmed_email'
+    )
+        THEN 'bestaetigung'
+    WHEN lower(COALESCE(context_label, '')) IN ('contact_admin', 'contact_reply', 'kontakt.php')
+        THEN 'kontakt'
+    WHEN lower(COALESCE(context_label, '')) IN ('admin_custom', 'send_custom_email')
+        THEN 'individuell'
+    WHEN lower(COALESCE(context_label, '')) IN ('invoice', 'send_rechnung_email')
+        THEN 'rechnung'
+    WHEN lower(COALESCE(context_label, '')) IN ('booking_admin_notification', 'send_admin_notification')
+        THEN 'admin'
+    WHEN lower(COALESCE(subject, '')) LIKE 'buchung storniert:%'
+        THEN 'storno'
+    WHEN lower(COALESCE(subject, '')) LIKE 'kontaktanfrage:%'
+        THEN 'kontakt'
+    WHEN lower(COALESCE(subject, '')) LIKE 'ihre anfrage:%'
+        THEN 'kontakt'
+    WHEN lower(COALESCE(subject, '')) LIKE 'rechnung:%'
+        THEN 'rechnung'
+    WHEN lower(COALESCE(subject, '')) LIKE 'neue buchung:%'
+        THEN 'admin'
+    ELSE 'other'
+END
+";
 
 $where = [];
 $params = [];
 if ($statusFilter !== 'all') {
     $where[] = 'send_status = :status';
     $params[':status'] = [$statusFilter, SQLITE3_TEXT];
+}
+if ($typeFilter !== 'all') {
+    $where[] = '(' . $mailTypeSqlExpr . ') = :mail_type';
+    $params[':mail_type'] = [$typeFilter, SQLITE3_TEXT];
 }
 if ($searchQuery !== '') {
     $where[] = '(lower(recipient_email) LIKE :q OR lower(subject) LIKE :q OR lower(context_label) LIKE :q)';
@@ -55,10 +111,13 @@ if ($page > $totalPages) {
 }
 $offset = ($page - 1) * $perPage;
 
-$buildUrl = static function (array $overrides = []) use ($statusFilter, $searchQuery, $page): string {
+$buildUrl = static function (array $overrides = []) use ($statusFilter, $typeFilter, $searchQuery, $page): string {
     $query = [];
     if ($statusFilter !== 'all') {
         $query['status'] = $statusFilter;
+    }
+    if ($typeFilter !== 'all') {
+        $query['type'] = $typeFilter;
     }
     if ($searchQuery !== '') {
         $query['q'] = $searchQuery;
@@ -68,7 +127,12 @@ $buildUrl = static function (array $overrides = []) use ($statusFilter, $searchQ
     }
 
     foreach ($overrides as $key => $value) {
-        if ($value === null || $value === '' || ($key === 'status' && $value === 'all')) {
+        if (
+            $value === null
+            || $value === ''
+            || ($key === 'status' && $value === 'all')
+            || ($key === 'type' && $value === 'all')
+        ) {
             unset($query[$key]);
             continue;
         }
@@ -79,7 +143,9 @@ $buildUrl = static function (array $overrides = []) use ($statusFilter, $searchQ
 };
 
 $listStmt = $db->prepare('
-    SELECT *
+    SELECT
+        *,
+        (' . $mailTypeSqlExpr . ') AS mail_type_effective
     FROM email_logs
     ' . $whereSql . '
     ORDER BY created_at DESC, id DESC
@@ -127,8 +193,62 @@ if ($listStmt instanceof SQLite3Stmt) {
         .email-toolbar {
             display: grid;
             gap: 0.8rem;
-            grid-template-columns: minmax(220px, 1fr) 180px auto auto;
+            grid-template-columns: minmax(220px, 1fr) 170px 190px auto auto;
             margin-bottom: 1.15rem;
+        }
+        .email-toolbar input[type="text"],
+        .email-toolbar select {
+            width: 100%;
+            min-height: 42px;
+            margin: 0;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: linear-gradient(180deg, var(--surface-soft) 0%, var(--surface) 100%);
+            color: var(--text);
+            font-family: var(--font-b);
+            font-size: 0.86rem;
+            line-height: 1.2;
+            padding: 0.62rem 0.78rem;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+            transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+        }
+        .email-toolbar input[type="text"]::placeholder {
+            color: var(--dim);
+            opacity: 1;
+        }
+        .email-toolbar input[type="text"]:hover,
+        .email-toolbar select:hover {
+            border-color: var(--border-h);
+        }
+        .email-toolbar input[type="text"]:focus-visible,
+        .email-toolbar select:focus-visible {
+            outline: none;
+            border-color: rgba(46, 204, 113, 0.55);
+            box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.16);
+            background: linear-gradient(180deg, var(--surface) 0%, var(--surface-soft) 100%);
+        }
+        .email-toolbar select {
+            -webkit-appearance: none;
+            appearance: none;
+            padding-right: 2.2rem;
+            background-image:
+                linear-gradient(45deg, transparent 50%, var(--dim) 50%),
+                linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+            background-position:
+                calc(100% - 16px) calc(50% - 2px),
+                calc(100% - 11px) calc(50% - 2px);
+            background-size: 5px 5px, 5px 5px;
+            background-repeat: no-repeat;
+            color-scheme: light;
+        }
+        .email-toolbar select option,
+        .email-toolbar select optgroup {
+            color: #111;
+            background: #fff;
+        }
+        .email-toolbar .btn-admin {
+            min-height: 42px;
+            white-space: nowrap;
         }
         .email-log-list {
             display: grid;
@@ -297,7 +417,7 @@ if ($listStmt instanceof SQLite3Stmt) {
         }
         @media (max-width: 980px) {
             .email-toolbar {
-                grid-template-columns: 1fr 1fr;
+                grid-template-columns: 1fr 1fr 1fr;
             }
             .email-log-grid {
                 grid-template-columns: 1fr;
@@ -465,18 +585,23 @@ if ($listStmt instanceof SQLite3Stmt) {
         </div>
 
         <form method="GET" action="<?= e(admin_url('emails')) ?>" class="email-toolbar">
-            <input type="text" name="q" value="<?= e($searchQuery) ?>" placeholder="Suche: Empfaenger, Betreff, Quelle">
+            <input type="text" name="q" value="<?= e($searchQuery) ?>" placeholder="Suche: Empfänger, Betreff, Quelle">
             <select name="status">
                 <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>Alle Stati</option>
                 <option value="sent" <?= $statusFilter === 'sent' ? 'selected' : '' ?>>Gesendet</option>
                 <option value="failed" <?= $statusFilter === 'failed' ? 'selected' : '' ?>>Fehlgeschlagen</option>
             </select>
+            <select name="type">
+                <?php foreach ($mailTypeLabels as $typeKey => $typeLabel): ?>
+                    <option value="<?= e($typeKey) ?>" <?= $typeFilter === $typeKey ? 'selected' : '' ?>><?= e($typeLabel) ?></option>
+                <?php endforeach; ?>
+            </select>
             <button type="submit" class="btn-admin btn-success">Filtern</button>
-            <a href="<?= e(admin_url('emails')) ?>" class="btn-admin">Zuruecksetzen</a>
+            <a href="<?= e(admin_url('emails')) ?>" class="btn-admin">Zurücksetzen</a>
         </form>
 
         <?php if (empty($emailLogs)): ?>
-            <div class="email-log-empty">Keine E-Mail-Eintraege fuer die aktuelle Auswahl gefunden.</div>
+            <div class="email-log-empty">Keine E-Mail-Einträge für die aktuelle Auswahl gefunden.</div>
         <?php else: ?>
             <div class="email-log-list">
                 <?php foreach ($emailLogs as $log): ?>
@@ -489,6 +614,11 @@ if ($listStmt instanceof SQLite3Stmt) {
                     if ($subject === '') {
                         $subject = '(ohne Betreff)';
                     }
+                    $mailType = strtolower(trim((string) ($log['mail_type_effective'] ?? $log['mail_type'] ?? 'other')));
+                    if (!array_key_exists($mailType, $mailTypeLabels)) {
+                        $mailType = 'other';
+                    }
+                    $mailTypeLabel = (string) ($mailTypeLabels[$mailType] ?? 'Sonstige');
                     $createdTs = strtotime((string) ($log['created_at'] ?? ''));
                     $sentTs = strtotime((string) ($log['sent_at'] ?? ''));
                     $createdLabel = $createdTs ? date('d.m.Y H:i', $createdTs) : (string) ($log['created_at'] ?? '');
@@ -504,20 +634,25 @@ if ($listStmt instanceof SQLite3Stmt) {
                             <div class="email-log-subject"><?= e($subject) ?></div>
                             <div class="email-log-meta-line">
                                 <span>An: <?= e((string) ($log['recipient_email'] ?? '')) ?></span>
+                                <span>Typ: <?= e($mailTypeLabel) ?></span>
                                 <span>Quelle: <?= e((string) (($log['context_label'] ?? '') ?: '-')) ?></span>
-                                <span>Anhaenge: <?= (int) ($log['attachment_count'] ?? 0) ?></span>
+                                <span>Anhänge: <?= (int) ($log['attachment_count'] ?? 0) ?></span>
                                 <span>Transport: <?= e((string) ($log['transport'] ?? 'php_mail')) ?></span>
                             </div>
                         </summary>
                         <div class="email-log-detail">
                             <div class="email-log-grid">
                                 <div class="email-log-kv">
-                                    <div class="k">Empfaenger</div>
+                                    <div class="k">Empfänger</div>
                                     <div class="v"><?= e((string) ($log['recipient_email'] ?? '')) ?></div>
                                 </div>
                                 <div class="email-log-kv">
                                     <div class="k">Absender</div>
                                     <div class="v"><?= e((string) ($log['sender_name'] ?? '')) ?> &lt;<?= e((string) ($log['sender_email'] ?? '')) ?>&gt;</div>
+                                </div>
+                                <div class="email-log-kv">
+                                    <div class="k">Mail-Typ</div>
+                                    <div class="v"><?= e($mailTypeLabel) ?></div>
                                 </div>
                                 <div class="email-log-kv">
                                     <div class="k">Erstellt am</div>
@@ -539,14 +674,14 @@ if ($listStmt instanceof SQLite3Stmt) {
 
                             <?php if (!empty($attachments)): ?>
                                 <div class="email-log-section">
-                                    <h3>Anhaenge</h3>
+                                    <h3>Anhänge</h3>
                                     <div class="email-log-attachments">
                                         <table>
                                             <thead>
                                                 <tr>
                                                     <th>Datei</th>
                                                     <th>MIME</th>
-                                                    <th>Groesse (Bytes)</th>
+                                                    <th>Größe (Bytes)</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -554,7 +689,7 @@ if ($listStmt instanceof SQLite3Stmt) {
                                                     <tr>
                                                         <td data-label="Datei"><?= e((string) ($attachment['filename'] ?? '')) ?></td>
                                                         <td data-label="MIME"><?= e((string) ($attachment['mime'] ?? '')) ?></td>
-                                                        <td data-label="Groesse"><?= (int) ($attachment['bytes'] ?? 0) ?></td>
+                                                        <td data-label="Größe"><?= (int) ($attachment['bytes'] ?? 0) ?></td>
                                                     </tr>
                                                 <?php endforeach; ?>
                                             </tbody>
@@ -600,7 +735,7 @@ if ($listStmt instanceof SQLite3Stmt) {
                     <?php endif; ?>
                     <span style="font-size:0.82rem;color:var(--muted);">Seite <?= $page ?> von <?= $totalPages ?></span>
                     <?php if ($page < $totalPages): ?>
-                        <a class="btn-admin" href="<?= e($buildUrl(['page' => $page + 1])) ?>">Naechste Seite &rarr;</a>
+                        <a class="btn-admin" href="<?= e($buildUrl(['page' => $page + 1])) ?>">Nächste Seite &rarr;</a>
                     <?php else: ?>
                         <span></span>
                     <?php endif; ?>
