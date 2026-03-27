@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS email_logs (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     transport            TEXT    NOT NULL DEFAULT 'php_mail',
     send_status          TEXT    NOT NULL DEFAULT 'failed',
+    mail_type            TEXT    NOT NULL DEFAULT 'other',
     recipient_email      TEXT    NOT NULL DEFAULT '',
     sender_email         TEXT    NOT NULL DEFAULT '',
     sender_name          TEXT    NOT NULL DEFAULT '',
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS email_logs (
 ");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at DESC, id DESC);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(send_status, created_at DESC);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_type ON email_logs(mail_type, created_at DESC);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_recipient ON email_logs(recipient_email, created_at DESC);");
 
 $db->exec("\nCREATE TABLE IF NOT EXISTS invoice_circles (\n    id           INTEGER PRIMARY KEY AUTOINCREMENT,\n    circle_code  TEXT    NOT NULL UNIQUE,\n    circle_label TEXT    NOT NULL,\n    prefix       TEXT    NOT NULL DEFAULT 'WS',\n    year         INTEGER NOT NULL DEFAULT 0,\n    next_number  INTEGER NOT NULL DEFAULT 1,\n    active       INTEGER NOT NULL DEFAULT 1,\n    created_at   DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at   DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
@@ -133,6 +135,7 @@ $migrations = [
     ['discount_codes', 'allowed_emails',       "TEXT NOT NULL DEFAULT ''"],
     ['discount_codes', 'allowed_workshop_ids', "TEXT NOT NULL DEFAULT ''"],
     ['discount_codes', 'updated_at',           "DATETIME NOT NULL DEFAULT (datetime('now'))"],
+    ['email_logs', 'mail_type',                "TEXT NOT NULL DEFAULT 'other'"],
 ];
 
 foreach ($migrations as [$table, $col, $def]) {
@@ -146,6 +149,10 @@ $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_archived_workshop ON bookings
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_occurrence ON bookings(occurrence_id, confirmed, archived);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_pending_expiry ON bookings(confirmed, archived, created_at);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_workshops_archived_active ON workshops(archived, active, sort_order, id);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at DESC, id DESC);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(send_status, created_at DESC);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_type ON email_logs(mail_type, created_at DESC);");
+$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_recipient ON email_logs(recipient_email, created_at DESC);");
 
 
 // Backfill legacy single-date workshops into the new occurrences table.
