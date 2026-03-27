@@ -10,7 +10,7 @@ if (!in_array($statusFilter, ['all', 'sent', 'failed'], true)) {
 $mailTypeLabels = [
     'all' => 'Alle Typen',
     'storno' => 'Storno',
-    'bestaetigung' => 'Bestaetigung',
+    'bestaetigung' => 'Bestätigung',
     'kontakt' => 'Kontakt',
     'individuell' => 'Individuell',
     'rechnung' => 'Rechnung',
@@ -585,7 +585,7 @@ if ($listStmt instanceof SQLite3Stmt) {
         </div>
 
         <form method="GET" action="<?= e(admin_url('emails')) ?>" class="email-toolbar">
-            <input type="text" name="q" value="<?= e($searchQuery) ?>" placeholder="Suche: Empfaenger, Betreff, Quelle">
+            <input type="text" name="q" value="<?= e($searchQuery) ?>" placeholder="Suche: Empfänger, Betreff, Quelle">
             <select name="status">
                 <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>Alle Stati</option>
                 <option value="sent" <?= $statusFilter === 'sent' ? 'selected' : '' ?>>Gesendet</option>
@@ -597,11 +597,11 @@ if ($listStmt instanceof SQLite3Stmt) {
                 <?php endforeach; ?>
             </select>
             <button type="submit" class="btn-admin btn-success">Filtern</button>
-            <a href="<?= e(admin_url('emails')) ?>" class="btn-admin">Zuruecksetzen</a>
+            <a href="<?= e(admin_url('emails')) ?>" class="btn-admin">Zurücksetzen</a>
         </form>
 
         <?php if (empty($emailLogs)): ?>
-            <div class="email-log-empty">Keine E-Mail-Eintraege fuer die aktuelle Auswahl gefunden.</div>
+            <div class="email-log-empty">Keine E-Mail-Einträge für die aktuelle Auswahl gefunden.</div>
         <?php else: ?>
             <div class="email-log-list">
                 <?php foreach ($emailLogs as $log): ?>
@@ -636,14 +636,14 @@ if ($listStmt instanceof SQLite3Stmt) {
                                 <span>An: <?= e((string) ($log['recipient_email'] ?? '')) ?></span>
                                 <span>Typ: <?= e($mailTypeLabel) ?></span>
                                 <span>Quelle: <?= e((string) (($log['context_label'] ?? '') ?: '-')) ?></span>
-                                <span>Anhaenge: <?= (int) ($log['attachment_count'] ?? 0) ?></span>
+                                <span>Anhänge: <?= (int) ($log['attachment_count'] ?? 0) ?></span>
                                 <span>Transport: <?= e((string) ($log['transport'] ?? 'php_mail')) ?></span>
                             </div>
                         </summary>
                         <div class="email-log-detail">
                             <div class="email-log-grid">
                                 <div class="email-log-kv">
-                                    <div class="k">Empfaenger</div>
+                                    <div class="k">Empfänger</div>
                                     <div class="v"><?= e((string) ($log['recipient_email'] ?? '')) ?></div>
                                 </div>
                                 <div class="email-log-kv">
@@ -674,14 +674,14 @@ if ($listStmt instanceof SQLite3Stmt) {
 
                             <?php if (!empty($attachments)): ?>
                                 <div class="email-log-section">
-                                    <h3>Anhaenge</h3>
+                                    <h3>Anhänge</h3>
                                     <div class="email-log-attachments">
                                         <table>
                                             <thead>
                                                 <tr>
                                                     <th>Datei</th>
                                                     <th>MIME</th>
-                                                    <th>Groesse (Bytes)</th>
+                                                    <th>Größe (Bytes)</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -689,7 +689,7 @@ if ($listStmt instanceof SQLite3Stmt) {
                                                     <tr>
                                                         <td data-label="Datei"><?= e((string) ($attachment['filename'] ?? '')) ?></td>
                                                         <td data-label="MIME"><?= e((string) ($attachment['mime'] ?? '')) ?></td>
-                                                        <td data-label="Groesse"><?= (int) ($attachment['bytes'] ?? 0) ?></td>
+                                                        <td data-label="Größe"><?= (int) ($attachment['bytes'] ?? 0) ?></td>
                                                     </tr>
                                                 <?php endforeach; ?>
                                             </tbody>
@@ -735,7 +735,7 @@ if ($listStmt instanceof SQLite3Stmt) {
                     <?php endif; ?>
                     <span style="font-size:0.82rem;color:var(--muted);">Seite <?= $page ?> von <?= $totalPages ?></span>
                     <?php if ($page < $totalPages): ?>
-                        <a class="btn-admin" href="<?= e($buildUrl(['page' => $page + 1])) ?>">Naechste Seite &rarr;</a>
+                        <a class="btn-admin" href="<?= e($buildUrl(['page' => $page + 1])) ?>">Nächste Seite &rarr;</a>
                     <?php else: ?>
                         <span></span>
                     <?php endif; ?>
