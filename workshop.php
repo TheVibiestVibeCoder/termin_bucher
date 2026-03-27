@@ -719,10 +719,15 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                 <!-- Type badge + format tag -->
                 <div class="badge-row badge-row-detail">
                     <?php if ($isOpen): ?>
-                        <?php if ($isGuaranteed): ?>
-                            <span class="type-badge type-badge-confirmed"><span class="badge-dot"></span>Findet statt</span>
-                        <?php elseif ($minP > 0): ?>
-                            <span class="type-badge type-badge-open-pending"><span class="badge-dot"></span>Mindestanzahl offen</span>
+                        <?php if ($minP > 0): ?>
+                            <?php
+                                $statusBadgeClass = $isGuaranteed ? 'type-badge-confirmed' : 'type-badge-open-pending';
+                                $statusBadgeLabel = $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen';
+                            ?>
+                            <span class="type-badge <?= e($statusBadgeClass) ?>" data-detail-status-badge>
+                                <span class="badge-dot"></span>
+                                <span data-detail-status-badge-text><?= e($statusBadgeLabel) ?></span>
+                            </span>
                         <?php else: ?>
                             <span class="type-badge type-badge-open"><span class="badge-dot"></span>Anmeldung offen</span>
                         <?php endif; ?>
@@ -1415,6 +1420,8 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     const dateFields = document.querySelectorAll('[data-detail-field="date"]');
     const statusFields = document.querySelectorAll('[data-detail-field="status"]');
     const availabilityFields = document.querySelectorAll('[data-detail-field="availability"]');
+    const statusBadge = document.querySelector('[data-detail-status-badge]');
+    const statusBadgeText = statusBadge ? statusBadge.querySelector('[data-detail-status-badge-text]') : null;
     const minNoteText = document.querySelector('.js-detail-min-note-text');
     const seatsWrap = document.querySelector('.js-detail-seats');
     const seatsFill = document.querySelector('.js-detail-seats-fill');
@@ -1463,11 +1470,19 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
             el.textContent = String(occurrence.date || '');
         });
 
-        if (statusFields.length > 0 && minParticipants > 0) {
-            const statusText = occurrence.isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen';
+        if (minParticipants > 0) {
+            const occurrenceIsGuaranteed = Boolean(occurrence.isGuaranteed);
+            const statusText = occurrenceIsGuaranteed ? 'Findet statt' : 'Mindestanzahl offen';
             statusFields.forEach((el) => {
                 el.textContent = statusText;
             });
+            if (statusBadgeText) {
+                statusBadgeText.textContent = statusText;
+            }
+            if (statusBadge) {
+                statusBadge.classList.remove('type-badge-confirmed', 'type-badge-open-pending');
+                statusBadge.classList.add(occurrenceIsGuaranteed ? 'type-badge-confirmed' : 'type-badge-open-pending');
+            }
         }
 
         availabilityFields.forEach((el) => {

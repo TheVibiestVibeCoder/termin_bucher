@@ -730,6 +730,264 @@ function render_cancellation_policy_block(): string {
         </div>';
 }
 
+function booking_ics_timezone(): DateTimeZone {
+    $timezoneCandidates = [
+        trim((string) ($_ENV['APP_TIMEZONE'] ?? '')),
+        trim((string) getenv('APP_TIMEZONE')),
+        trim((string) ($_ENV['TIMEZONE'] ?? '')),
+        trim((string) getenv('TIMEZONE')),
+        trim((string) date_default_timezone_get()),
+        'Europe/Berlin',
+    ];
+
+    foreach ($timezoneCandidates as $candidate) {
+        if ($candidate === '') {
+            continue;
+        }
+
+        try {
+            return new DateTimeZone($candidate);
+        } catch (Throwable) {
+            continue;
+        }
+    }
+
+    return new DateTimeZone('Europe/Berlin');
+}
+
+function parse_booking_ics_datetime(string $rawDate, DateTimeZone $timezone): ?DateTimeImmutable {
+    $rawDate = trim($rawDate);
+    if ($rawDate === '') {
+        return null;
+    }
+
+    $formats = [
+        'Y-m-d H:i:s',
+        'Y-m-d H:i',
+        'Y-m-d\TH:i:s',
+        'Y-m-d\TH:i',
+        'Y-m-d',
+    ];
+
+    foreach ($formats as $format) {
+        $dt = DateTimeImmutable::createFromFormat($format, $rawDate, $timezone);
+        if ($dt instanceof DateTimeImmutable) {
+            $errors = DateTimeImmutable::getLastErrors();
+            if (is_array($errors) && (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0)) {
+                continue;
+            }
+
+            return $dt;
+        }
+    }
+
+    $timestamp = strtotime($rawDate);
+    if ($timestamp === false) {
+        return null;
+    }
+
+    return (new DateTimeImmutable('@' . $timestamp))->setTimezone($timezone);
+}
+
+function escape_ics_text(string $value): string {
+    return str_replace(
+        ["\\", ";", ",", "\r\n", "\r", "\n"],
+        ["\\\\", "\\;", "\\,", "\\n", "\\n", "\\n"],
+        $value
+    );
+}
+
+function fold_ics_line(string $line): string {
+    $line = (string) $line;
+    if ($line === '' || strlen($line) <= 75) {
+        return $line;
+    }
+
+    $chunkBytes = 73;
+    $remaining = $line;
+    $folded = '';
+
+    while ($remaining !== '') {
+        if (strlen($remaining) <= 75) {
+            $folded .= $remaining;
+            break;
+        }
+
+        if (function_exists('mb_strcut')) {
+            $chunk = (string) mb_strcut($remaining, 0, $chunkBytes, 'UTF-8');
+        } else {
+            $chunk = substr($remaining, 0, $chunkBytes);
+        }
+
+        if ($chunk === '') {
+            $chunk = substr($remaining, 0, $chunkBytes);
+        }
+        if ($chunk === '') {
+            break;
+        }
+
+        $folded .= $chunk . "\r\n ";
+        $remaining = (string) substr($remaining, strlen($chunk));
+    }
+
+    return $folded;
+}
+
+function build_booking_ics_filename(string $workshopTitle, DateTimeImmutable $startAt): string {
+    $slug = trim($workshopTitle);
+    if (function_exists('iconv') && $slug !== '') {
+        $asciiTitle = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $slug);
+        if (is_string($asciiTitle) && $asciiTitle !== '') {
+            $slug = $asciiTitle;
+        }
+    }
+
+    $slug = strtolower($slug);
+    $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
+    $slug = trim((string) $slug, '-');
+    if ($slug === '') {
+        $slug = 'workshop';
+    }
+
+    $slug = substr($slug, 0, 64);
+
+    return 'workshop-' . $startAt->format('Ymd') . '-' . $slug . '.ics';
+}
+
+function build_booking_ics_uid(array $booking, array $workshop): string {
+    $uidSeed = implode('|', [
+        (string) ($booking['id'] ?? ''),
+        (string) ($booking['token'] ?? ''),
+        (string) ($booking['email'] ?? ''),
+        (string) ($booking['occurrence_id'] ?? ''),
+        (string) ($workshop['id'] ?? $booking['workshop_id'] ?? ''),
+        (string) ($workshop['title'] ?? $booking['workshop_title'] ?? ''),
+        (string) ($workshop['event_date'] ?? $booking['event_date'] ?? ''),
+    ]);
+
+    if ($uidSeed === '||||||') {
+        $uidSeed = bin2hex(random_bytes(16));
+    }
+
+    $host = parse_url(build_site_url('/'), PHP_URL_HOST);
+    if (!is_string($host) || $host === '') {
+        $host = 'localhost';
+    }
+    $host = preg_replace('/[^a-z0-9.-]/i', '', strtolower($host));
+    if ($host === '') {
+        $host = 'localhost';
+    }
+
+    return 'booking-' . substr(hash('sha256', $uidSeed), 0, 32) . '@' . $host;
+}
+
+function build_booking_ics_attachment(array $booking = [], array $workshop = []): ?array {
+    $startRaw = trim((string) ($workshop['event_date'] ?? $booking['event_date'] ?? ''));
+    if ($startRaw === '') {
+        return null;
+    }
+
+    $endRaw = trim((string) ($workshop['event_date_end'] ?? $booking['event_date_end'] ?? ''));
+    $title = trim((string) ($workshop['title'] ?? $booking['workshop_title'] ?? 'Workshop'));
+    if ($title === '') {
+        $title = 'Workshop';
+    }
+
+    $location = trim((string) ($workshop['location'] ?? $booking['location'] ?? ''));
+    $timezone = booking_ics_timezone();
+    $timezoneId = $timezone->getName();
+    $startAt = parse_booking_ics_datetime($startRaw, $timezone);
+    if (!$startAt instanceof DateTimeImmutable) {
+        return null;
+    }
+
+    $endAt = parse_booking_ics_datetime($endRaw, $timezone);
+    if ($endAt instanceof DateTimeImmutable && $endAt <= $startAt) {
+        $endAt = null;
+    }
+
+    $workshopSlug = trim((string) ($workshop['slug'] ?? $booking['workshop_slug'] ?? ''));
+    $occurrenceId = max(0, (int) ($booking['occurrence_id'] ?? $workshop['occurrence_id'] ?? 0));
+    $workshopUrl = '';
+    if ($workshopSlug !== '' && function_exists('app_url')) {
+        $workshopQuery = ['slug' => $workshopSlug];
+        if ($occurrenceId > 0) {
+            $workshopQuery['occurrence'] = $occurrenceId;
+        }
+        $workshopUrl = build_site_url(app_url('workshop', $workshopQuery));
+    }
+
+    $dateLabel = format_event_date($startRaw, $endRaw);
+    $descriptionParts = [
+        'Ihre Workshop-Buchung wurde bestaetigt.',
+        'Workshop: ' . $title,
+    ];
+    if ($dateLabel !== '') {
+        $descriptionParts[] = 'Termin: ' . $dateLabel;
+    }
+    if ($location !== '') {
+        $descriptionParts[] = 'Ort: ' . $location;
+    }
+    if ($workshopUrl !== '') {
+        $descriptionParts[] = 'Details: ' . $workshopUrl;
+    }
+    $descriptionParts[] = 'Kontakt: ' . MAIL_FROM;
+    $description = implode("\n", $descriptionParts);
+
+    $summary = 'Workshop: ' . $title;
+    $alarmDescription = 'Erinnerung: "' . $title . '" startet in einer Woche.';
+    $uid = build_booking_ics_uid($booking, $workshop);
+    $timestamp = gmdate('Ymd\THis\Z');
+
+    $lines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Disinfo Consulting//Workshop Booking//DE',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        'BEGIN:VEVENT',
+        'UID:' . $uid,
+        'DTSTAMP:' . $timestamp,
+        'DTSTART;TZID=' . $timezoneId . ':' . $startAt->format('Ymd\THis'),
+    ];
+
+    if ($endAt instanceof DateTimeImmutable) {
+        $lines[] = 'DTEND;TZID=' . $timezoneId . ':' . $endAt->format('Ymd\THis');
+    }
+
+    $lines[] = 'SUMMARY:' . escape_ics_text($summary);
+    $lines[] = 'DESCRIPTION:' . escape_ics_text($description);
+
+    if ($location !== '') {
+        $lines[] = 'LOCATION:' . escape_ics_text($location);
+    }
+
+    if ($workshopUrl !== '') {
+        $lines[] = 'URL:' . sanitize_mail_header_value($workshopUrl);
+    }
+
+    $lines[] = 'STATUS:CONFIRMED';
+    $lines[] = 'TRANSP:OPAQUE';
+    $lines[] = 'BEGIN:VALARM';
+    $lines[] = 'ACTION:DISPLAY';
+    $lines[] = 'TRIGGER:-P7D';
+    $lines[] = 'DESCRIPTION:' . escape_ics_text($alarmDescription);
+    $lines[] = 'END:VALARM';
+    $lines[] = 'END:VEVENT';
+    $lines[] = 'END:VCALENDAR';
+
+    $content = '';
+    foreach ($lines as $line) {
+        $content .= fold_ics_line($line) . "\r\n";
+    }
+
+    return [
+        'filename' => build_booking_ics_filename($title, $startAt),
+        'mime' => 'text/calendar; charset=UTF-8; method=PUBLISH',
+        'content' => $content,
+    ];
+}
+
 /**
  * Send booking confirmation request (double opt-in).
  */
@@ -791,6 +1049,11 @@ function send_booking_confirmed_email(
     $detailsBlock      = render_booking_details_block($booking, $workshop);
     $participantsBlock = render_booking_participants_block($participants);
     $cancellationBlock = render_cancellation_policy_block();
+    $attachments = [];
+    $icsAttachment = build_booking_ics_attachment($booking, $workshop);
+    if (is_array($icsAttachment)) {
+        $attachments[] = $icsAttachment;
+    }
 
     $content = '
         <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestätigt!</h2>
@@ -804,7 +1067,13 @@ function send_booking_confirmed_email(
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Bestätigt: ' . $workshopTitle, render_booking_email_shell($content), 'booking_confirmed');
+    return send_email_with_attachments(
+        $to,
+        'Bestätigt: ' . $workshopTitle,
+        render_booking_email_shell($content),
+        $attachments,
+        'booking_confirmed'
+    );
 }
 
 /**
@@ -848,6 +1117,11 @@ function send_participant_confirmed_email(
     }
     $detailsBlock = render_booking_details_block($booking, $workshop);
     $cancellationBlock = render_cancellation_policy_block();
+    $attachments = [];
+    $icsAttachment = build_booking_ics_attachment($booking, $workshop);
+    if (is_array($icsAttachment)) {
+        $attachments[] = $icsAttachment;
+    }
 
     $content = '
         <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Teilnahme bestätigt!</h2>
@@ -861,7 +1135,13 @@ function send_participant_confirmed_email(
         <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
         <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
 
-    return send_email($to, 'Ihre Teilnahme wurde bestätigt: ' . $workshopTitle, render_booking_email_shell($content), 'participant_confirmed');
+    return send_email_with_attachments(
+        $to,
+        'Ihre Teilnahme wurde bestätigt: ' . $workshopTitle,
+        render_booking_email_shell($content),
+        $attachments,
+        'participant_confirmed'
+    );
 }
 
 /**
