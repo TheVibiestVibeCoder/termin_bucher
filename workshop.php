@@ -301,7 +301,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     if (!csrf_verify()) {
         $errors[] = 'Ungültige Sitzung. Bitte versuchen Sie es erneut.';
     }
-    if (!rate_limit('booking', 3)) {
+    // Allow a small burst for accidental double-submits/reloads without removing anti-spam protection.
+    if (!rate_limit('booking', 12)) {
         $errors[] = 'Zu viele Anfragen. Bitte warten Sie einen Moment.';
     }
 
