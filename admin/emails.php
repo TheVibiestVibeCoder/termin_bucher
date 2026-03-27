@@ -239,6 +239,12 @@ if ($listStmt instanceof SQLite3Stmt) {
                 calc(100% - 11px) calc(50% - 2px);
             background-size: 5px 5px, 5px 5px;
             background-repeat: no-repeat;
+            color-scheme: light;
+        }
+        .email-toolbar select option,
+        .email-toolbar select optgroup {
+            color: #111;
+            background: #fff;
         }
         .email-toolbar .btn-admin {
             min-height: 42px;
