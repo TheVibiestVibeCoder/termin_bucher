@@ -732,12 +732,16 @@ function render_cancellation_policy_block(): string {
 
 function booking_ics_timezone(): DateTimeZone {
     $timezoneCandidates = [
+        trim((string) ($_ENV['WORKSHOP_TIMEZONE'] ?? '')),
+        trim((string) getenv('WORKSHOP_TIMEZONE')),
+        trim((string) ($_ENV['ICS_TIMEZONE'] ?? '')),
+        trim((string) getenv('ICS_TIMEZONE')),
         trim((string) ($_ENV['APP_TIMEZONE'] ?? '')),
         trim((string) getenv('APP_TIMEZONE')),
         trim((string) ($_ENV['TIMEZONE'] ?? '')),
         trim((string) getenv('TIMEZONE')),
-        trim((string) date_default_timezone_get()),
         'Europe/Berlin',
+        trim((string) date_default_timezone_get()),
     ];
 
     foreach ($timezoneCandidates as $candidate) {
@@ -762,11 +766,11 @@ function parse_booking_ics_datetime(string $rawDate, DateTimeZone $timezone): ?D
     }
 
     $formats = [
-        'Y-m-d H:i:s',
-        'Y-m-d H:i',
-        'Y-m-d\TH:i:s',
-        'Y-m-d\TH:i',
-        'Y-m-d',
+        '!Y-m-d H:i:s',
+        '!Y-m-d H:i',
+        '!Y-m-d\TH:i:s',
+        '!Y-m-d\TH:i',
+        '!Y-m-d',
     ];
 
     foreach ($formats as $format) {
@@ -938,6 +942,7 @@ function build_booking_ics_attachment(array $booking = [], array $workshop = [])
     $alarmDescription = 'Erinnerung: "' . $title . '" startet in einer Woche.';
     $uid = build_booking_ics_uid($booking, $workshop);
     $timestamp = gmdate('Ymd\THis\Z');
+    $startAtUtc = $startAt->setTimezone(new DateTimeZone('UTC'));
 
     $lines = [
         'BEGIN:VCALENDAR',
@@ -945,14 +950,16 @@ function build_booking_ics_attachment(array $booking = [], array $workshop = [])
         'PRODID:-//Disinfo Consulting//Workshop Booking//DE',
         'CALSCALE:GREGORIAN',
         'METHOD:PUBLISH',
+        'X-WR-TIMEZONE:' . $timezoneId,
         'BEGIN:VEVENT',
         'UID:' . $uid,
         'DTSTAMP:' . $timestamp,
-        'DTSTART;TZID=' . $timezoneId . ':' . $startAt->format('Ymd\THis'),
+        'DTSTART:' . $startAtUtc->format('Ymd\THis\Z'),
     ];
 
     if ($endAt instanceof DateTimeImmutable) {
-        $lines[] = 'DTEND;TZID=' . $timezoneId . ':' . $endAt->format('Ymd\THis');
+        $endAtUtc = $endAt->setTimezone(new DateTimeZone('UTC'));
+        $lines[] = 'DTEND:' . $endAtUtc->format('Ymd\THis\Z');
     }
 
     $lines[] = 'SUMMARY:' . escape_ics_text($summary);
