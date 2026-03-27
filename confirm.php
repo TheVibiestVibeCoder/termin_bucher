@@ -49,6 +49,24 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                 $created = strtotime((string) $booking['created_at']);
                 if ($created === false || time() - $created > 48 * 3600) {
                     $status = 'expired';
+                    $expireStmt = $db->prepare("
+                        UPDATE bookings
+                        SET
+                            archived = 1,
+                            archived_at = datetime('now'),
+                            archived_by = :archived_by,
+                            archive_note = CASE
+                                WHEN TRIM(COALESCE(archive_note, '')) = '' THEN :archive_note
+                                ELSE archive_note
+                            END
+                        WHERE id = :id AND confirmed = 0 AND COALESCE(archived, 0) = 0
+                    ");
+                    if ($expireStmt instanceof SQLite3Stmt) {
+                        $expireStmt->bindValue(':archived_by', 'system', SQLITE3_TEXT);
+                        $expireStmt->bindValue(':archive_note', 'Automatisch archiviert: Bestaetigungslink abgelaufen.', SQLITE3_TEXT);
+                        $expireStmt->bindValue(':id', (int) $booking['id'], SQLITE3_INTEGER);
+                        $expireStmt->execute();
+                    }
                 } else {
                     $booked = count_confirmed_bookings($db, (int) $booking['workshop_id'], ((int) ($booking['occurrence_id'] ?? 0)) > 0 ? (int) $booking['occurrence_id'] : null);
                     $capacity = (int) $booking['workshop_capacity'];

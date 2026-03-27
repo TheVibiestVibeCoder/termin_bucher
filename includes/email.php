@@ -14,8 +14,80 @@ function sanitize_email_address(string $email): string {
     return trim(str_replace(["\r", "\n"], '', $email));
 }
 
+function infer_site_url_from_request_for_email(): string {
+    $hostRaw = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if ($hostRaw === '') {
+        $hostRaw = trim((string) ($_SERVER['SERVER_NAME'] ?? ''));
+    }
+    if ($hostRaw === '' || preg_match('/[\s\/\\\\]/', $hostRaw)) {
+        return '';
+    }
+
+    $hostRaw = strtolower($hostRaw);
+    $host = $hostRaw;
+    $port = '';
+
+    if (str_starts_with($hostRaw, '[')) {
+        $endBracketPos = strpos($hostRaw, ']');
+        if ($endBracketPos === false) {
+            return '';
+        }
+        $host = substr($hostRaw, 0, $endBracketPos + 1);
+        $rest = substr($hostRaw, $endBracketPos + 1);
+        if ($rest !== '') {
+            if (!str_starts_with($rest, ':')) {
+                return '';
+            }
+            $port = substr($rest, 1);
+        }
+    } else {
+        $parts = explode(':', $hostRaw);
+        if (count($parts) > 2) {
+            return '';
+        }
+        $host = $parts[0];
+        $port = $parts[1] ?? '';
+    }
+
+    $hostForValidation = trim($host, '[]');
+    $hostIsValid = filter_var($hostForValidation, FILTER_VALIDATE_IP) !== false
+        || filter_var($hostForValidation, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false
+        || $hostForValidation === 'localhost';
+    if (!$hostIsValid) {
+        return '';
+    }
+
+    if ($port !== '') {
+        if (!ctype_digit($port)) {
+            return '';
+        }
+        $portInt = (int) $port;
+        if ($portInt < 1 || $portInt > 65535) {
+            return '';
+        }
+    }
+
+    $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    $httpsServer = strtolower((string) ($_SERVER['HTTPS'] ?? ''));
+    $isHttps = ($httpsServer !== '' && $httpsServer !== 'off') || $forwardedProto === 'https';
+    $scheme = $isHttps ? 'https' : 'http';
+
+    $hostWithPort = $host;
+    if ($port !== '') {
+        $defaultPort = $isHttps ? 443 : 80;
+        if ((int) $port !== $defaultPort) {
+            $hostWithPort .= ':' . (int) $port;
+        }
+    }
+
+    return $scheme . '://' . $hostWithPort;
+}
+
 function build_site_url(string $path = ''): string {
     $base = trim((string) SITE_URL);
+    if ($base === '') {
+        $base = infer_site_url_from_request_for_email();
+    }
 
     if ($path === '') {
         return $base;
@@ -57,14 +129,178 @@ function encode_mail_subject_and_from(string $subject, string $fromName): array 
     return [$subjectHeader, $fromNameHeader];
 }
 
+function email_log_truncate(string $value, int $maxBytes = 200000): string {
+    if ($maxBytes <= 0 || strlen($value) <= $maxBytes) {
+        return $value;
+    }
+
+    return substr($value, 0, $maxBytes);
+}
+
+function email_log_context_label(): string {
+    $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 16);
+    $ignoreFunctions = [
+        'email_log_context_label',
+        'email_log_write',
+        'send_email_with_attachments',
+        'send_email',
+        'sanitize_mail_header_value',
+        'sanitize_email_address',
+        'build_plain_text_email_body',
+        'encode_mail_subject_and_from',
+    ];
+
+    foreach ($trace as $frame) {
+        $function = (string) ($frame['function'] ?? '');
+        if ($function !== '' && !in_array($function, $ignoreFunctions, true)) {
+            return $function;
+        }
+
+        $file = (string) ($frame['file'] ?? '');
+        if ($file !== '' && basename($file) !== 'email.php') {
+            return basename($file);
+        }
+    }
+
+    return '';
+}
+
+function email_log_write(array $payload): void {
+    try {
+        $db = $GLOBALS['db'] ?? null;
+        if (!$db instanceof SQLite3) {
+            return;
+        }
+
+        $attachmentMeta = $payload['attachment_meta'] ?? [];
+        if (!is_array($attachmentMeta)) {
+            $attachmentMeta = [];
+        }
+        $attachmentMetaJson = json_encode($attachmentMeta, JSON_UNESCAPED_UNICODE);
+        if (!is_string($attachmentMetaJson)) {
+            $attachmentMetaJson = '[]';
+        }
+
+        $contextLabel = trim((string) ($payload['context_label'] ?? ''));
+        if ($contextLabel === '') {
+            $contextLabel = email_log_context_label();
+        }
+
+        $requestUri = trim((string) ($_SERVER['REQUEST_URI'] ?? ''));
+        $clientIp = '';
+        if (function_exists('rate_limit_client_ip')) {
+            $clientIp = (string) rate_limit_client_ip();
+        } else {
+            $clientIp = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+        }
+
+        $status = (string) ($payload['send_status'] ?? 'failed');
+        $sentAt = $status === 'sent' ? date('Y-m-d H:i:s') : null;
+
+        $stmt = $db->prepare("
+            INSERT INTO email_logs (
+                transport,
+                send_status,
+                recipient_email,
+                sender_email,
+                sender_name,
+                subject,
+                headers_raw,
+                body_html,
+                body_text,
+                attachment_count,
+                attachment_meta_json,
+                context_label,
+                request_uri,
+                client_ip,
+                error_message,
+                sent_at
+            )
+            VALUES (
+                :transport,
+                :send_status,
+                :recipient_email,
+                :sender_email,
+                :sender_name,
+                :subject,
+                :headers_raw,
+                :body_html,
+                :body_text,
+                :attachment_count,
+                :attachment_meta_json,
+                :context_label,
+                :request_uri,
+                :client_ip,
+                :error_message,
+                :sent_at
+            )
+        ");
+
+        if (!$stmt instanceof SQLite3Stmt) {
+            return;
+        }
+
+        $stmt->bindValue(':transport', email_log_truncate((string) ($payload['transport'] ?? 'php_mail'), 40), SQLITE3_TEXT);
+        $stmt->bindValue(':send_status', email_log_truncate($status, 20), SQLITE3_TEXT);
+        $stmt->bindValue(':recipient_email', email_log_truncate((string) ($payload['recipient_email'] ?? ''), 254), SQLITE3_TEXT);
+        $stmt->bindValue(':sender_email', email_log_truncate((string) ($payload['sender_email'] ?? ''), 254), SQLITE3_TEXT);
+        $stmt->bindValue(':sender_name', email_log_truncate((string) ($payload['sender_name'] ?? ''), 160), SQLITE3_TEXT);
+        $stmt->bindValue(':subject', email_log_truncate((string) ($payload['subject'] ?? ''), 500), SQLITE3_TEXT);
+        $stmt->bindValue(':headers_raw', email_log_truncate((string) ($payload['headers_raw'] ?? ''), 20000), SQLITE3_TEXT);
+        $stmt->bindValue(':body_html', email_log_truncate((string) ($payload['body_html'] ?? ''), 200000), SQLITE3_TEXT);
+        $stmt->bindValue(':body_text', email_log_truncate((string) ($payload['body_text'] ?? ''), 200000), SQLITE3_TEXT);
+        $stmt->bindValue(':attachment_count', max(0, (int) ($payload['attachment_count'] ?? 0)), SQLITE3_INTEGER);
+        $stmt->bindValue(':attachment_meta_json', email_log_truncate($attachmentMetaJson, 60000), SQLITE3_TEXT);
+        $stmt->bindValue(':context_label', email_log_truncate($contextLabel, 120), SQLITE3_TEXT);
+        $stmt->bindValue(':request_uri', email_log_truncate($requestUri, 500), SQLITE3_TEXT);
+        $stmt->bindValue(':client_ip', email_log_truncate($clientIp, 90), SQLITE3_TEXT);
+        $stmt->bindValue(':error_message', email_log_truncate((string) ($payload['error_message'] ?? ''), 2000), SQLITE3_TEXT);
+        if ($sentAt === null) {
+            $stmt->bindValue(':sent_at', null, SQLITE3_NULL);
+        } else {
+            $stmt->bindValue(':sent_at', $sentAt, SQLITE3_TEXT);
+        }
+
+        $stmt->execute();
+    } catch (Throwable) {
+        // Logging must never break business email flows.
+    }
+}
+
 function send_email_with_attachments(string $to, string $subject, string $htmlBody, array $attachments = []): bool {
     $to = sanitize_email_address($to);
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        email_log_write([
+            'transport' => 'php_mail',
+            'send_status' => 'failed',
+            'recipient_email' => $to,
+            'sender_email' => sanitize_email_address(MAIL_FROM),
+            'sender_name' => sanitize_mail_header_value(MAIL_FROM_NAME),
+            'subject' => sanitize_mail_header_value($subject),
+            'body_html' => $htmlBody,
+            'body_text' => build_plain_text_email_body($htmlBody),
+            'attachment_count' => is_array($attachments) ? count($attachments) : 0,
+            'attachment_meta' => [],
+            'error_message' => 'invalid_recipient_email',
+        ]);
         return false;
     }
 
     $from = sanitize_email_address(MAIL_FROM);
     if (!filter_var($from, FILTER_VALIDATE_EMAIL)) {
+        email_log_write([
+            'transport' => 'php_mail',
+            'send_status' => 'failed',
+            'recipient_email' => $to,
+            'sender_email' => $from,
+            'sender_name' => sanitize_mail_header_value(MAIL_FROM_NAME),
+            'subject' => sanitize_mail_header_value($subject),
+            'body_html' => $htmlBody,
+            'body_text' => build_plain_text_email_body($htmlBody),
+            'attachment_count' => is_array($attachments) ? count($attachments) : 0,
+            'attachment_meta' => [],
+            'error_message' => 'invalid_sender_email',
+        ]);
         return false;
     }
 
@@ -75,6 +311,19 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
 
     $subject = sanitize_mail_header_value($subject);
     if ($subject === '') {
+        email_log_write([
+            'transport' => 'php_mail',
+            'send_status' => 'failed',
+            'recipient_email' => $to,
+            'sender_email' => $from,
+            'sender_name' => $fromName,
+            'subject' => '',
+            'body_html' => $htmlBody,
+            'body_text' => build_plain_text_email_body($htmlBody),
+            'attachment_count' => is_array($attachments) ? count($attachments) : 0,
+            'attachment_meta' => [],
+            'error_message' => 'empty_subject',
+        ]);
         return false;
     }
 
@@ -88,6 +337,7 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
     $textBody = build_plain_text_email_body($htmlBody);
 
     $normalizedAttachments = [];
+    $attachmentMeta = [];
     foreach ($attachments as $attachment) {
         if (!is_array($attachment)) {
             continue;
@@ -114,55 +364,87 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
             'mime' => $mime,
             'content' => $rawContent,
         ];
+        $attachmentMeta[] = [
+            'filename' => $filename,
+            'mime' => $mime,
+            'bytes' => strlen($rawContent),
+        ];
     }
 
-    if (empty($normalizedAttachments)) {
-        $boundary = bin2hex(random_bytes(16));
-        $headers .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
+    $body = '';
+    $sent = false;
+    $errorMessage = '';
 
-        $body  = "--{$boundary}\r\n";
-        $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
-        $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-        $body .= $textBody . "\r\n\r\n";
-        $body .= "--{$boundary}\r\n";
-        $body .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-        $body .= $htmlBody . "\r\n\r\n";
-        $body .= "--{$boundary}--\r\n";
+    try {
+        if (empty($normalizedAttachments)) {
+            $boundary = bin2hex(random_bytes(16));
+            $headers .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
 
-        return mail($to, $subjectHeader, $body, $headers);
+            $body  = "--{$boundary}\r\n";
+            $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $body .= $textBody . "\r\n\r\n";
+            $body .= "--{$boundary}\r\n";
+            $body .= "Content-Type: text/html; charset=UTF-8\r\n";
+            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $body .= $htmlBody . "\r\n\r\n";
+            $body .= "--{$boundary}--\r\n";
+        } else {
+            $mixedBoundary = 'mix_' . bin2hex(random_bytes(12));
+            $altBoundary   = 'alt_' . bin2hex(random_bytes(12));
+
+            $headers .= "Content-Type: multipart/mixed; boundary=\"{$mixedBoundary}\"\r\n";
+
+            $body  = "--{$mixedBoundary}\r\n";
+            $body .= "Content-Type: multipart/alternative; boundary=\"{$altBoundary}\"\r\n\r\n";
+
+            $body .= "--{$altBoundary}\r\n";
+            $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $body .= $textBody . "\r\n\r\n";
+
+            $body .= "--{$altBoundary}\r\n";
+            $body .= "Content-Type: text/html; charset=UTF-8\r\n";
+            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $body .= $htmlBody . "\r\n\r\n";
+            $body .= "--{$altBoundary}--\r\n";
+
+            foreach ($normalizedAttachments as $attachment) {
+                $body .= "\r\n--{$mixedBoundary}\r\n";
+                $body .= "Content-Type: {$attachment['mime']}; name=\"{$attachment['filename']}\"\r\n";
+                $body .= "Content-Transfer-Encoding: base64\r\n";
+                $body .= "Content-Disposition: attachment; filename=\"{$attachment['filename']}\"\r\n\r\n";
+                $body .= chunk_split(base64_encode($attachment['content'])) . "\r\n";
+            }
+
+            $body .= "--{$mixedBoundary}--\r\n";
+        }
+
+        $sent = mail($to, $subjectHeader, $body, $headers);
+        if (!$sent) {
+            $errorMessage = 'mail_returned_false';
+        }
+    } catch (Throwable $e) {
+        $sent = false;
+        $errorMessage = 'transport_exception: ' . $e->getMessage();
     }
 
-    $mixedBoundary = 'mix_' . bin2hex(random_bytes(12));
-    $altBoundary   = 'alt_' . bin2hex(random_bytes(12));
+    email_log_write([
+        'transport' => 'php_mail',
+        'send_status' => $sent ? 'sent' : 'failed',
+        'recipient_email' => $to,
+        'sender_email' => $from,
+        'sender_name' => $fromName,
+        'subject' => $subject,
+        'headers_raw' => $headers,
+        'body_html' => $htmlBody,
+        'body_text' => $textBody,
+        'attachment_count' => count($attachmentMeta),
+        'attachment_meta' => $attachmentMeta,
+        'error_message' => $errorMessage,
+    ]);
 
-    $headers .= "Content-Type: multipart/mixed; boundary=\"{$mixedBoundary}\"\r\n";
-
-    $body  = "--{$mixedBoundary}\r\n";
-    $body .= "Content-Type: multipart/alternative; boundary=\"{$altBoundary}\"\r\n\r\n";
-
-    $body .= "--{$altBoundary}\r\n";
-    $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
-    $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-    $body .= $textBody . "\r\n\r\n";
-
-    $body .= "--{$altBoundary}\r\n";
-    $body .= "Content-Type: text/html; charset=UTF-8\r\n";
-    $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-    $body .= $htmlBody . "\r\n\r\n";
-    $body .= "--{$altBoundary}--\r\n";
-
-    foreach ($normalizedAttachments as $attachment) {
-        $body .= "\r\n--{$mixedBoundary}\r\n";
-        $body .= "Content-Type: {$attachment['mime']}; name=\"{$attachment['filename']}\"\r\n";
-        $body .= "Content-Transfer-Encoding: base64\r\n";
-        $body .= "Content-Disposition: attachment; filename=\"{$attachment['filename']}\"\r\n\r\n";
-        $body .= chunk_split(base64_encode($attachment['content'])) . "\r\n";
-    }
-
-    $body .= "--{$mixedBoundary}--\r\n";
-
-    return mail($to, $subjectHeader, $body, $headers);
+    return $sent;
 }
 
 function send_email(string $to, string $subject, string $htmlBody): bool {

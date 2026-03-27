@@ -11,6 +11,8 @@ if (!$workshop) {
     redirect(app_url());
 }
 
+archive_expired_unconfirmed_bookings($db, 48);
+
 $capacity     = (int) $workshop['capacity'];
 $audLabels    = array_filter(array_map('trim', explode(',', $workshop['audience_labels'])));
 $isOpen       = ($workshop['workshop_type'] ?? 'auf_anfrage') === 'open';
@@ -1719,4 +1721,5 @@ if (descToggle && descWrap) {
 
 </body>
 </html>
+
 

@@ -6,25 +6,111 @@
 
 // ── Parse .env ──────────────────────────────────────────────────────────────
 $envFile = __DIR__ . '/../.env';
-if (!file_exists($envFile)) {
-    die('Missing .env file. Copy .env.example to .env and configure it.');
-}
-foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
-    $line = trim($line);
-    if ($line === '' || $line[0] === '#') continue;
-    if (strpos($line, '=') === false) continue;
-    [$key, $val] = array_map('trim', explode('=', $line, 2));
-    $_ENV[$key] = $val;
+if (file_exists($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#') continue;
+        if (strpos($line, '=') === false) continue;
+        [$key, $val] = array_map('trim', explode('=', $line, 2));
+        $_ENV[$key] = $val;
+    }
 }
 
+$getEnv = static function (string $key, string $default = ''): string {
+    if (array_key_exists($key, $_ENV)) {
+        return trim((string) $_ENV[$key]);
+    }
+
+    $runtimeValue = getenv($key);
+    if ($runtimeValue === false || $runtimeValue === null) {
+        return $default;
+    }
+
+    return trim((string) $runtimeValue);
+};
+
+$inferSiteUrl = static function (): string {
+    $hostRaw = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if ($hostRaw === '') {
+        $hostRaw = trim((string) ($_SERVER['SERVER_NAME'] ?? ''));
+    }
+    if ($hostRaw === '' || preg_match('/[\s\/\\\\]/', $hostRaw)) {
+        return '';
+    }
+
+    $hostRaw = strtolower($hostRaw);
+    $host = $hostRaw;
+    $port = '';
+
+    if (str_starts_with($hostRaw, '[')) {
+        $endBracketPos = strpos($hostRaw, ']');
+        if ($endBracketPos === false) {
+            return '';
+        }
+        $host = substr($hostRaw, 0, $endBracketPos + 1);
+        $rest = substr($hostRaw, $endBracketPos + 1);
+        if ($rest !== '') {
+            if (!str_starts_with($rest, ':')) {
+                return '';
+            }
+            $port = substr($rest, 1);
+        }
+    } else {
+        $parts = explode(':', $hostRaw);
+        if (count($parts) > 2) {
+            return '';
+        }
+        $host = $parts[0];
+        $port = $parts[1] ?? '';
+    }
+
+    $hostForValidation = trim($host, '[]');
+    $hostIsValid = filter_var($hostForValidation, FILTER_VALIDATE_IP) !== false
+        || filter_var($hostForValidation, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false
+        || $hostForValidation === 'localhost';
+    if (!$hostIsValid) {
+        return '';
+    }
+
+    if ($port !== '') {
+        if (!ctype_digit($port)) {
+            return '';
+        }
+        $portInt = (int) $port;
+        if ($portInt < 1 || $portInt > 65535) {
+            return '';
+        }
+    }
+
+    $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    $httpsServer = strtolower((string) ($_SERVER['HTTPS'] ?? ''));
+    $isHttps = ($httpsServer !== '' && $httpsServer !== 'off') || $forwardedProto === 'https';
+    $scheme = $isHttps ? 'https' : 'http';
+
+    $hostWithPort = $host;
+    if ($port !== '') {
+        $defaultPort = $isHttps ? 443 : 80;
+        if ((int) $port !== $defaultPort) {
+            $hostWithPort .= ':' . (int) $port;
+        }
+    }
+
+    return $scheme . '://' . $hostWithPort;
+};
+
 // ── Constants ───────────────────────────────────────────────────────────────
-define('ADMIN_PASSWORD', trim((string) ($_ENV['ADMIN_PASSWORD'] ?? '')));
-define('ADMIN_PASSWORD_HASH', trim((string) ($_ENV['ADMIN_PASSWORD_HASH'] ?? '')));
-define('MAIL_FROM',      $_ENV['MAIL_FROM']      ?? 'workshops@disinfoconsulting.eu');
-define('MAIL_FROM_NAME', $_ENV['MAIL_FROM_NAME']  ?? 'Disinfo Consulting Workshops');
-define('SITE_URL',       rtrim($_ENV['SITE_URL']  ?? '', '/'));
-define('SITE_NAME',      $_ENV['SITE_NAME']       ?? 'Disinfo Consulting – Workshops');
-define('DB_PATH',        __DIR__ . '/../' . ($_ENV['DB_PATH'] ?? 'data/bookings.db'));
+define('ADMIN_PASSWORD', $getEnv('ADMIN_PASSWORD', ''));
+define('ADMIN_PASSWORD_HASH', $getEnv('ADMIN_PASSWORD_HASH', ''));
+define('MAIL_FROM', $getEnv('MAIL_FROM', 'workshops@disinfoconsulting.eu'));
+define('MAIL_FROM_NAME', $getEnv('MAIL_FROM_NAME', 'Disinfo Consulting Workshops'));
+$siteUrl = rtrim($getEnv('SITE_URL', ''), '/');
+if ($siteUrl === '') {
+    $siteUrl = $inferSiteUrl();
+}
+
+define('SITE_URL', $siteUrl);
+define('SITE_NAME', $getEnv('SITE_NAME', 'Disinfo Consulting - Workshops'));
+define('DB_PATH', __DIR__ . '/../' . $getEnv('DB_PATH', 'data/bookings.db'));
 
 // ── Database ────────────────────────────────────────────────────────────────
 $dbDir = dirname(DB_PATH);

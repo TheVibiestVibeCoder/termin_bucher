@@ -1,6 +1,8 @@
 <?php
 require __DIR__ . '/includes/config.php';
 
+archive_expired_unconfirmed_bookings($db, 48);
+
 $bookedByWorkshop = [];
 $bookedByOccurrence = [];
 $legacyBookedByWorkshop = [];
