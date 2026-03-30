@@ -203,6 +203,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect_invoices($selectedWorkshopFilterValue, $adjustCircleId);
     }
 
+    if (isset($_POST['invoice_resend_submit'])) {
+        $postWorkshopId = max(0, (int) ($_POST['invoice_workshop_id'] ?? 0));
+        $postOccurrenceId = max(0, (int) ($_POST['invoice_occurrence_id'] ?? 0));
+        $postWorkshopFilterValue = invoice_workshop_filter_value($postWorkshopId, $postOccurrenceId);
+        $postCircleId = max(0, (int) ($_POST['invoice_circle_id'] ?? 0));
+
+        $resendIndex = max(0, (int) ($_POST['invoice_resend_submit'] ?? 0));
+        $invoiceId = max(0, (int) ($_POST['r_existing_invoice_id'][$resendIndex] ?? 0));
+        $recipientEmail = trim((string) ($_POST['r_resend_email'][$resendIndex] ?? ''));
+
+        if ($postWorkshopId <= 0 || $postCircleId <= 0 || $invoiceId <= 0) {
+            flash('error', 'Resend-Daten unvollständig. Bitte erneut versuchen.');
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
+        }
+        if (!filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            flash('error', 'Bitte eine gültige Empfänger-E-Mail für den erneuten Versand angeben.');
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
+        }
+
+        $invoiceFetchSql = '
+            SELECT
+                i.id,
+                i.invoice_number_display,
+                i.payload_json
+            FROM invoices i
+            JOIN bookings b ON b.id = i.booking_id
+            WHERE i.id = :iid AND i.workshop_id = :wid
+        ';
+        if ($postOccurrenceId > 0) {
+            $invoiceFetchSql .= ' AND b.occurrence_id = :oid';
+        }
+        $invoiceFetchSql .= ' LIMIT 1';
+
+        $invoiceFetchStmt = $db->prepare($invoiceFetchSql);
+        $invoiceFetchStmt->bindValue(':iid', $invoiceId, SQLITE3_INTEGER);
+        $invoiceFetchStmt->bindValue(':wid', $postWorkshopId, SQLITE3_INTEGER);
+        if ($postOccurrenceId > 0) {
+            $invoiceFetchStmt->bindValue(':oid', $postOccurrenceId, SQLITE3_INTEGER);
+        }
+        $invoiceRow = $invoiceFetchStmt->execute()->fetchArray(SQLITE3_ASSOC);
+        if (!$invoiceRow) {
+            flash('error', 'Finalisierte Rechnung wurde für diesen Filter nicht gefunden.');
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
+        }
+
+        $payload = json_decode((string) ($invoiceRow['payload_json'] ?? ''), true);
+        if (!is_array($payload) || empty($payload)) {
+            flash('error', 'Rechnung kann nicht erneut gesendet werden: Rechnungsdaten fehlen.');
+            redirect_invoices($postWorkshopFilterValue, $postCircleId);
+        }
+
+        $payload['kontakt_email'] = $recipientEmail;
+        $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        if (!is_string($payloadJson) || $payloadJson === '') {
+            $payloadJson = '{}';
+        }
+
+        $ok = send_rechnung_email($recipientEmail, $payload);
+        $status = $ok ? 'sent' : 'send_failed';
+
+        $updateInvoiceStmt = $db->prepare('
+            UPDATE invoices
+            SET
+                recipient_email = :recipient_email,
+                payload_json = :payload_json,
+                send_status = :status,
+                sent_at = CASE WHEN :status = "sent" THEN datetime("now") ELSE sent_at END
+            WHERE id = :id
+        ');
+        $updateInvoiceStmt->bindValue(':recipient_email', $recipientEmail, SQLITE3_TEXT);
+        $updateInvoiceStmt->bindValue(':payload_json', $payloadJson, SQLITE3_TEXT);
+        $updateInvoiceStmt->bindValue(':status', $status, SQLITE3_TEXT);
+        $updateInvoiceStmt->bindValue(':id', $invoiceId, SQLITE3_INTEGER);
+        $updateInvoiceStmt->execute();
+
+        $invoiceNumberDisplay = trim((string) ($invoiceRow['invoice_number_display'] ?? ''));
+        if ($invoiceNumberDisplay === '') {
+            $invoiceNumberDisplay = '#' . $invoiceId;
+        }
+
+        if ($ok) {
+            flash('success', 'Rechnung ' . $invoiceNumberDisplay . ' wurde erneut an ' . $recipientEmail . ' gesendet.');
+        } else {
+            flash('error', 'Rechnung ' . $invoiceNumberDisplay . ' konnte nicht erneut an ' . $recipientEmail . ' gesendet werden.');
+        }
+        redirect_invoices($postWorkshopFilterValue, $postCircleId);
+    }
+
     if (isset($_POST['invoice_send_submit'])) {
         $postWorkshopId = max(0, (int) ($_POST['invoice_workshop_id'] ?? 0));
         $postOccurrenceId = max(0, (int) ($_POST['invoice_occurrence_id'] ?? 0));
@@ -607,8 +695,10 @@ if ($selectedWorkshopId > 0) {
             b.occurrence_id,
             o.start_at AS occurrence_start_at,
             o.end_at AS occurrence_end_at,
+            i.id AS invoice_id,
             i.invoice_number_display,
-            i.send_status
+            i.send_status,
+            i.recipient_email AS invoice_recipient_email
         FROM bookings b
         LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = b.workshop_id
         LEFT JOIN invoices i ON i.booking_id = b.id
@@ -853,6 +943,31 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
             width: fit-content;
             max-width: 100%;
         }
+        .invoice-resend-wrap {
+            display: grid;
+            gap: 0.5rem;
+            padding: 0.55rem 0.6rem;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+        }
+        .invoice-resend-title {
+            color: var(--dim);
+            font-size: 0.66rem;
+            font-weight: 700;
+            letter-spacing: 1.35px;
+            text-transform: uppercase;
+            line-height: 1.3;
+        }
+        .invoice-resend-row {
+            display: grid;
+            gap: 0.55rem;
+            grid-template-columns: 1fr auto;
+            align-items: end;
+        }
+        .invoice-resend-row .form-group {
+            margin-bottom: 0;
+        }
         .invoice-section-title {
             font-size: 0.68rem;
             text-transform: uppercase;
@@ -889,8 +1004,14 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
             .invoice-booking-grid {
                 grid-template-columns: 1fr;
             }
+            .invoice-resend-row {
+                grid-template-columns: 1fr;
+            }
             .invoice-submit-row .btn-admin,
             .invoice-submit-row .btn-submit {
+                width: 100%;
+            }
+            .invoice-resend-row .btn-admin {
                 width: 100%;
             }
         }
@@ -1119,9 +1240,13 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                                 <?php
                                     $bookingId = (int) ($bookingRow['id'] ?? 0);
                                     $hasInvoice = trim((string) ($bookingRow['invoice_number_display'] ?? '')) !== '';
+                                    $invoiceId = (int) ($bookingRow['invoice_id'] ?? 0);
                                     $organization = trim((string) ($bookingRow['organization'] ?? ''));
                                     $name = trim((string) ($bookingRow['name'] ?? ''));
                                     $email = trim((string) ($bookingRow['email'] ?? ''));
+                                    $invoiceRecipientEmail = trim((string) ($bookingRow['invoice_recipient_email'] ?? ''));
+                                    $emailForDisplay = ($hasInvoice && $invoiceRecipientEmail !== '') ? $invoiceRecipientEmail : $email;
+                                    $resendEmailDefault = $invoiceRecipientEmail !== '' ? $invoiceRecipientEmail : $email;
                                     $displayName = $organization !== '' ? $organization : $name;
                                     $status = trim((string) ($bookingRow['send_status'] ?? ''));
                                 ?>
@@ -1140,7 +1265,7 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                                                 <?php if ($organization !== '' && $organization !== $name): ?>
                                                     <span class="invoice-booking-sub"> - <?= e($name) ?></span>
                                                 <?php endif; ?>
-                                                <span class="invoice-booking-sub">&middot; <?= e($email) ?></span>
+                                                <span class="invoice-booking-sub">&middot; <?= e($emailForDisplay) ?></span>
                                                 <?php if (!empty($bookingRow['occurrence_start_at'])): ?>
                                                     <span class="invoice-booking-sub">&middot; Termin: <?= e(format_event_date((string) ($bookingRow['occurrence_start_at'] ?? ''), (string) ($bookingRow['occurrence_end_at'] ?? ''))) ?></span>
                                                 <?php elseif ($selectedOccurrenceLabel !== ''): ?>
@@ -1171,6 +1296,9 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                                     </div>
 
                                     <input type="hidden" name="r_booking_id[<?= (int) $idx ?>]" value="<?= $bookingId ?>">
+                                    <?php if ($hasInvoice): ?>
+                                        <input type="hidden" name="r_existing_invoice_id[<?= (int) $idx ?>]" value="<?= $invoiceId ?>">
+                                    <?php endif; ?>
 
                                     <div class="invoice-booking-grid">
                                         <div class="form-group" style="margin-bottom:0;">
@@ -1202,9 +1330,35 @@ $pos1BetragDefault = ($selectedWorkshop && (float) ($selectedWorkshop['price_net
                                         </div>
                                         <div class="form-group" style="margin-bottom:0;">
                                             <label>E-Mail</label>
-                                            <input type="email" name="r_booking_kontakt_email[<?= (int) $idx ?>]" value="<?= e($email) ?>" <?= $hasInvoice ? 'readonly' : '' ?>>
+                                            <input type="email" name="r_booking_kontakt_email[<?= (int) $idx ?>]" value="<?= e($emailForDisplay) ?>" <?= $hasInvoice ? 'readonly' : '' ?>>
                                         </div>
                                     </div>
+
+                                    <?php if ($hasInvoice): ?>
+                                    <div class="invoice-resend-wrap">
+                                        <div class="invoice-resend-title">Rechnung erneut senden</div>
+                                        <div class="invoice-resend-row">
+                                            <div class="form-group">
+                                                <label>E-Mail für erneuten Versand</label>
+                                                <input
+                                                    type="email"
+                                                    name="r_resend_email[<?= (int) $idx ?>]"
+                                                    value="<?= e($resendEmailDefault) ?>"
+                                                    required
+                                                >
+                                            </div>
+                                            <button
+                                                type="submit"
+                                                class="btn-admin"
+                                                name="invoice_resend_submit"
+                                                value="<?= (int) $idx ?>"
+                                                formnovalidate
+                                            >
+                                                Rechnung erneut senden
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <?php endif; ?>
                                 </div>
                             <?php endforeach; ?>
                         </div>
