@@ -4,7 +4,7 @@
  * Uses PRAGMA table_info to detect and apply new columns (migrations).
  */
 
-$db->exec("\nCREATE TABLE IF NOT EXISTS workshops (\n    id            INTEGER PRIMARY KEY AUTOINCREMENT,\n    title         TEXT    NOT NULL,\n    slug          TEXT    NOT NULL UNIQUE,\n    description   TEXT    NOT NULL DEFAULT '',\n    tag_label     TEXT    NOT NULL DEFAULT '',\n    capacity      INTEGER NOT NULL DEFAULT 0,\n    audiences     TEXT    NOT NULL DEFAULT '',\n    audience_labels TEXT  NOT NULL DEFAULT '',\n    format        TEXT    NOT NULL DEFAULT '',\n    featured      INTEGER NOT NULL DEFAULT 0,\n    sort_order    INTEGER NOT NULL DEFAULT 0,\n    active        INTEGER NOT NULL DEFAULT 1,\n    archived      INTEGER NOT NULL DEFAULT 0,\n    archived_at   DATETIME,\n    archived_by   TEXT    NOT NULL DEFAULT '',\n    archive_note  TEXT    NOT NULL DEFAULT '',\n    created_at    DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at    DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
+$db->exec("\nCREATE TABLE IF NOT EXISTS workshops (\n    id            INTEGER PRIMARY KEY AUTOINCREMENT,\n    title         TEXT    NOT NULL,\n    slug          TEXT    NOT NULL UNIQUE,\n    description   TEXT    NOT NULL DEFAULT '',\n    tag_label     TEXT    NOT NULL DEFAULT '',\n    capacity      INTEGER NOT NULL DEFAULT 0,\n    audiences     TEXT    NOT NULL DEFAULT '',\n    audience_labels TEXT  NOT NULL DEFAULT '',\n    format        TEXT    NOT NULL DEFAULT '',\n    featured      INTEGER NOT NULL DEFAULT 0,\n    sort_order    INTEGER NOT NULL DEFAULT 0,\n    active        INTEGER NOT NULL DEFAULT 1,\n    bookable      INTEGER NOT NULL DEFAULT 1,\n    archived      INTEGER NOT NULL DEFAULT 0,\n    archived_at   DATETIME,\n    archived_by   TEXT    NOT NULL DEFAULT '',\n    archive_note  TEXT    NOT NULL DEFAULT '',\n    created_at    DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at    DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
 
 $db->exec("\nCREATE TABLE IF NOT EXISTS workshop_groups (\n    id           INTEGER PRIMARY KEY AUTOINCREMENT,\n    name         TEXT    NOT NULL,\n    slug         TEXT    NOT NULL UNIQUE,\n    description  TEXT    NOT NULL DEFAULT '',\n    sort_order   INTEGER NOT NULL DEFAULT 0,\n    active       INTEGER NOT NULL DEFAULT 1,\n    created_at   DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at   DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
 
@@ -20,7 +20,7 @@ $db->exec("CREATE INDEX IF NOT EXISTS idx_workshop_groups_active_order ON worksh
 $db->exec("CREATE INDEX IF NOT EXISTS idx_wgw_group_order ON workshop_group_workshops(group_id, sort_order);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_wgw_workshop ON workshop_group_workshops(workshop_id);");
 
-$db->exec("\nCREATE TABLE IF NOT EXISTS workshop_occurrences (\n    id          INTEGER PRIMARY KEY AUTOINCREMENT,\n    workshop_id INTEGER NOT NULL,\n    start_at    TEXT    NOT NULL DEFAULT '',\n    end_at      TEXT    NOT NULL DEFAULT '',\n    sort_order  INTEGER NOT NULL DEFAULT 0,\n    active      INTEGER NOT NULL DEFAULT 1,\n    created_at  DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at  DATETIME NOT NULL DEFAULT (datetime('now')),\n    FOREIGN KEY (workshop_id) REFERENCES workshops(id) ON DELETE CASCADE\n);\n");
+$db->exec("\nCREATE TABLE IF NOT EXISTS workshop_occurrences (\n    id          INTEGER PRIMARY KEY AUTOINCREMENT,\n    workshop_id INTEGER NOT NULL,\n    start_at    TEXT    NOT NULL DEFAULT '',\n    end_at      TEXT    NOT NULL DEFAULT '',\n    sort_order  INTEGER NOT NULL DEFAULT 0,\n    active      INTEGER NOT NULL DEFAULT 1,\n    bookable    INTEGER NOT NULL DEFAULT 1,\n    created_at  DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at  DATETIME NOT NULL DEFAULT (datetime('now')),\n    FOREIGN KEY (workshop_id) REFERENCES workshops(id) ON DELETE CASCADE\n);\n");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_workshop_occurrences_workshop ON workshop_occurrences(workshop_id, active, sort_order, id);");
 $db->exec("\nCREATE TABLE IF NOT EXISTS discount_codes (\n    id                   INTEGER PRIMARY KEY AUTOINCREMENT,\n    code                 TEXT    NOT NULL UNIQUE COLLATE NOCASE,\n    label                TEXT    NOT NULL DEFAULT '',\n    discount_type        TEXT    NOT NULL DEFAULT 'percent',\n    discount_value       REAL    NOT NULL DEFAULT 0,\n    active               INTEGER NOT NULL DEFAULT 1,\n    starts_at            TEXT    NOT NULL DEFAULT '',\n    expires_at           TEXT    NOT NULL DEFAULT '',\n    max_total_uses       INTEGER NOT NULL DEFAULT 0,\n    max_uses_per_email   INTEGER NOT NULL DEFAULT 0,\n    min_participants     INTEGER NOT NULL DEFAULT 0,\n    allowed_emails       TEXT    NOT NULL DEFAULT '',\n    allowed_workshop_ids TEXT    NOT NULL DEFAULT '',\n    created_at           DATETIME NOT NULL DEFAULT (datetime('now')),\n    updated_at           DATETIME NOT NULL DEFAULT (datetime('now'))\n);\n");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_discount_codes_code   ON discount_codes(code);");
@@ -117,10 +117,12 @@ $migrations = [
     // price per person, netto (0 = free / included / on request)
     ['workshops', 'price_netto',      "REAL NOT NULL DEFAULT 0"],
     ['workshops', 'price_currency',   "TEXT NOT NULL DEFAULT 'EUR'"],
+    ['workshops', 'bookable',         "INTEGER NOT NULL DEFAULT 1"],
     ['workshops', 'archived',         "INTEGER NOT NULL DEFAULT 0"],
     ['workshops', 'archived_at',      "DATETIME"],
     ['workshops', 'archived_by',      "TEXT NOT NULL DEFAULT ''"],
     ['workshops', 'archive_note',     "TEXT NOT NULL DEFAULT ''"],
+    ['workshop_occurrences', 'bookable', "INTEGER NOT NULL DEFAULT 1"],
 
     // discount code columns for earlier installs
     ['discount_codes', 'label',                "TEXT NOT NULL DEFAULT ''"],

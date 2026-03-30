@@ -144,6 +144,7 @@ $formData = $workshop ?? [
     'featured'          => 0,
     'sort_order'        => 0,
     'active'            => 1,
+    'bookable'          => 1,
     'workshop_type'     => 'auf_anfrage',
     'event_date'        => '',
     'event_date_end'    => '',
@@ -164,6 +165,7 @@ if (empty($occurrenceRows) && (($formData['event_date'] ?? '') !== '')) {
         'end_at' => (string) ($formData['event_date_end'] ?? ''),
         'sort_order' => 0,
         'active' => 1,
+        'bookable' => (int) ($formData['bookable'] ?? 1),
     ];
 }
 
@@ -187,6 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
     $formData['featured']           = isset($_POST['featured']) ? 1 : 0;
     $formData['sort_order']         = (int) ($_POST['sort_order'] ?? 0);
     $formData['active']             = isset($_POST['active']) ? 1 : 0;
+    $formData['bookable']           = isset($_POST['bookable']) ? 1 : 0;
     $formData['workshop_type']      = (($_POST['workshop_type'] ?? '') === 'open') ? 'open' : 'auf_anfrage';
     $formData['location']           = trim((string) ($_POST['location'] ?? ''));
     $formData['min_participants']   = max(0, (int) ($_POST['min_participants'] ?? 0));
@@ -202,14 +205,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
     $postedOccurrenceIds = array_values((array) ($_POST['occurrence_id'] ?? []));
     $postedOccurrenceStarts = array_values((array) ($_POST['occurrence_start'] ?? []));
     $postedOccurrenceEnds = array_values((array) ($_POST['occurrence_end'] ?? []));
+    $postedOccurrenceBookables = array_values((array) ($_POST['occurrence_bookable'] ?? []));
 
     $occurrenceRows = [];
-    $occurrenceCount = max(count($postedOccurrenceIds), count($postedOccurrenceStarts), count($postedOccurrenceEnds));
+    $occurrenceCount = max(
+        count($postedOccurrenceIds),
+        count($postedOccurrenceStarts),
+        count($postedOccurrenceEnds),
+        count($postedOccurrenceBookables)
+    );
 
     for ($i = 0; $i < $occurrenceCount; $i++) {
         $occurrenceId = (int) ($postedOccurrenceIds[$i] ?? 0);
         $startAt = normalize_datetime_input($postedOccurrenceStarts[$i] ?? '');
         $endAt = normalize_datetime_input($postedOccurrenceEnds[$i] ?? '');
+        $occurrenceBookable = ((int) ($postedOccurrenceBookables[$i] ?? 1) === 1) ? 1 : 0;
 
         if ($startAt === '' && $endAt === '') {
             continue;
@@ -244,6 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
             'end_at' => $endAt,
             'sort_order' => count($occurrenceRows),
             'active' => 1,
+            'bookable' => $occurrenceBookable,
         ];
     }
 
@@ -309,6 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                         featured = :feat,
                         sort_order = :sort,
                         active = :active,
+                        bookable = :bookable,
                         workshop_type = :wtype,
                         event_date = :edate,
                         event_date_end = :edate_end,
@@ -325,12 +337,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                     INSERT INTO workshops (
                         title, slug, description_short, description, tag_label,
                         capacity, audiences, audience_labels, format, featured,
-                        sort_order, active, workshop_type, event_date, event_date_end,
+                        sort_order, active, bookable, workshop_type, event_date, event_date_end,
                         location, min_participants, price_netto, price_currency
                     ) VALUES (
                         :title, :slug, :desc_short, :desc, :tag,
                         :cap, :aud, :audl, :fmt, :feat,
-                        :sort, :active, :wtype, :edate, :edate_end,
+                        :sort, :active, :bookable, :wtype, :edate, :edate_end,
                         :loc, :minp, :price, :currency
                     )
                 ');
@@ -348,6 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
             $stmt->bindValue(':feat', $formData['featured'], SQLITE3_INTEGER);
             $stmt->bindValue(':sort', $formData['sort_order'], SQLITE3_INTEGER);
             $stmt->bindValue(':active', $formData['active'], SQLITE3_INTEGER);
+            $stmt->bindValue(':bookable', $formData['bookable'], SQLITE3_INTEGER);
             $stmt->bindValue(':wtype', $formData['workshop_type'], SQLITE3_TEXT);
             $stmt->bindValue(':edate', $formData['event_date'], SQLITE3_TEXT);
             $stmt->bindValue(':edate_end', $formData['event_date_end'], SQLITE3_TEXT);
@@ -384,6 +397,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                     $occurrenceId = (int) ($occurrence['id'] ?? 0);
                     $startAt = (string) ($occurrence['start_at'] ?? '');
                     $endAt = (string) ($occurrence['end_at'] ?? '');
+                    $occurrenceBookable = ((int) ($occurrence['bookable'] ?? 1) === 1) ? 1 : 0;
 
                     if ($occurrenceId > 0 && isset($existingIds[$occurrenceId])) {
                         $u = $db->prepare('
@@ -391,6 +405,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                             SET start_at = :start_at,
                                 end_at = :end_at,
                                 sort_order = :sort_order,
+                                bookable = :bookable,
                                 active = 1,
                                 updated_at = datetime("now")
                             WHERE id = :id AND workshop_id = :wid
@@ -398,6 +413,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                         $u->bindValue(':start_at', $startAt, SQLITE3_TEXT);
                         $u->bindValue(':end_at', $endAt, SQLITE3_TEXT);
                         $u->bindValue(':sort_order', $index, SQLITE3_INTEGER);
+                        $u->bindValue(':bookable', $occurrenceBookable, SQLITE3_INTEGER);
                         $u->bindValue(':id', $occurrenceId, SQLITE3_INTEGER);
                         $u->bindValue(':wid', $savedWorkshopId, SQLITE3_INTEGER);
                         if ($u->execute() === false) {
@@ -406,13 +422,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                         $keptIds[] = $occurrenceId;
                     } else {
                         $iStmt = $db->prepare('
-                            INSERT INTO workshop_occurrences (workshop_id, start_at, end_at, sort_order, active)
-                            VALUES (:wid, :start_at, :end_at, :sort_order, 1)
+                            INSERT INTO workshop_occurrences (workshop_id, start_at, end_at, sort_order, active, bookable)
+                            VALUES (:wid, :start_at, :end_at, :sort_order, 1, :bookable)
                         ');
                         $iStmt->bindValue(':wid', $savedWorkshopId, SQLITE3_INTEGER);
                         $iStmt->bindValue(':start_at', $startAt, SQLITE3_TEXT);
                         $iStmt->bindValue(':end_at', $endAt, SQLITE3_TEXT);
                         $iStmt->bindValue(':sort_order', $index, SQLITE3_INTEGER);
+                        $iStmt->bindValue(':bookable', $occurrenceBookable, SQLITE3_INTEGER);
                         if ($iStmt->execute() === false) {
                             throw new RuntimeException('Termin konnte nicht gespeichert werden.');
                         }
@@ -539,8 +556,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
         .price-input-wrap input { padding-right:50px; }
         .price-suffix { position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:0.85rem; color:var(--dim); pointer-events:none; }
         .occurrence-editor { display:flex; flex-direction:column; gap:0.8rem; margin-bottom:0.85rem; }
-        .occurrence-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:0.65rem; align-items:end; padding:0.75rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface-soft); }
+        .occurrence-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(150px,0.65fr) auto; gap:0.65rem; align-items:end; padding:0.75rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface-soft); }
         .occurrence-row .form-group { margin-bottom:0; }
+        .occurrence-bookable { display:flex; flex-direction:column; justify-content:flex-end; gap:0.42rem; min-height:100%; }
+        .occurrence-bookable-label { font-size:0.74rem; color:var(--dim); line-height:1.2; }
+        .occurrence-bookable-toggle { display:flex; align-items:center; gap:0.5rem; font-size:0.84rem; color:var(--text); user-select:none; cursor:pointer; }
+        .occurrence-bookable-toggle input[type="checkbox"] { width:auto; }
         .occurrence-remove { min-width:42px; width:42px; height:42px; border-radius:10px; padding:0; line-height:1; font-size:1.1rem; justify-content:center; }
         @media (max-width:760px) {
             .form-row,.occurrence-row { grid-template-columns:1fr; }
@@ -589,8 +610,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                 <div class="section-box-title">Termine und Ort</div>
                 <div id="occurrence_editor" class="occurrence-editor">
                     <?php foreach ($occurrenceRows as $occurrence): ?>
+                    <?php $occurrenceBookable = ((int) ($occurrence['bookable'] ?? 1) === 1); ?>
                     <div class="occurrence-row" data-occurrence-row>
                         <input type="hidden" name="occurrence_id[]" value="<?= (int) ($occurrence['id'] ?? 0) ?>">
+                        <input type="hidden" name="occurrence_bookable[]" value="<?= $occurrenceBookable ? 1 : 0 ?>" data-occurrence-bookable-value>
                         <div class="form-group">
                             <label>Startdatum und Uhrzeit *</label>
                             <input type="datetime-local" name="occurrence_start[]" value="<?= e(to_datetime_local((string) ($occurrence['start_at'] ?? ''))) ?>" data-occurrence-start>
@@ -598,6 +621,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                         <div class="form-group">
                             <label>Enddatum und Uhrzeit (optional)</label>
                             <input type="datetime-local" name="occurrence_end[]" value="<?= e(to_datetime_local((string) ($occurrence['end_at'] ?? ''))) ?>">
+                        </div>
+                        <div class="occurrence-bookable">
+                            <span class="occurrence-bookable-label">Buchung pro Termin</span>
+                            <label class="occurrence-bookable-toggle">
+                                <input type="checkbox" value="1" data-occurrence-bookable-toggle <?= $occurrenceBookable ? 'checked' : '' ?>>
+                                Buchbar
+                            </label>
                         </div>
                         <button type="button" class="btn-admin btn-danger occurrence-remove" data-occurrence-remove aria-label="Termin entfernen">&times;</button>
                     </div>
@@ -702,6 +732,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
                     <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
                         <input type="checkbox" name="active" value="1" <?= $formData['active'] ? 'checked' : '' ?> style="width:auto;"> Aktiv (sichtbar)
                     </label>
+                    <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
+                        <input type="checkbox" name="bookable" value="1" <?= ((int) ($formData['bookable'] ?? 1) === 1) ? 'checked' : '' ?> style="width:auto;"> Buchbar (Buchungen erlaubt)
+                    </label>
                 </div>
             </div>
 
@@ -715,6 +748,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
 <template id="occurrence_row_template">
     <div class="occurrence-row" data-occurrence-row>
         <input type="hidden" name="occurrence_id[]" value="0">
+        <input type="hidden" name="occurrence_bookable[]" value="1" data-occurrence-bookable-value>
         <div class="form-group">
             <label>Startdatum und Uhrzeit *</label>
             <input type="datetime-local" name="occurrence_start[]" data-occurrence-start>
@@ -722,6 +756,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
         <div class="form-group">
             <label>Enddatum und Uhrzeit (optional)</label>
             <input type="datetime-local" name="occurrence_end[]">
+        </div>
+        <div class="occurrence-bookable">
+            <span class="occurrence-bookable-label">Buchung pro Termin</span>
+            <label class="occurrence-bookable-toggle">
+                <input type="checkbox" value="1" data-occurrence-bookable-toggle checked>
+                Buchbar
+            </label>
         </div>
         <button type="button" class="btn-admin btn-danger occurrence-remove" data-occurrence-remove aria-label="Termin entfernen">&times;</button>
     </div>
@@ -735,6 +776,7 @@ const hintOpen = document.getElementById('type_hint_open');
 const occurrenceEditor = document.getElementById('occurrence_editor');
 const addOccurrenceBtn = document.getElementById('add_occurrence_btn');
 const occurrenceTemplate = document.getElementById('occurrence_row_template');
+const workshopForm = document.querySelector('form[method="POST"]');
 
 function createOccurrenceRow() {
     if (!occurrenceTemplate) {
@@ -742,6 +784,27 @@ function createOccurrenceRow() {
     }
     const fragment = occurrenceTemplate.content.cloneNode(true);
     return fragment.firstElementChild;
+}
+
+function syncOccurrenceBookableValue(row) {
+    if (!row) {
+        return;
+    }
+    const hiddenValue = row.querySelector('[data-occurrence-bookable-value]');
+    const toggle = row.querySelector('[data-occurrence-bookable-toggle]');
+    if (!hiddenValue || !toggle) {
+        return;
+    }
+    hiddenValue.value = toggle.checked ? '1' : '0';
+}
+
+function syncAllOccurrenceBookableValues() {
+    if (!occurrenceEditor) {
+        return;
+    }
+    occurrenceEditor.querySelectorAll('[data-occurrence-row]').forEach((row) => {
+        syncOccurrenceBookableValue(row);
+    });
 }
 
 function ensureAtLeastOneOccurrenceRow() {
@@ -752,6 +815,7 @@ function ensureAtLeastOneOccurrenceRow() {
         const row = createOccurrenceRow();
         if (row) {
             occurrenceEditor.appendChild(row);
+            syncOccurrenceBookableValue(row);
         }
     }
 }
@@ -791,6 +855,7 @@ if (addOccurrenceBtn && occurrenceEditor) {
             return;
         }
         occurrenceEditor.appendChild(row);
+        syncOccurrenceBookableValue(row);
         updateOccurrenceRequiredState();
         const startInput = row.querySelector('input[data-occurrence-start]');
         if (startInput) {
@@ -813,10 +878,23 @@ if (addOccurrenceBtn && occurrenceEditor) {
         }
         updateOccurrenceRequiredState();
     });
+
+    occurrenceEditor.addEventListener('change', function (event) {
+        if (!event.target.matches('[data-occurrence-bookable-toggle]')) {
+            return;
+        }
+        const row = event.target.closest('[data-occurrence-row]');
+        syncOccurrenceBookableValue(row);
+    });
 }
 
 radios.forEach(r => r.addEventListener('change', updateTypeUI));
 updateTypeUI();
+syncAllOccurrenceBookableValues();
+
+if (workshopForm) {
+    workshopForm.addEventListener('submit', syncAllOccurrenceBookableValues);
+}
 
 const titleInput = document.getElementById('title');
 const slugInput = document.getElementById('slug');

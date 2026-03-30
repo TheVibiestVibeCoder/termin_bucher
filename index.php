@@ -40,6 +40,7 @@ $workshops = [];
 $workshopsById = [];
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $workshopId = (int) ($row['id'] ?? 0);
+    $row['bookable'] = (int) ($row['bookable'] ?? 1);
     $row['booked'] = $bookedByWorkshop[$workshopId] ?? 0;
     $row['occurrences'] = [];
 
@@ -53,6 +54,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                 'end_at' => (string) ($row['event_date_end'] ?? ''),
                 'sort_order' => 0,
                 'active' => 1,
+                'bookable' => (int) ($row['bookable'] ?? 1),
             ];
         }
 
@@ -89,6 +91,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             $occRows[$occurrenceIndex]['is_guaranteed'] = ($minParticipants > 0 && $occBooked >= $minParticipants);
             $occRows[$occurrenceIndex]['below_min'] = ($minParticipants > 0 && $capacity > 0 && $occBooked < $minParticipants);
             $occRows[$occurrenceIndex]['above_min'] = ($minParticipants > 0 && $capacity > 0 && $occBooked >= $minParticipants);
+            $occRows[$occurrenceIndex]['is_bookable'] = ((int) ($row['bookable'] ?? 1) === 1) && ((int) ($occurrenceRow['bookable'] ?? 1) === 1);
             $occRows[$occurrenceIndex]['formatted_date'] = format_event_date((string) ($occurrenceRow['start_at'] ?? ''), (string) ($occurrenceRow['end_at'] ?? ''));
             $occRows[$occurrenceIndex]['detail_url'] = app_url('workshop', $occQuery);
         }
@@ -297,6 +300,11 @@ if (empty($workshopSections)) {
                             $aboveMin     = ($minP > 0 && $capacity > 0 && $booked >= $minP);
                             $isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
                             $minPct       = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
+                            $isWorkshopBookable = ((int) ($w['bookable'] ?? 1) === 1);
+                            $isCardBookable = $isWorkshopBookable;
+                            if ($selectedOccurrence !== null) {
+                                $isCardBookable = (bool) ($selectedOccurrence['is_bookable'] ?? true);
+                            }
 
                             $occurrencePayload = [];
                             foreach ($occurrences as $occurrenceRow) {
@@ -308,6 +316,7 @@ if (empty($workshopSections)) {
                                     'fillPct' => (int) ($occurrenceRow['fill_pct'] ?? 0),
                                     'fillClass' => (string) ($occurrenceRow['fill_class'] ?? ''),
                                     'isGuaranteed' => (bool) ($occurrenceRow['is_guaranteed'] ?? false),
+                                    'isBookable' => (bool) ($occurrenceRow['is_bookable'] ?? true),
                                     'belowMin' => (bool) ($occurrenceRow['below_min'] ?? false),
                                     'aboveMin' => (bool) ($occurrenceRow['above_min'] ?? false),
                                     'detailUrl' => (string) ($occurrenceRow['detail_url'] ?? app_url('workshop', ['slug' => (string) $w['slug']])),
@@ -317,6 +326,7 @@ if (empty($workshopSections)) {
                             $defaultDetailUrl = !empty($occurrencePayload)
                                 ? (string) ($occurrencePayload[0]['detailUrl'] ?? app_url('workshop', ['slug' => (string) $w['slug']]))
                                 : app_url('workshop', ['slug' => (string) $w['slug']]);
+                            $detailButtonLabel = $isCardBookable ? 'Details &amp; Buchen &rarr;' : 'Details anzeigen &rarr;';
                         ?>
                         <article class="workshop-card <?= $w['featured'] ? 'featured' : '' ?> fade-in"
                                  data-audiences="<?= e($w['audiences']) ?>"
@@ -331,7 +341,9 @@ if (empty($workshopSections)) {
 
                             <div class="badge-row badge-row-card">
                                 <?php if ($isOpen): ?>
-                                    <?php if ($isGuaranteed): ?>
+                                    <?php if (!$isCardBookable): ?>
+                                        <span class="type-badge type-badge-unavailable js-status-badge"><span class="badge-dot"></span>Nicht buchbar</span>
+                                    <?php elseif ($isGuaranteed): ?>
                                         <span class="type-badge type-badge-confirmed js-status-badge"><span class="badge-dot"></span>Findet statt</span>
                                     <?php elseif ($minP > 0): ?>
                                         <span class="type-badge type-badge-open-pending js-status-badge"><span class="badge-dot"></span>Mindestanzahl offen</span>
@@ -339,7 +351,11 @@ if (empty($workshopSections)) {
                                         <span class="type-badge type-badge-open js-status-badge"><span class="badge-dot"></span>Anmeldung offen</span>
                                     <?php endif; ?>
                                 <?php else: ?>
-                                    <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
+                                    <?php if ($isWorkshopBookable): ?>
+                                        <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
+                                    <?php else: ?>
+                                        <span class="type-badge type-badge-unavailable"><span class="badge-dot"></span>Nicht buchbar</span>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                                 <div class="card-tag"><span class="card-tag-dot"></span><?= e($w['tag_label']) ?></div>
                             </div>
@@ -456,7 +472,7 @@ if (empty($workshopSections)) {
                                     <span class="aud-tag"><?= e($al) ?></span>
                                 <?php endforeach; ?>
                             </div>
-                            <a href="<?= e($defaultDetailUrl) ?>" class="btn-book js-occurrence-detail-link">Details &amp; Buchen &rarr;</a>
+                            <a href="<?= e($defaultDetailUrl) ?>" class="btn-book js-occurrence-detail-link"><?= $detailButtonLabel ?></a>
                         </article>
                         <?php endforeach; ?>
                     </div>
@@ -534,6 +550,8 @@ const initOccurrenceCards = () => {
         const seatsFill = card.querySelector('.js-occurrence-fill');
         const seatsText = card.querySelector('.js-occurrence-seats-text');
         const detailLink = card.querySelector('.js-occurrence-detail-link');
+        const detailLabelBookable = 'Details & Buchen \u2192';
+        const detailLabelClosed = 'Details anzeigen \u2192';
 
         const minParticipants = parseInt(card.dataset.minParticipants || '0', 10) || 0;
         const capacity = parseInt(card.dataset.capacity || '0', 10) || 0;
@@ -569,6 +587,7 @@ const initOccurrenceCards = () => {
             card.dataset.occurrenceIndex = String(index);
 
             const occurrence = payload[index] || {};
+            const occurrenceIsBookable = occurrence.isBookable !== false;
 
             if (dateEl) {
                 dateEl.textContent = String(occurrence.date || '');
@@ -580,11 +599,15 @@ const initOccurrenceCards = () => {
 
             if (detailLink && occurrence.detailUrl) {
                 detailLink.setAttribute('href', String(occurrence.detailUrl));
+                detailLink.textContent = occurrenceIsBookable ? detailLabelBookable : detailLabelClosed;
             }
 
             if (statusBadge) {
-                statusBadge.classList.remove('type-badge-confirmed', 'type-badge-open-pending', 'type-badge-open');
-                if (minParticipants > 0 && occurrence.isGuaranteed) {
+                statusBadge.classList.remove('type-badge-confirmed', 'type-badge-open-pending', 'type-badge-open', 'type-badge-unavailable');
+                if (!occurrenceIsBookable) {
+                    statusBadge.classList.add('type-badge-unavailable');
+                    statusBadge.innerHTML = '<span class="badge-dot"></span>Nicht buchbar';
+                } else if (minParticipants > 0 && occurrence.isGuaranteed) {
                     statusBadge.classList.add('type-badge-confirmed');
                     statusBadge.innerHTML = '<span class="badge-dot"></span>Findet statt';
                 } else if (minParticipants > 0) {
@@ -597,9 +620,11 @@ const initOccurrenceCards = () => {
             }
 
             if (minNoteText && minParticipants > 0) {
-                minNoteText.textContent = occurrence.isGuaranteed
-                    ? 'Mindestanzahl erreicht: findet statt.'
-                    : ('Findet statt ab ' + minParticipants + ' Teilnehmer:innen.');
+                minNoteText.textContent = !occurrenceIsBookable
+                    ? 'Dieser Termin ist nicht mehr buchbar.'
+                    : (occurrence.isGuaranteed
+                        ? 'Mindestanzahl erreicht: findet statt.'
+                        : ('Findet statt ab ' + minParticipants + ' Teilnehmer:innen.'));
             }
 
             if (seatsWrap) {

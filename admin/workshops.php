@@ -20,6 +20,7 @@ function ensure_workshop_archive_schema(SQLite3 $db): void {
         'archived_at' => 'DATETIME',
         'archived_by' => "TEXT NOT NULL DEFAULT ''",
         'archive_note' => "TEXT NOT NULL DEFAULT ''",
+        'bookable' => 'INTEGER NOT NULL DEFAULT 1',
     ];
 
     foreach ($cols as $name => $def) {
@@ -32,6 +33,18 @@ function ensure_workshop_archive_schema(SQLite3 $db): void {
 }
 
 ensure_workshop_archive_schema($db);
+
+function ensure_workshop_occurrence_bookable_schema(SQLite3 $db): void {
+    $res = $db->query('PRAGMA table_info(workshop_occurrences)');
+    while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+        if ((string) ($row['name'] ?? '') === 'bookable') {
+            return;
+        }
+    }
+    $db->exec('ALTER TABLE workshop_occurrences ADD COLUMN bookable INTEGER NOT NULL DEFAULT 1');
+}
+
+ensure_workshop_occurrence_bookable_schema($db);
 function add_cancellation_recipient(array &$map, string $email, string $name): void {
     $mail = trim($email);
     if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) {
@@ -305,15 +318,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_id'])) {
     redirect(admin_url('workshops'));
 }
 
+// Handle toggle bookable (only non-archived workshops)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_bookable_id'])) {
+    $toggleBookableId = max(0, (int) ($_POST['toggle_bookable_id'] ?? 0));
+    if ($toggleBookableId > 0) {
+        $stmt = $db->prepare('UPDATE workshops SET bookable = CASE WHEN COALESCE(bookable, 1) = 1 THEN 0 ELSE 1 END, updated_at = datetime("now") WHERE id = :id AND COALESCE(archived, 0) = 0');
+        $stmt->bindValue(':id', $toggleBookableId, SQLITE3_INTEGER);
+        $stmt->execute();
+        flash('success', 'Buchbarkeit aktualisiert.');
+    }
+    redirect(admin_url('workshops'));
+}
+
+// Handle toggle bookable for one workshop date
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_occurrence_bookable_id'])) {
+    $toggleOccurrenceBookableId = max(0, (int) ($_POST['toggle_occurrence_bookable_id'] ?? 0));
+    if ($toggleOccurrenceBookableId > 0) {
+        $stmt = $db->prepare('
+            UPDATE workshop_occurrences
+            SET
+                bookable = CASE WHEN COALESCE(bookable, 1) = 1 THEN 0 ELSE 1 END,
+                updated_at = datetime("now")
+            WHERE
+                id = :id
+                AND active = 1
+                AND workshop_id IN (
+                    SELECT id FROM workshops WHERE COALESCE(archived, 0) = 0
+                )
+        ');
+        $stmt->bindValue(':id', $toggleOccurrenceBookableId, SQLITE3_INTEGER);
+        $stmt->execute();
+        flash('success', 'Termin-Buchbarkeit aktualisiert.');
+    }
+    redirect(admin_url('workshops'));
+}
+
 // Fetch all workshops and split into active vs archived sections
 $result = $db->query('SELECT * FROM workshops ORDER BY COALESCE(archived, 0) ASC, sort_order ASC, id ASC');
 $activeWorkshops = [];
 $archivedWorkshops = [];
+$occurrenceRowsByWorkshop = [];
+
+$occurrenceResult = $db->query('
+    SELECT id, workshop_id, start_at, end_at, sort_order, active, COALESCE(bookable, 1) AS bookable
+    FROM workshop_occurrences
+    WHERE active = 1
+    ORDER BY workshop_id ASC, sort_order ASC, start_at ASC, id ASC
+');
+while ($occurrenceRow = $occurrenceResult->fetchArray(SQLITE3_ASSOC)) {
+    $wid = (int) ($occurrenceRow['workshop_id'] ?? 0);
+    if ($wid <= 0) {
+        continue;
+    }
+    if (!isset($occurrenceRowsByWorkshop[$wid])) {
+        $occurrenceRowsByWorkshop[$wid] = [];
+    }
+    $occurrenceRowsByWorkshop[$wid][] = $occurrenceRow;
+}
 
 $totalBookingStmt = $db->prepare('SELECT COUNT(*) AS cnt FROM bookings WHERE workshop_id = :wid');
 
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $wid = (int) ($row['id'] ?? 0);
+    $row['bookable'] = (int) ($row['bookable'] ?? 1);
+    $row['occurrences'] = $occurrenceRowsByWorkshop[$wid] ?? [];
+
+    if (($row['workshop_type'] ?? 'auf_anfrage') === 'open' && empty($row['occurrences']) && trim((string) ($row['event_date'] ?? '')) !== '') {
+        $row['occurrences'][] = [
+            'id' => 0,
+            'workshop_id' => $wid,
+            'start_at' => (string) ($row['event_date'] ?? ''),
+            'end_at' => (string) ($row['event_date_end'] ?? ''),
+            'sort_order' => 0,
+            'active' => 1,
+            'bookable' => (int) ($row['bookable'] ?? 1),
+        ];
+    }
 
     $row['booking_count'] = count_confirmed_bookings($db, $wid);
 
@@ -349,6 +429,37 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/style.css">
+    <style>
+        .workshop-main-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+        }
+        .workshop-occurrence-row td {
+            background: var(--surface-soft);
+            border-top: 1px dashed var(--border);
+            font-size: 0.86rem;
+        }
+        .workshop-occurrence-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.42rem;
+            color: var(--muted);
+        }
+        .workshop-occurrence-thread {
+            color: var(--dim);
+            font-weight: 700;
+            font-size: 0.76rem;
+            letter-spacing: 0.6px;
+        }
+        .workshop-occurrence-actions {
+            display: inline-flex;
+            gap: 0.45rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+    </style>
 </head>
 <body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
@@ -388,12 +499,20 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                     </thead>
                     <tbody>
                         <?php foreach ($activeWorkshops as $w): ?>
+                        <?php
+                            $workshopId = (int) ($w['id'] ?? 0);
+                            $isWorkshopBookable = ((int) ($w['bookable'] ?? 1) === 1);
+                            $occurrenceRows = array_values((array) ($w['occurrences'] ?? []));
+                            $showOccurrenceRows = count($occurrenceRows) > 1;
+                        ?>
                         <tr>
                             <td style="color:var(--text);">
-                                <?= e((string) ($w['title'] ?? '')) ?>
-                                <?php if ((int) ($w['featured'] ?? 0) === 1): ?>
-                                    <span style="font-size:0.65rem;background:var(--featured-pill-bg);color:var(--featured-pill-text);padding:2px 6px;border-radius:3px;margin-left:0.5rem;">Featured</span>
-                                <?php endif; ?>
+                                <span class="workshop-main-title">
+                                    <?= e((string) ($w['title'] ?? '')) ?>
+                                    <?php if ((int) ($w['featured'] ?? 0) === 1): ?>
+                                        <span style="font-size:0.65rem;background:var(--featured-pill-bg);color:var(--featured-pill-text);padding:2px 6px;border-radius:3px;">Featured</span>
+                                    <?php endif; ?>
+                                </span>
                             </td>
                             <td><?= e((string) ($w['tag_label'] ?? '')) ?></td>
                             <td><?= (int) ($w['capacity'] ?? 0) ?: '&infin;' ?></td>
@@ -403,6 +522,11 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                     <span class="status-badge status-confirmed">Aktiv</span>
                                 <?php else: ?>
                                     <span class="status-badge status-pending">Inaktiv</span>
+                                <?php endif; ?>
+                                <?php if ($isWorkshopBookable): ?>
+                                    <span class="status-badge status-confirmed">Buchbar</span>
+                                <?php else: ?>
+                                    <span class="status-badge status-pending">Nicht buchbar</span>
                                 <?php endif; ?>
                             </td>
                             <td><?= (int) ($w['sort_order'] ?? 0) ?></td>
@@ -417,6 +541,12 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                         <button type="submit" class="btn-admin"><?= ((int) ($w['active'] ?? 0) === 1) ? 'Deaktivieren' : 'Aktivieren' ?></button>
                                     </form>
 
+                                    <form method="POST" style="display:inline;">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="toggle_bookable_id" value="<?= (int) $w['id'] ?>">
+                                        <button type="submit" class="btn-admin"><?= $isWorkshopBookable ? 'Buchung sperren' : 'Buchung freigeben' ?></button>
+                                    </form>
+
                                     <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop wirklich archivieren? Bei bestaetigten Buchungen werden Stornomails versendet und Buchungen archiviert.')">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="archive_id" value="<?= (int) $w['id'] ?>">
@@ -425,6 +555,51 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                 </div>
                             </td>
                         </tr>
+                        <?php if ($showOccurrenceRows): ?>
+                            <?php foreach ($occurrenceRows as $occIdx => $occurrence): ?>
+                                <?php
+                                    $occurrenceId = (int) ($occurrence['id'] ?? 0);
+                                    $occurrenceBookableSelf = ((int) ($occurrence['bookable'] ?? 1) === 1);
+                                    $occurrenceBookable = $isWorkshopBookable && $occurrenceBookableSelf;
+                                    $occurrenceBooked = $occurrenceId > 0
+                                        ? count_confirmed_bookings($db, $workshopId, $occurrenceId)
+                                        : count_confirmed_bookings($db, $workshopId);
+                                ?>
+                                <tr class="workshop-occurrence-row">
+                                    <td>
+                                        <span class="workshop-occurrence-title">
+                                            <span class="workshop-occurrence-thread"><?= ($occIdx + 1 === count($occurrenceRows)) ? '&#9492;' : '&#9500;' ?></span>
+                                            Termin <?= ($occIdx + 1) ?>: <?= e(format_event_date((string) ($occurrence['start_at'] ?? ''), (string) ($occurrence['end_at'] ?? ''))) ?>
+                                        </span>
+                                    </td>
+                                    <td><?= e((string) ($w['tag_label'] ?? '')) ?></td>
+                                    <td><?= (int) ($w['capacity'] ?? 0) ?: '&infin;' ?></td>
+                                    <td><?= (int) $occurrenceBooked ?></td>
+                                    <td>
+                                        <?php if ($occurrenceBookable): ?>
+                                            <span class="status-badge status-confirmed">Buchbar</span>
+                                        <?php else: ?>
+                                            <span class="status-badge status-pending">Nicht buchbar</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?= (int) ($occurrence['sort_order'] ?? $occIdx) ?></td>
+                                    <td>
+                                        <div class="workshop-occurrence-actions">
+                                            <?php if ($occurrenceId > 0): ?>
+                                                <form method="POST" style="display:inline;">
+                                                    <?= csrf_field() ?>
+                                                    <input type="hidden" name="toggle_occurrence_bookable_id" value="<?= $occurrenceId ?>">
+                                                    <button type="submit" class="btn-admin"><?= $occurrenceBookableSelf ? 'Termin sperren' : 'Termin freigeben' ?></button>
+                                                </form>
+                                            <?php else: ?>
+                                                <span style="color:var(--dim);font-size:0.75rem;">Legacy-Termin</span>
+                                            <?php endif; ?>
+                                            <a href="<?= e(admin_url('workshop-edit', ['id' => $workshopId])) ?>" class="btn-admin">Bearbeiten</a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
