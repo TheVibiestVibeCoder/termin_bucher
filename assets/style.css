@@ -1901,52 +1901,55 @@ footer a:hover { color: var(--text); }
     }
 }
 
-/* ─── DETAIL PAGE: MOBILE COLLAPSIBLE DESCRIPTION ─── */
+/* ─── DETAIL PAGE: COLLAPSIBLE DESCRIPTION (ALL SIZES) ─── */
 .detail-desc-wrap {
     position: relative;
     margin-bottom: 2rem;
 }
 
-@media (max-width: 680px) {
-    .detail-desc-wrap:not(.expanded) .detail-desc-content {
-        max-height: 130px;
-        overflow: hidden;
-    }
-
-    .detail-desc-wrap:not(.expanded)::after {
-        content: '';
-        position: absolute;
-        bottom: 36px; left: 0; right: 0;
-        height: 64px;
-        background: linear-gradient(to bottom, transparent, var(--bg));
-        pointer-events: none;
-    }
-
-    .detail-desc-toggle {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        font-size: 0.82rem;
-        color: var(--muted);
-        background: var(--surface-soft);
-        border: 1px solid var(--border);
-        border-radius: 99px;
-        cursor: pointer;
-        padding: 6px 14px;
-        margin-top: 0.5rem;
-        transition: color 0.2s, background 0.2s;
-        font-family: var(--font-b);
-    }
-    .detail-desc-toggle:hover {
-        color: var(--text);
-        background: var(--surface-h);
-        border-color: var(--border-h);
-    }
-    .toggle-arrow { transition: transform 0.3s; }
+.detail-desc-wrap:not(.expanded) .detail-desc-content {
+    max-height: 130px;
+    overflow: hidden;
 }
 
-@media (min-width: 681px) {
-    .detail-desc-toggle { display: none; }
+.detail-desc-wrap:not(.expanded)::after {
+    content: '';
+    position: absolute;
+    bottom: 36px; left: 0; right: 0;
+    height: 64px;
+    background: linear-gradient(to bottom, transparent, var(--bg));
+    pointer-events: none;
+}
+
+.detail-desc-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.82rem;
+    color: var(--muted);
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    cursor: pointer;
+    padding: 6px 14px;
+    margin-top: 0.5rem;
+    transition: color 0.2s, background 0.2s;
+    font-family: var(--font-b);
+}
+
+.detail-desc-toggle:hover {
+    color: var(--text);
+    background: var(--surface-h);
+    border-color: var(--border-h);
+}
+
+.toggle-arrow {
+    display: inline-block;
+    transition: transform 0.3s;
+}
+
+.detail-desc-wrap.expanded .toggle-arrow {
+    transform: rotate(180deg);
 }
 
 /* ─── DETAIL PAGE: OVERFLOW PREVENTION ─── */

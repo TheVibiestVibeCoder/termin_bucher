@@ -1719,16 +1719,24 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
         }
     });
 })();
-// Mobile description expand/collapse
+// Description expand/collapse (all screen sizes)
 const descWrap = document.getElementById('detailDescWrap');
 const descToggle = document.getElementById('detailDescToggle');
 if (descToggle && descWrap) {
+    function updateDescToggle(expanded) {
+        descToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        descToggle.innerHTML = expanded
+            ? 'Weniger anzeigen <span class="toggle-arrow">&#8595;</span>'
+            : 'Vollstaendig lesen <span class="toggle-arrow">&#8595;</span>';
+    }
+
+    // Always start collapsed to declutter the detail page.
+    descWrap.classList.remove('expanded');
+    updateDescToggle(false);
+
     descToggle.addEventListener('click', () => {
         const expanded = descWrap.classList.toggle('expanded');
-        descToggle.setAttribute('aria-expanded', expanded);
-        descToggle.innerHTML = expanded
-            ? 'Weniger anzeigen <span class="toggle-arrow" style="transform:rotate(180deg);display:inline-block;">&#8595;</span>'
-            : 'Vollstaendig lesen <span class="toggle-arrow">&#8595;</span>';
+        updateDescToggle(expanded);
     });
 }
 </script>
