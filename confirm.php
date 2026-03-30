@@ -24,11 +24,17 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                 w.format,
                 w.tag_label,
                 w.workshop_type,
+                COALESCE(w.bookable, 1) AS workshop_bookable,
+                COALESCE(w.active, 1) AS workshop_active,
+                COALESCE(w.archived, 0) AS workshop_archived,
                 w.event_date,
                 w.event_date_end,
                 w.location,
                 w.price_netto,
                 w.price_currency,
+                o.id AS occurrence_row_id,
+                COALESCE(o.bookable, 1) AS occurrence_bookable,
+                COALESCE(o.active, 1) AS occurrence_active,
                 o.start_at AS occurrence_start_at,
                 o.end_at AS occurrence_end_at
             FROM bookings b
@@ -48,10 +54,25 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
             if ((int) $booking['confirmed'] === 1) {
                 $status = 'already';
             } else {
-                $created = strtotime((string) $booking['created_at']);
-                if ($created === false || time() - $created > 48 * 3600) {
-                    $status = 'expired';
-                    $expireStmt = $db->prepare("
+                $occurrenceId = (int) ($booking['occurrence_id'] ?? 0);
+                $occurrenceExists = $occurrenceId <= 0 || (int) ($booking['occurrence_row_id'] ?? 0) > 0;
+                $workshopIsBookable = (int) ($booking['workshop_bookable'] ?? 1) === 1
+                    && (int) ($booking['workshop_active'] ?? 1) === 1
+                    && (int) ($booking['workshop_archived'] ?? 0) === 0;
+                $occurrenceIsBookable = $occurrenceId <= 0
+                    || (
+                        $occurrenceExists
+                        && (int) ($booking['occurrence_bookable'] ?? 1) === 1
+                        && (int) ($booking['occurrence_active'] ?? 1) === 1
+                    );
+
+                if (!$workshopIsBookable || !$occurrenceIsBookable) {
+                    $status = 'closed';
+                } else {
+                    $created = strtotime((string) $booking['created_at']);
+                    if ($created === false || time() - $created > 48 * 3600) {
+                        $status = 'expired';
+                        $expireStmt = $db->prepare("
                         UPDATE bookings
                         SET
                             archived = 1,
@@ -70,7 +91,7 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                         $expireStmt->execute();
                     }
                 } else {
-                    $booked = count_confirmed_bookings($db, (int) $booking['workshop_id'], ((int) ($booking['occurrence_id'] ?? 0)) > 0 ? (int) $booking['occurrence_id'] : null);
+                    $booked = count_confirmed_bookings($db, (int) $booking['workshop_id'], $occurrenceId > 0 ? $occurrenceId : null);
                     $capacity = (int) $booking['workshop_capacity'];
 
                     if ($capacity > 0 && ($booked + (int) $booking['participants']) > $capacity) {
@@ -87,6 +108,7 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                             $confirmedBooking = $booking;
                         }
                     }
+                }
                 }
             }
         }
@@ -146,6 +168,7 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
 $messages = [
     'confirmed' => ['Buchung bestätigt!', 'Ihre Buchung wurde erfolgreich bestätigt. Wir werden uns in Kürze mit weiteren Details bei Ihnen melden.', 'check'],
     'already'   => ['Bereits bestätigt', 'Diese Buchung wurde bereits bestätigt. Sie brauchen nichts weiter zu tun.', 'info'],
+    'closed'    => ['Nicht mehr buchbar', 'Dieser Workshop oder Termin ist nicht mehr buchbar. Bitte kontaktieren Sie uns für Alternativen.', 'alert'],
     'expired'   => ['Link abgelaufen', 'Dieser Bestätigungslink ist leider abgelaufen (48 Stunden). Bitte buchen Sie erneut.', 'clock'],
     'full'      => ['Workshop ausgebucht', 'Leider ist der Workshop inzwischen ausgebucht. Bitte kontaktieren Sie uns für Alternativen.', 'alert'],
     'invalid'   => ['Ungültiger Link', 'Dieser Bestätigungslink ist ungültig. Bitte überprüfen Sie die URL aus Ihrer E-Mail.', 'alert'],
@@ -171,7 +194,7 @@ $msg = $messages[$status];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($msg[0]) ?> – <?= e(SITE_NAME) ?></title>
+    <title><?= e($msg[0]) ?> - <?= e(SITE_NAME) ?></title>
     <script>
     document.documentElement.classList.add('js');
     (function () {
