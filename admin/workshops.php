@@ -132,7 +132,7 @@ function archive_open_workshop_bookings(SQLite3 $db, int $workshopId, string $ar
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
-    flash('error', 'Ungueltige Sitzung.');
+    flash('error', 'Ungültige Sitzung.');
     redirect(admin_url('workshops'));
 }
 
@@ -264,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restore_id'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hard_delete_id'])) {
     $hardDeleteId = max(0, (int) ($_POST['hard_delete_id'] ?? 0));
     if ($hardDeleteId <= 0) {
-        flash('error', 'Workshop konnte nicht endgueltig geloescht werden.');
+        flash('error', 'Workshop konnte nicht endgültig gelöscht werden.');
         redirect(admin_url('workshops'));
     }
 
@@ -277,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hard_delete_id'])) {
         redirect(admin_url('workshops'));
     }
     if ((int) ($workshopRow['archived'] ?? 0) !== 1) {
-        flash('error', 'Nur archivierte Workshops koennen endgueltig geloescht werden.');
+        flash('error', 'Nur archivierte Workshops können endgültig gelöscht werden.');
         redirect(admin_url('workshops'));
     }
 
@@ -295,12 +295,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hard_delete_id'])) {
 
         $db->exec('COMMIT');
         $inTransaction = false;
-        flash('success', 'Workshop endgueltig geloescht.');
+        flash('success', 'Workshop endgültig gelöscht.');
     } catch (Throwable $e) {
         if ($inTransaction) {
             $db->exec('ROLLBACK');
         }
-        flash('error', 'Workshop konnte nicht endgueltig geloescht werden (z. B. wegen bestehender Rechnungen).');
+        flash('error', 'Workshop konnte nicht endgültig gelöscht werden (z. B. wegen bestehender Rechnungen).');
     }
 
     redirect(admin_url('workshops'));
@@ -430,6 +430,9 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/style.css">
     <style>
+        :root {
+            --workshop-action-height: 36px;
+        }
         .workshop-main-title {
             display: inline-flex;
             align-items: center;
@@ -440,6 +443,9 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             background: var(--surface-soft);
             border-top: 1px dashed var(--border);
             font-size: 0.86rem;
+        }
+        .workshop-occurrence-row td:first-child {
+            padding-left: 2.6rem;
         }
         .workshop-occurrence-title {
             display: inline-flex;
@@ -452,12 +458,95 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             font-weight: 700;
             font-size: 0.76rem;
             letter-spacing: 0.6px;
+            width: 1.1rem;
+            flex: 0 0 1.1rem;
+            text-align: center;
         }
         .workshop-occurrence-actions {
             display: inline-flex;
             gap: 0.45rem;
             align-items: center;
             flex-wrap: wrap;
+        }
+        .admin-actions form,
+        .workshop-occurrence-actions form {
+            margin: 0;
+        }
+        .admin-actions .btn-admin,
+        .workshop-occurrence-actions .btn-admin {
+            min-height: var(--workshop-action-height);
+            height: var(--workshop-action-height);
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        .admin-switch-form {
+            display: inline-flex;
+            align-items: center;
+            min-height: var(--workshop-action-height);
+        }
+        .admin-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.46rem;
+            min-height: var(--workshop-action-height);
+            padding: 0 0.6rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--btn-glass);
+            cursor: pointer;
+            user-select: none;
+        }
+        .admin-switch-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            padding: 0;
+            border: 0;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        .admin-switch-track {
+            width: 2.05rem;
+            height: 1.16rem;
+            border-radius: 999px;
+            background: rgba(231, 76, 60, 0.25);
+            border: 1px solid rgba(231, 76, 60, 0.38);
+            position: relative;
+            transition: background-color 0.22s ease, border-color 0.22s ease;
+        }
+        .admin-switch-thumb {
+            position: absolute;
+            top: 50%;
+            left: 2px;
+            width: 0.82rem;
+            height: 0.82rem;
+            border-radius: 999px;
+            background: #fff;
+            transform: translateY(-50%);
+            transition: left 0.22s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+        }
+        .admin-switch-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.75px;
+            color: var(--muted);
+            font-weight: 600;
+            line-height: 1;
+        }
+        .admin-switch-input:checked + .admin-switch-track {
+            background: rgba(46, 204, 113, 0.3);
+            border-color: rgba(46, 204, 113, 0.44);
+        }
+        .admin-switch-input:checked + .admin-switch-track .admin-switch-thumb {
+            left: calc(100% - 0.82rem - 2px);
+        }
+        .admin-switch-input:focus-visible + .admin-switch-track {
+            outline: 2px solid var(--border-h);
+            outline-offset: 2px;
         }
     </style>
 </head>
@@ -535,19 +624,28 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                     <a href="<?= e(admin_url('workshop-edit', ['id' => (int) $w['id']])) ?>" class="btn-admin">Bearbeiten</a>
                                     <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $w['id']])) ?>" class="btn-admin">Buchungen</a>
 
-                                    <form method="POST" style="display:inline;">
+                                    <form method="POST">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="toggle_id" value="<?= (int) $w['id'] ?>">
                                         <button type="submit" class="btn-admin"><?= ((int) ($w['active'] ?? 0) === 1) ? 'Deaktivieren' : 'Aktivieren' ?></button>
                                     </form>
 
-                                    <form method="POST" style="display:inline;">
+                                    <form method="POST" class="admin-switch-form">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="toggle_bookable_id" value="<?= (int) $w['id'] ?>">
-                                        <button type="submit" class="btn-admin"><?= $isWorkshopBookable ? 'Buchung sperren' : 'Buchung freigeben' ?></button>
+                                        <label class="admin-switch">
+                                            <input
+                                                type="checkbox"
+                                                class="admin-switch-input"
+                                                <?= $isWorkshopBookable ? 'checked' : '' ?>
+                                                aria-label="Workshop buchbar umschalten"
+                                                onchange="this.form.submit()">
+                                            <span class="admin-switch-track" aria-hidden="true"><span class="admin-switch-thumb"></span></span>
+                                            <span class="admin-switch-label">Buchbar</span>
+                                        </label>
                                     </form>
 
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop wirklich archivieren? Bei bestaetigten Buchungen werden Stornomails versendet und Buchungen archiviert.')">
+                                    <form method="POST" onsubmit="return confirm('Workshop wirklich archivieren? Bei bestätigten Buchungen werden Stornomails versendet und Buchungen archiviert.')">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="archive_id" value="<?= (int) $w['id'] ?>">
                                         <button type="submit" class="btn-admin btn-danger">Archivieren</button>
@@ -586,10 +684,19 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                     <td>
                                         <div class="workshop-occurrence-actions">
                                             <?php if ($occurrenceId > 0): ?>
-                                                <form method="POST" style="display:inline;">
+                                                <form method="POST" class="admin-switch-form">
                                                     <?= csrf_field() ?>
                                                     <input type="hidden" name="toggle_occurrence_bookable_id" value="<?= $occurrenceId ?>">
-                                                    <button type="submit" class="btn-admin"><?= $occurrenceBookableSelf ? 'Termin sperren' : 'Termin freigeben' ?></button>
+                                                    <label class="admin-switch">
+                                                        <input
+                                                            type="checkbox"
+                                                            class="admin-switch-input"
+                                                            <?= $occurrenceBookableSelf ? 'checked' : '' ?>
+                                                            aria-label="Termin buchbar umschalten"
+                                                            onchange="this.form.submit()">
+                                                        <span class="admin-switch-track" aria-hidden="true"><span class="admin-switch-thumb"></span></span>
+                                                        <span class="admin-switch-label">Termin</span>
+                                                    </label>
                                                 </form>
                                             <?php else: ?>
                                                 <span style="color:var(--dim);font-size:0.75rem;">Legacy-Termin</span>
@@ -634,16 +741,16 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                             <td><?= e(format_admin_datetime((string) ($w['archived_at'] ?? ''))) ?></td>
                             <td>
                                 <div class="admin-actions">
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop reaktivieren?')">
+                                    <form method="POST" onsubmit="return confirm('Workshop reaktivieren?')">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="restore_id" value="<?= (int) $w['id'] ?>">
                                         <button type="submit" class="btn-admin btn-success">Reaktivieren</button>
                                     </form>
 
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop endgueltig loeschen? Diese Aktion ist nicht rueckgaengig und loescht den Datensatz komplett.')">
+                                    <form method="POST" onsubmit="return confirm('Workshop endgültig löschen? Diese Aktion ist nicht rückgängig und löscht den Datensatz komplett.')">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="hard_delete_id" value="<?= (int) $w['id'] ?>">
-                                        <button type="submit" class="btn-admin btn-danger">Endgueltig loeschen</button>
+                                        <button type="submit" class="btn-admin btn-danger">Endgültig löschen</button>
                                     </form>
                                 </div>
                             </td>

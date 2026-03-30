@@ -356,9 +356,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         }
 
         if (!$hasOccurrenceMatch) {
-            $errors[] = 'Der ausgewaehlte Termin ist nicht mehr verfuegbar.';
+            $errors[] = 'Der ausgewählte Termin ist nicht mehr verfügbar.';
         } elseif (!((bool) ($matchedOccurrence['is_bookable'] ?? true))) {
-            $errors[] = 'Der ausgewaehlte Termin ist nicht mehr buchbar.';
+            $errors[] = 'Der ausgewählte Termin ist nicht mehr buchbar.';
         }
     }
 
@@ -403,7 +403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         $currentSpotsLeft = max(0, $capacity - $currentBooked);
 
         if ($formData['participants'] > $currentSpotsLeft) {
-            $errors[] = "Leider sind nur noch {$currentSpotsLeft} Pl�tze verf�gbar.";
+            $errors[] = "Leider sind nur noch {$currentSpotsLeft} Plätze verfügbar.";
         }
     }
 
@@ -799,13 +799,13 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                                 <?php elseif ($capacity > 0): ?>
                                     <?= (int) ($occurrenceRow['booked'] ?? 0) ?> / <?= $capacity ?> gebucht
                                 <?php else: ?>
-                                    Offen fuer Buchung
+                                    Offen für Buchung
                                 <?php endif; ?>
                             </div>
                         </article>
                         <?php endforeach; ?>
                     </div>
-                    <a href="<?= e($nextOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-next" data-detail-occurrence-next aria-label="Naechster Termin">
+                    <a href="<?= e($nextOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-next" data-detail-occurrence-next aria-label="Nächster Termin">
                         &#10095;
                     </a>
                 </div>
@@ -948,7 +948,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
             <div class="booking-box">
                 <?php if (!$isSelectionBookable): ?>
                     <h3>Nicht buchbar</h3>
-                    <p style="color:var(--muted);line-height:1.7;">Dieser Workshop ist aktuell nicht mehr buchbar. Kontaktieren Sie uns gern fuer Rueckfragen oder Alternativtermine.</p>
+                    <p style="color:var(--muted);line-height:1.7;">Dieser Workshop ist aktuell nicht mehr buchbar. Kontaktieren Sie uns gern für Rückfragen oder Alternativtermine.</p>
                     <a href="<?= e(app_url('kontakt')) ?>" class="btn-submit" style="margin-top:1.5rem;display:block;text-align:center;text-decoration:none;">Kontakt aufnehmen</a>
                 <?php elseif ($isFull): ?>
                     <h3>Ausgebucht</h3>
@@ -981,8 +981,8 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         <?= csrf_field() ?>
                         <input type="hidden" name="book" value="1">
 
-                        <div class="flash flash-error" id="detailBookingUnavailable" hidden style="margin-bottom:0.9rem;">Dieser Termin ist aktuell ausgebucht. Bitte waehlen Sie einen anderen Termin.</div>
-                        <div class="flash flash-error" id="detailBookingClosed" hidden style="margin-bottom:0.9rem;">Dieser Termin ist nicht mehr buchbar. Bitte waehlen Sie einen anderen Termin.</div>
+                        <div class="flash flash-error" id="detailBookingUnavailable" hidden style="margin-bottom:0.9rem;">Dieser Termin ist aktuell ausgebucht. Bitte wählen Sie einen anderen Termin.</div>
+                        <div class="flash flash-error" id="detailBookingClosed" hidden style="margin-bottom:0.9rem;">Dieser Termin ist nicht mehr buchbar. Bitte wählen Sie einen anderen Termin.</div>
 
                         <div class="form-group">
                             <label for="name">Name *</label>
@@ -1858,5 +1858,4 @@ if (descToggle && descWrap && descContent) {
 
 </body>
 </html>
-
 
