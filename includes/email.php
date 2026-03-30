@@ -111,6 +111,26 @@ function build_plain_text_email_body(string $htmlBody): string {
     return html_entity_decode($textBody, ENT_QUOTES, 'UTF-8');
 }
 
+function encode_utf8_mail_part(string $body): array {
+    $normalized = str_replace(["\r\n", "\r"], "\n", $body);
+    $normalized = str_replace("\n", "\r\n", $normalized);
+
+    if (function_exists('quoted_printable_encode')) {
+        $encoded = quoted_printable_encode($normalized);
+        if (is_string($encoded) && $encoded !== '') {
+            return [
+                'encoding' => 'quoted-printable',
+                'content' => $encoded,
+            ];
+        }
+    }
+
+    return [
+        'encoding' => 'base64',
+        'content' => rtrim(chunk_split(base64_encode($normalized), 76, "\r\n"), "\r\n"),
+    ];
+}
+
 function encode_mail_subject_and_from(string $subject, string $fromName): array {
     $subjectHeader = $subject;
     $fromNameHeader = $fromName;
@@ -430,6 +450,8 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
     $body = '';
     $sent = false;
     $errorMessage = '';
+    $encodedTextPart = encode_utf8_mail_part($textBody);
+    $encodedHtmlPart = encode_utf8_mail_part($htmlBody);
 
     try {
         if (empty($normalizedAttachments)) {
@@ -438,12 +460,12 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
 
             $body  = "--{$boundary}\r\n";
             $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
-            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-            $body .= $textBody . "\r\n\r\n";
+            $body .= "Content-Transfer-Encoding: " . $encodedTextPart['encoding'] . "\r\n\r\n";
+            $body .= $encodedTextPart['content'] . "\r\n\r\n";
             $body .= "--{$boundary}\r\n";
             $body .= "Content-Type: text/html; charset=UTF-8\r\n";
-            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-            $body .= $htmlBody . "\r\n\r\n";
+            $body .= "Content-Transfer-Encoding: " . $encodedHtmlPart['encoding'] . "\r\n\r\n";
+            $body .= $encodedHtmlPart['content'] . "\r\n\r\n";
             $body .= "--{$boundary}--\r\n";
         } else {
             $mixedBoundary = 'mix_' . bin2hex(random_bytes(12));
@@ -456,13 +478,13 @@ function send_email_with_attachments(string $to, string $subject, string $htmlBo
 
             $body .= "--{$altBoundary}\r\n";
             $body .= "Content-Type: text/plain; charset=UTF-8\r\n";
-            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-            $body .= $textBody . "\r\n\r\n";
+            $body .= "Content-Transfer-Encoding: " . $encodedTextPart['encoding'] . "\r\n\r\n";
+            $body .= $encodedTextPart['content'] . "\r\n\r\n";
 
             $body .= "--{$altBoundary}\r\n";
             $body .= "Content-Type: text/html; charset=UTF-8\r\n";
-            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-            $body .= $htmlBody . "\r\n\r\n";
+            $body .= "Content-Transfer-Encoding: " . $encodedHtmlPart['encoding'] . "\r\n\r\n";
+            $body .= $encodedHtmlPart['content'] . "\r\n\r\n";
             $body .= "--{$altBoundary}--\r\n";
 
             foreach ($normalizedAttachments as $attachment) {
@@ -1209,14 +1231,26 @@ function format_rechnung_amount_text(float $amount): string {
     return $prefix . 'EUR ' . number_format(abs($amount), 2, ',', '.');
 }
 
-function pdf_escape_win_ansi_text(string $text): string {
-    $converted = $text;
+function convert_utf8_to_windows_1252(string $text): string {
     if (function_exists('iconv')) {
         $iconvConverted = @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text);
         if (is_string($iconvConverted) && $iconvConverted !== '') {
-            $converted = $iconvConverted;
+            return $iconvConverted;
         }
     }
+
+    if (function_exists('mb_convert_encoding')) {
+        $mbConverted = @mb_convert_encoding($text, 'Windows-1252', 'UTF-8');
+        if (is_string($mbConverted) && $mbConverted !== '') {
+            return $mbConverted;
+        }
+    }
+
+    return $text;
+}
+
+function pdf_escape_win_ansi_text(string $text): string {
+    $converted = convert_utf8_to_windows_1252($text);
 
     $converted = str_replace(["\\", "(", ")"], ["\\\\", "\\(", "\\)"], $converted);
     $converted = str_replace(["\r", "\n"], '', $converted);
@@ -1300,13 +1334,7 @@ function pdf_rgb_hex(string $hex): array {
 }
 
 function pdf_text_width_estimate(string $text, float $fontSize, string $font = 'F1'): float {
-    $measure = $text;
-    if (function_exists('iconv')) {
-        $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text);
-        if (is_string($converted) && $converted !== '') {
-            $measure = $converted;
-        }
-    }
+    $measure = convert_utf8_to_windows_1252($text);
 
     $len = max(1, strlen($measure));
     $factor = 0.52;
@@ -1628,7 +1656,7 @@ function build_rechnung_pdf(array $d, array $lineItems, float $zwischensumme, fl
     $displayItems = $lineItems;
     if (count($displayItems) > 12) {
         $displayItems = array_slice($displayItems, 0, 11);
-        $displayItems[] = ['label' => 'Weitere Positionen gekuerzt', 'amount' => 0.0];
+        $displayItems[] = ['label' => 'Weitere Positionen gekürzt', 'amount' => 0.0];
     }
 
     $tableX = $innerX;
@@ -1696,12 +1724,31 @@ function build_rechnung_pdf(array $d, array $lineItems, float $zwischensumme, fl
 
     $cursorTop += $tableHeight + 16.0;
 
-    $paymentH = 76.0;
+    $invoiceReferenceRaw = trim((string) ($d['rechnungs_nr'] ?? ''));
+    if ($invoiceReferenceRaw === '') {
+        $invoiceReferenceRaw = '-';
+    }
+    $paymentReferenceLine = 'Wichtiger Hinweis: Bitte im Verwendungszweck die Rechnungsnummer "' . $invoiceReferenceRaw . '" angeben.';
+
+    $paymentH = 94.0;
     pdf_add_rect($stream, $pageHeight, $innerX, $cursorTop, $innerW, $paymentH, $cSoft, $cBorder, 0.7);
     pdf_add_text($stream, $pageHeight, $innerX + 12.0, $cursorTop + 17.0, 'Zahlungsinformation', 'F2', 9.0, $cDim);
     pdf_add_text($stream, $pageHeight, $innerX + 12.0, $cursorTop + 33.0, 'Bitte überweisen Sie binnen 14 Tagen ab Rechnungsdatum.', 'F1', 10.0, $cMuted);
-    pdf_add_text($stream, $pageHeight, $innerX + 12.0, $cursorTop + 49.0, 'Disinfo Combat GmbH  |  IBAN: AT39 2011 1844 5223 9900', 'F1', 10.0, $cText);
-    pdf_add_text($stream, $pageHeight, $innerX + 12.0, $cursorTop + 63.0, 'BIC: GIBAATWWXXX', 'F1', 10.0, $cText);
+    $paymentBodyTop = pdf_add_wrapped_text(
+        $stream,
+        $pageHeight,
+        $innerX + 12.0,
+        $cursorTop + 47.0,
+        $paymentReferenceLine,
+        84,
+        11.0,
+        'F1',
+        9.4,
+        $cMuted,
+        2
+    ) + 3.0;
+    pdf_add_text($stream, $pageHeight, $innerX + 12.0, $paymentBodyTop, 'Disinfo Combat GmbH  |  IBAN: AT39 2011 1844 5223 9900', 'F1', 10.0, $cText);
+    pdf_add_text($stream, $pageHeight, $innerX + 12.0, $paymentBodyTop + 14.0, 'BIC: GIBAATWWXXX', 'F1', 10.0, $cText);
 
     $cursorTop += $paymentH + 18.0;
 
@@ -1755,7 +1802,7 @@ function build_rechnung_pdf(array $d, array $lineItems, float $zwischensumme, fl
 }
 function send_rechnung_email(string $to, array $d): bool {
     $months = [
-        '01' => 'Januar',  '02' => 'Februar', '03' => 'Maerz',     '04' => 'April',
+        '01' => 'Januar',  '02' => 'Februar', '03' => 'März',      '04' => 'April',
         '05' => 'Mai',     '06' => 'Juni',    '07' => 'Juli',      '08' => 'August',
         '09' => 'September','10' => 'Oktober','11' => 'November',  '12' => 'Dezember',
     ];
@@ -1806,6 +1853,10 @@ function send_rechnung_email(string $to, array $d): bool {
 
     $ust = $zwischensumme * 0.20;
     $summe = $zwischensumme + $ust;
+    $invoiceReferenceRaw = trim((string) ($d['rechnungs_nr'] ?? ''));
+    if ($invoiceReferenceRaw === '') {
+        $invoiceReferenceRaw = '-';
+    }
 
     $row = fn(string $label, string $amount, bool $bold = false, string $topBorder = '', string $fs = '14px'): string =>
         '<tr>'
@@ -1846,7 +1897,8 @@ function send_rechnung_email(string $to, array $d): bool {
     . $row('SUMME', format_rechnung_amount_html($summe), true, '2px solid #000', '16px') . '
   </table>
 
-  <p style="margin:32px 0 6px 0;">Wir bitten um Ueberweisung auf das untenstehende Konto binnen 14 Tagen ab Rechnungsdatum:</p>
+  <p style="margin:32px 0 6px 0;">Wir bitten um Überweisung auf das untenstehende Konto binnen 14 Tagen ab Rechnungsdatum:</p>
+  <p style="margin:0 0 10px 0;"><strong>Wichtiger Hinweis:</strong> Bitte geben Sie im Verwendungszweck zwingend die Rechnungsnummer "' . e($invoiceReferenceRaw) . '" an.</p>
   <div style="background:#f4f4f4;padding:16px 20px;border-radius:4px;margin:0 0 28px 0;">
     <strong>Disinfo Combat GmbH</strong><br>
     IBAN: AT39 2011 1844 5223 9900<br>
