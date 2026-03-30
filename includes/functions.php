@@ -319,11 +319,15 @@ function rate_limit_db_check(string $key, string $clientId, int $maxPerMinute): 
 
     $now = time();
     $windowStart = $now - 60;
+    $cleanupCutoff = $now - 3600;
 
     try {
-        $cleanup = $db->prepare('DELETE FROM request_rate_limits WHERE window_start <= :cutoff');
-        $cleanup->bindValue(':cutoff', $windowStart, SQLITE3_INTEGER);
-        $cleanup->execute();
+        // Avoid an extra write on every request; periodic cleanup is enough.
+        if (mt_rand(1, 25) === 1) {
+            $cleanup = $db->prepare('DELETE FROM request_rate_limits WHERE window_start <= :cutoff');
+            $cleanup->bindValue(':cutoff', $cleanupCutoff, SQLITE3_INTEGER);
+            $cleanup->execute();
+        }
 
         $select = $db->prepare('SELECT window_start, hits FROM request_rate_limits WHERE rl_key = :k AND client_id = :c LIMIT 1');
         $select->bindValue(':k', $key, SQLITE3_TEXT);

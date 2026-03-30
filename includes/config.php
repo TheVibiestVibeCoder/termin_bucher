@@ -6,13 +6,48 @@
 
 // ── Parse .env ──────────────────────────────────────────────────────────────
 $envFile = __DIR__ . '/../.env';
+$parseEnvValue = static function (string $rawValue): string {
+    $value = trim($rawValue);
+    if ($value === '') {
+        return '';
+    }
+
+    $firstChar = $value[0];
+    $isQuoted = ($firstChar === '"' || $firstChar === "'") && str_ends_with($value, $firstChar);
+    if (!$isQuoted) {
+        return $value;
+    }
+
+    $inner = substr($value, 1, -1);
+    if ($firstChar === "'") {
+        return $inner;
+    }
+
+    return strtr($inner, [
+        '\\n' => "\n",
+        '\\r' => "\r",
+        '\\t' => "\t",
+        '\\"' => '"',
+        '\\\\' => '\\',
+    ]);
+};
+
 if (file_exists($envFile)) {
     foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
         $line = trim($line);
+        if (str_starts_with($line, "\xEF\xBB\xBF")) {
+            $line = substr($line, 3);
+        }
         if ($line === '' || $line[0] === '#') continue;
+        if (str_starts_with($line, 'export ')) {
+            $line = trim(substr($line, 7));
+        }
         if (strpos($line, '=') === false) continue;
         [$key, $val] = array_map('trim', explode('=', $line, 2));
-        $_ENV[$key] = $val;
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $key)) {
+            continue;
+        }
+        $_ENV[$key] = $parseEnvValue($val);
     }
 }
 

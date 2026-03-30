@@ -6,6 +6,7 @@ archive_expired_unconfirmed_bookings($db, 48);
 $bookedByWorkshop = [];
 $bookedByOccurrence = [];
 $legacyBookedByWorkshop = [];
+$occurrencesByWorkshop = [];
 $bookedRes = $db->query('SELECT workshop_id, occurrence_id, COALESCE(SUM(participants), 0) AS booked FROM bookings WHERE confirmed = 1 AND COALESCE(archived, 0) = 0 GROUP BY workshop_id, occurrence_id');
 while ($row = $bookedRes->fetchArray(SQLITE3_ASSOC)) {
     $workshopId = (int) ($row['workshop_id'] ?? 0);
@@ -25,6 +26,15 @@ while ($row = $bookedRes->fetchArray(SQLITE3_ASSOC)) {
     }
 }
 
+$occurrencesRes = $db->query('SELECT * FROM workshop_occurrences WHERE active = 1 ORDER BY workshop_id ASC, sort_order ASC, start_at ASC, id ASC');
+while ($occurrenceRow = $occurrencesRes->fetchArray(SQLITE3_ASSOC)) {
+    $workshopId = (int) ($occurrenceRow['workshop_id'] ?? 0);
+    if ($workshopId <= 0) {
+        continue;
+    }
+    $occurrencesByWorkshop[$workshopId][] = $occurrenceRow;
+}
+
 $result = $db->query('SELECT * FROM workshops WHERE active = 1 AND COALESCE(archived, 0) = 0 ORDER BY sort_order ASC, id ASC');
 $workshops = [];
 $workshopsById = [];
@@ -35,7 +45,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
 
     $isOpenWorkshop = (($row['workshop_type'] ?? 'auf_anfrage') === 'open');
     if ($isOpenWorkshop) {
-        $occRows = get_workshop_occurrences($db, $workshopId, true);
+        $occRows = $occurrencesByWorkshop[$workshopId] ?? [];
         if (empty($occRows) && trim((string) ($row['event_date'] ?? '')) !== '') {
             $occRows[] = [
                 'id' => 0,
