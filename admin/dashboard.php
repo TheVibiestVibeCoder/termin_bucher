@@ -46,6 +46,7 @@ $recentResult = $db->query('
         b.*,
         w.id AS workshop_id,
         w.title AS workshop_title,
+        w.workshop_type,
         w.price_netto,
         w.price_currency,
         o.start_at AS occurrence_start_at,
@@ -83,6 +84,39 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/style.css">
+    <style>
+        .booking-type-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 108px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            font-weight: 600;
+            line-height: 1;
+            border: 1px solid transparent;
+            margin-top: 0.28rem;
+        }
+        .booking-type-badge-request {
+            background: rgba(245, 166, 35, 0.12);
+            border-color: rgba(245, 166, 35, 0.36);
+            color: #f5c26b;
+        }
+        .booking-type-badge-fixed {
+            background: rgba(46, 204, 113, 0.12);
+            border-color: rgba(46, 204, 113, 0.34);
+            color: #63d79a;
+        }
+        .dashboard-booking-row-on-request td {
+            background: linear-gradient(90deg, rgba(245, 166, 35, 0.08), transparent 42%);
+        }
+        html[data-theme="light"] .dashboard-booking-row-on-request td {
+            background: linear-gradient(90deg, rgba(245, 166, 35, 0.14), transparent 45%);
+        }
+    </style>
 </head>
 <body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
@@ -197,6 +231,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                 </thead>
                 <tbody>
                     <?php foreach ($recentBookings as $b):
+                        $isOnRequestBooking = (($b['workshop_type'] ?? 'open') === 'auf_anfrage');
                         if ((float) $b['subtotal_netto'] > 0 || (float) $b['total_netto'] > 0 || (float) $b['discount_amount'] > 0) {
                             $bRev = (float) $b['total_netto'];
                         } elseif ((float) $b['price_per_person_netto'] > 0) {
@@ -210,13 +245,18 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                             $bookingFilterValue .= ':' . (int) $b['occurrence_id'];
                         }
                     ?>
-                    <tr>
+                    <tr class="<?= $isOnRequestBooking ? 'dashboard-booking-row-on-request' : '' ?>">
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><?= e($b['email']) ?></td>
                         <td>
                             <a href="<?= e(admin_url('bookings', ['workshop_id' => $bookingFilterValue])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
                                 <?= e($b['workshop_title']) ?>
                             </a>
+                            <?php if ($isOnRequestBooking): ?>
+                                <div><span class="booking-type-badge booking-type-badge-request">Auf Anfrage</span></div>
+                            <?php else: ?>
+                                <div><span class="booking-type-badge booking-type-badge-fixed">Terminiert</span></div>
+                            <?php endif; ?>
                             <?php if (!empty($b['occurrence_start_at'])): ?>
                                 <div style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;"><?= e(format_event_date((string) ($b['occurrence_start_at'] ?? ''), (string) ($b['occurrence_end_at'] ?? ''))) ?></div>
                             <?php endif; ?>

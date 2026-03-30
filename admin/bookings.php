@@ -611,6 +611,7 @@ $sql = '
         b.*,
         w.title AS workshop_title,
         w.slug AS workshop_slug,
+        w.workshop_type,
         w.price_currency AS workshop_currency,
         o.start_at AS occurrence_start_at,
         o.end_at AS occurrence_end_at
@@ -689,9 +690,10 @@ while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
     }
 
     if (!$isOpenWorkshop) {
+        $label = $title . ' · Auf Anfrage';
         $allWorkshopFilters[] = [
             'value' => (string) $wid,
-            'label' => $title,
+            'label' => $label,
         ];
         continue;
     }
@@ -823,6 +825,36 @@ if ($workshop && !$isArchiveView) {
     
         .booking-filter-bar {
             margin-bottom: 1.5rem;
+        }
+        .booking-type-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 108px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            font-weight: 600;
+            line-height: 1;
+            border: 1px solid transparent;
+        }
+        .booking-type-badge-request {
+            background: rgba(245, 166, 35, 0.12);
+            border-color: rgba(245, 166, 35, 0.36);
+            color: #f5c26b;
+        }
+        .booking-type-badge-fixed {
+            background: rgba(46, 204, 113, 0.12);
+            border-color: rgba(46, 204, 113, 0.34);
+            color: #63d79a;
+        }
+        .booking-row-on-request td {
+            background: linear-gradient(90deg, rgba(245, 166, 35, 0.08), transparent 42%);
+        }
+        html[data-theme="light"] .booking-row-on-request td {
+            background: linear-gradient(90deg, rgba(245, 166, 35, 0.14), transparent 45%);
         }
         .booking-filter-form {
             display: flex;
@@ -1082,8 +1114,11 @@ if ($workshop && !$isArchiveView) {
         <div class="admin-header">
             <h1>
                 Buchungen
-                <?php if ($workshop && !$isArchiveView): ?>
+                    <?php if ($workshop && !$isArchiveView): ?>
                     <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - <?= e($workshop['title']) ?><?php if ($selectedOccurrenceLabel !== ''): ?> - <?= e($selectedOccurrenceLabel) ?><?php endif; ?></span>
+                    <span style="display:inline-flex;align-items:center;justify-content:center;min-width:108px;margin-left:0.45rem;padding:3px 10px;border-radius:999px;font-size:0.36em;letter-spacing:0.8px;text-transform:uppercase;font-weight:600;line-height:1;border:1px solid <?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'rgba(245,166,35,0.36)' : 'rgba(46,204,113,0.34)' ?>;background:<?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'rgba(245,166,35,0.12)' : 'rgba(46,204,113,0.12)' ?>;color:<?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? '#f5c26b' : '#63d79a' ?>;">
+                        <?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'Auf Anfrage' : 'Terminiert' ?>
+                    </span>
                 <?php elseif ($isArchiveView): ?>
                     <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - Archiv</span>
                 <?php endif; ?>
@@ -1158,6 +1193,7 @@ if ($workshop && !$isArchiveView) {
                     <?php foreach ($bookings as $b):
     $bParts = $participantsByBooking[(int)$b['id']] ?? [];
     $isIndividual = ($b['booking_mode'] ?? 'group') === 'individual';
+    $isOnRequestBooking = (($b['workshop_type'] ?? 'open') === 'auf_anfrage');
     $bookingCurrency = trim((string)($b['booking_currency'] ?? ''));
     if ($bookingCurrency === '') {
         $bookingCurrency = trim((string)($b['workshop_currency'] ?? 'EUR'));
@@ -1167,12 +1203,19 @@ if ($workshop && !$isArchiveView) {
         ? (string) $b['archived_at']
         : (string) $b['created_at'];
 ?>
-                    <tr>
+                    <tr class="<?= $isOnRequestBooking ? 'booking-row-on-request' : '' ?>">
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><a href="mailto:<?= e($b['email']) ?>" style="color:var(--muted);"><?= e($b['email']) ?></a></td>
                         <td><?= e($b['organization']) ?></td>
                         <td>
                             <?= e($b['workshop_title']) ?>
+                            <div style="margin-top:0.25rem;">
+                                <?php if ($isOnRequestBooking): ?>
+                                    <span class="booking-type-badge booking-type-badge-request">Auf Anfrage</span>
+                                <?php else: ?>
+                                    <span class="booking-type-badge booking-type-badge-fixed">Terminiert</span>
+                                <?php endif; ?>
+                            </div>
                             <?php if (!empty($b['occurrence_start_at'])): ?>
                                 <div style="font-size:0.72rem;color:var(--dim);"><?= e(format_event_date((string) ($b['occurrence_start_at'] ?? ''), (string) ($b['occurrence_end_at'] ?? ''))) ?></div>
                             <?php endif; ?>

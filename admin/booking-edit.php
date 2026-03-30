@@ -8,7 +8,7 @@ if (!$id) {
     redirect(admin_url('bookings'));
 }
 
-$stmt = $db->prepare('SELECT b.*, w.title AS workshop_title, w.id AS workshop_id, w.price_netto AS workshop_price_netto, w.price_currency AS workshop_currency, o.start_at AS occurrence_start_at, o.end_at AS occurrence_end_at FROM bookings b JOIN workshops w ON b.workshop_id = w.id LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = b.workshop_id WHERE b.id = :id');
+$stmt = $db->prepare('SELECT b.*, w.title AS workshop_title, w.id AS workshop_id, w.workshop_type, w.price_netto AS workshop_price_netto, w.price_currency AS workshop_currency, o.start_at AS occurrence_start_at, o.end_at AS occurrence_end_at FROM bookings b JOIN workshops w ON b.workshop_id = w.id LEFT JOIN workshop_occurrences o ON o.id = b.occurrence_id AND o.workshop_id = b.workshop_id WHERE b.id = :id');
 $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
 $booking = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
@@ -212,6 +212,9 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
         <div style="margin-bottom:1.5rem;padding:1rem 1.25rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:0.85rem;color:var(--muted);">
             <div style="margin-bottom:0.25rem;">
                 <strong style="color:var(--text);">Workshop:</strong> <?= e($booking['workshop_title']) ?>
+                <span style="display:inline-flex;align-items:center;justify-content:center;min-width:108px;margin-left:0.45rem;padding:3px 10px;border-radius:999px;font-size:0.68rem;letter-spacing:0.6px;text-transform:uppercase;font-weight:600;line-height:1;border:1px solid <?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'rgba(245,166,35,0.36)' : 'rgba(46,204,113,0.34)' ?>;background:<?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'rgba(245,166,35,0.12)' : 'rgba(46,204,113,0.12)' ?>;color:<?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? '#f5c26b' : '#63d79a' ?>;">
+                    <?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'Auf Anfrage' : 'Terminiert' ?>
+                </span>
                 <?php if ($bookingOccurrenceLabel !== ''): ?>
                     <div style="font-size:0.78rem;color:var(--dim);margin-top:0.15rem;"><?= e($bookingOccurrenceLabel) ?></div>
                 <?php endif; ?>

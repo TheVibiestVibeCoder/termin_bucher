@@ -1188,6 +1188,11 @@ function send_admin_notification(
         <p style="margin:0 0 10px;color:#c8c8c8;"><strong style="color:#ffffff;">Workshop:</strong> ' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
+        ' . ($isOnRequest
+            ? '<div style="margin:0 0 16px;padding:12px 14px;border:1px solid rgba(245,166,35,0.45);border-radius:8px;background:rgba(245,166,35,0.08);color:#f0dfc4;font-size:14px;line-height:1.6;">
+                    Bitte zeitnah Kontakt aufnehmen und den nächsten Schritt mit der interessierten Person abstimmen.
+               </div>'
+            : '') . '
         <p style="margin:14px 0 0;color:#8c8c8c;font-size:12px;">Automatische Admin-Benachrichtigung</p>';
 
     return send_email(MAIL_FROM, $subjectPrefix . $workshopTitle, render_booking_email_shell($content), 'booking_admin_notification');
