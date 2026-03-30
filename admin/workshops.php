@@ -502,14 +502,14 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             flex-wrap: wrap;
         }
         .workshop-more-toggle {
-            justify-content: space-between;
-            gap: 0.42rem;
+            justify-content: center;
+            gap: 0;
         }
         .workshop-more-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.78rem;
+            font-size: 0.92rem;
             line-height: 1;
             transform: rotate(0deg);
             transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -520,8 +520,12 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         .workshop-extra-actions {
             flex-basis: 100%;
             display: flex;
-            flex-wrap: wrap;
+            flex-direction: column;
+            align-items: stretch;
             gap: 0.45rem;
+            width: var(--workshop-primary-width);
+            max-width: var(--workshop-primary-width);
+            margin-left: calc((var(--workshop-primary-width) + 0.45rem) * 2);
             max-height: 0;
             opacity: 0;
             overflow: hidden;
@@ -537,6 +541,11 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             opacity: 1;
             transform: translateY(0);
             pointer-events: auto;
+        }
+        .workshop-extra-actions > .btn-admin,
+        .workshop-extra-actions > form,
+        .workshop-extra-actions > form > .btn-admin {
+            width: 100%;
         }
         @media (prefers-reduced-motion: reduce) {
             .workshop-more-icon,
@@ -709,8 +718,9 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                         class="btn-admin workshop-more-toggle workshop-primary-control"
                                         data-workshop-actions-toggle
                                         aria-expanded="false"
-                                        aria-controls="<?= e($extraActionsId) ?>">
-                                        Mehr Aktionen
+                                        aria-controls="<?= e($extraActionsId) ?>"
+                                        aria-label="Mehr Aktionen anzeigen oder ausblenden"
+                                        title="Mehr Aktionen">
                                         <span class="workshop-more-icon" aria-hidden="true">&#9662;</span>
                                     </button>
 
