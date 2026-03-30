@@ -690,10 +690,9 @@ while ($row = $wsResult->fetchArray(SQLITE3_ASSOC)) {
     }
 
     if (!$isOpenWorkshop) {
-        $label = $title . ' · Auf Anfrage';
         $allWorkshopFilters[] = [
             'value' => (string) $wid,
-            'label' => $label,
+            'label' => $title,
         ];
         continue;
     }
@@ -826,35 +825,12 @@ if ($workshop && !$isArchiveView) {
         .booking-filter-bar {
             margin-bottom: 1.5rem;
         }
-        .booking-type-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 108px;
-            padding: 3px 10px;
-            border-radius: 999px;
-            font-size: 0.72rem;
-            letter-spacing: 0.6px;
-            text-transform: uppercase;
-            font-weight: 600;
-            line-height: 1;
-            border: 1px solid transparent;
-        }
-        .booking-type-badge-request {
-            background: rgba(245, 166, 35, 0.12);
-            border-color: rgba(245, 166, 35, 0.36);
+        .booking-workshop-name-request {
             color: #f5c26b;
+            font-weight: 600;
         }
-        .booking-type-badge-fixed {
-            background: rgba(46, 204, 113, 0.12);
-            border-color: rgba(46, 204, 113, 0.34);
-            color: #63d79a;
-        }
-        .booking-row-on-request td {
-            background: linear-gradient(90deg, rgba(245, 166, 35, 0.08), transparent 42%);
-        }
-        html[data-theme="light"] .booking-row-on-request td {
-            background: linear-gradient(90deg, rgba(245, 166, 35, 0.14), transparent 45%);
+        html[data-theme="light"] .booking-workshop-name-request {
+            color: #b26a00;
         }
         .booking-filter-form {
             display: flex;
@@ -1115,9 +1091,12 @@ if ($workshop && !$isArchiveView) {
             <h1>
                 Buchungen
                     <?php if ($workshop && !$isArchiveView): ?>
-                    <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - <?= e($workshop['title']) ?><?php if ($selectedOccurrenceLabel !== ''): ?> - <?= e($selectedOccurrenceLabel) ?><?php endif; ?></span>
-                    <span style="display:inline-flex;align-items:center;justify-content:center;min-width:108px;margin-left:0.45rem;padding:3px 10px;border-radius:999px;font-size:0.36em;letter-spacing:0.8px;text-transform:uppercase;font-weight:600;line-height:1;border:1px solid <?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'rgba(245,166,35,0.36)' : 'rgba(46,204,113,0.34)' ?>;background:<?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'rgba(245,166,35,0.12)' : 'rgba(46,204,113,0.12)' ?>;color:<?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? '#f5c26b' : '#63d79a' ?>;">
-                        <?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'Auf Anfrage' : 'Terminiert' ?>
+                    <span style="color:var(--muted);font-size:0.6em;font-weight:300;">
+                        -
+                        <span class="<?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'booking-workshop-name-request' : '' ?>">
+                            <?= e($workshop['title']) ?>
+                        </span>
+                        <?php if ($selectedOccurrenceLabel !== ''): ?> - <?= e($selectedOccurrenceLabel) ?><?php endif; ?>
                     </span>
                 <?php elseif ($isArchiveView): ?>
                     <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - Archiv</span>
@@ -1203,19 +1182,12 @@ if ($workshop && !$isArchiveView) {
         ? (string) $b['archived_at']
         : (string) $b['created_at'];
 ?>
-                    <tr class="<?= $isOnRequestBooking ? 'booking-row-on-request' : '' ?>">
+                    <tr>
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><a href="mailto:<?= e($b['email']) ?>" style="color:var(--muted);"><?= e($b['email']) ?></a></td>
                         <td><?= e($b['organization']) ?></td>
                         <td>
-                            <?= e($b['workshop_title']) ?>
-                            <div style="margin-top:0.25rem;">
-                                <?php if ($isOnRequestBooking): ?>
-                                    <span class="booking-type-badge booking-type-badge-request">Auf Anfrage</span>
-                                <?php else: ?>
-                                    <span class="booking-type-badge booking-type-badge-fixed">Terminiert</span>
-                                <?php endif; ?>
-                            </div>
+                            <span class="<?= $isOnRequestBooking ? 'booking-workshop-name-request' : '' ?>"><?= e($b['workshop_title']) ?></span>
                             <?php if (!empty($b['occurrence_start_at'])): ?>
                                 <div style="font-size:0.72rem;color:var(--dim);"><?= e(format_event_date((string) ($b['occurrence_start_at'] ?? ''), (string) ($b['occurrence_end_at'] ?? ''))) ?></div>
                             <?php endif; ?>

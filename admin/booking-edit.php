@@ -211,9 +211,9 @@ if ($metaTotal <= 0 && $metaSubtotal > 0) {
         <!-- Meta info -->
         <div style="margin-bottom:1.5rem;padding:1rem 1.25rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:0.85rem;color:var(--muted);">
             <div style="margin-bottom:0.25rem;">
-                <strong style="color:var(--text);">Workshop:</strong> <?= e($booking['workshop_title']) ?>
-                <span style="display:inline-flex;align-items:center;justify-content:center;min-width:108px;margin-left:0.45rem;padding:3px 10px;border-radius:999px;font-size:0.68rem;letter-spacing:0.6px;text-transform:uppercase;font-weight:600;line-height:1;border:1px solid <?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'rgba(245,166,35,0.36)' : 'rgba(46,204,113,0.34)' ?>;background:<?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'rgba(245,166,35,0.12)' : 'rgba(46,204,113,0.12)' ?>;color:<?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? '#f5c26b' : '#63d79a' ?>;">
-                    <?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'Auf Anfrage' : 'Terminiert' ?>
+                <strong style="color:var(--text);">Workshop:</strong>
+                <span style="color:<?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? '#f5c26b' : 'var(--text)' ?>;font-weight:<?= (($booking['workshop_type'] ?? 'open') === 'auf_anfrage') ? '600' : '400' ?>;">
+                    <?= e($booking['workshop_title']) ?>
                 </span>
                 <?php if ($bookingOccurrenceLabel !== ''): ?>
                     <div style="font-size:0.78rem;color:var(--dim);margin-top:0.15rem;"><?= e($bookingOccurrenceLabel) ?></div>
