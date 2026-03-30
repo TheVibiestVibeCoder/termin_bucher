@@ -78,6 +78,7 @@ body.page-transition-out {
     will-change: transform, opacity;
 }
 
+html:not([data-theme]),
 html[data-theme="light"] {
     --bg:        #f3efe8;
     --bg-alt:    #ebe5dc;
@@ -648,6 +649,11 @@ nav {
 .type-badge-anfrage {
     background: var(--surface-soft); color: var(--muted);
     border: 1px solid var(--border);
+}
+.type-badge-unavailable {
+    background: rgba(231, 76, 60, 0.14);
+    color: #e74c3c;
+    border: 1px solid rgba(231, 76, 60, 0.36);
 }
 .type-badge .badge-dot {
     width: 5px; height: 5px; border-radius: 50%; background: currentColor;

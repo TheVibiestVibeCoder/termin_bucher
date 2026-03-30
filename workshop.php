@@ -20,6 +20,7 @@ $price        = (float) ($workshop['price_netto'] ?? 0);
 $currency     = $workshop['price_currency'] ?? 'EUR';
 $minP         = (int) ($workshop['min_participants'] ?? 0);
 $location     = $workshop['location']       ?? '';
+$isWorkshopBookable = ((int) ($workshop['bookable'] ?? 1) === 1);
 
 $occurrences = [];
 $selectedOccurrence = null;
@@ -35,6 +36,7 @@ if ($isOpen) {
             'end_at' => (string) ($workshop['event_date_end'] ?? ''),
             'sort_order' => 0,
             'active' => 1,
+            'bookable' => $isWorkshopBookable ? 1 : 0,
         ];
     }
 
@@ -88,6 +90,7 @@ if ($isOpen) {
             $occurrenceRow['is_guaranteed'] = ($minP > 0 && $occurrenceBooked >= $minP);
             $occurrenceRow['below_min'] = ($minP > 0 && $capacity > 0 && $occurrenceBooked < $minP);
             $occurrenceRow['above_min'] = ($minP > 0 && $capacity > 0 && $occurrenceBooked >= $minP);
+            $occurrenceRow['is_bookable'] = $isWorkshopBookable && ((int) ($occurrenceRow['bookable'] ?? 1) === 1);
 
             $occurrences[$index] = $occurrenceRow;
         }
@@ -128,6 +131,11 @@ if ($selectedOccurrence !== null) {
     $aboveMin = ($minP > 0 && $capacity > 0 && $booked >= $minP);
 }
 
+$isSelectionBookable = $isWorkshopBookable;
+if ($selectedOccurrence !== null) {
+    $isSelectionBookable = $isSelectionBookable && (bool) ($selectedOccurrence['is_bookable'] ?? true);
+}
+
 $minPct = ($minP > 0 && $capacity > 0) ? min(100, round(($minP / $capacity) * 100)) : 0;
 $isGuaranteed = ($isOpen && $minP > 0 && $booked >= $minP);
 $participantsMax = $capacity > 0 ? max(1, min(20, (int) $spotsLeft)) : 20;
@@ -157,6 +165,7 @@ if (!empty($occurrences)) {
             'fillPct' => (int) ($occurrenceRow['fill_pct'] ?? 0),
             'fillClass' => (string) ($occurrenceRow['fill_class'] ?? ''),
             'isFull' => (bool) ($occurrenceRow['is_full'] ?? false),
+            'isBookable' => (bool) ($occurrenceRow['is_bookable'] ?? true),
             'isGuaranteed' => (bool) ($occurrenceRow['is_guaranteed'] ?? false),
             'belowMin' => (bool) ($occurrenceRow['below_min'] ?? false),
             'aboveMin' => (bool) ($occurrenceRow['above_min'] ?? false),
@@ -316,11 +325,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
     $formData['discount_code'] = normalize_discount_code((string) ($_POST['discount_code'] ?? ''));
 
     $activeOccurrenceId = $selectedOccurrenceId > 0 ? $selectedOccurrenceId : 0;
+    if (!$isWorkshopBookable) {
+        $errors[] = 'Dieser Workshop ist nicht mehr buchbar.';
+    }
+
     if ($isOpen && !empty($occurrences)) {
         $hasOccurrenceMatch = false;
+        $matchedOccurrence = null;
         foreach ($occurrences as $occurrenceRow) {
             if ((int) ($occurrenceRow['id'] ?? 0) === $activeOccurrenceId) {
                 $hasOccurrenceMatch = true;
+                $matchedOccurrence = $occurrenceRow;
                 break;
             }
         }
@@ -330,6 +345,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
             foreach ($occurrences as $occurrenceRow) {
                 if ((int) ($occurrenceRow['id'] ?? 0) === 0) {
                     $hasLegacyOccurrence = true;
+                    $matchedOccurrence = $occurrenceRow;
                     break;
                 }
             }
@@ -340,7 +356,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         }
 
         if (!$hasOccurrenceMatch) {
-            $errors[] = 'Der ausgewaehlte Termin ist nicht mehr verfuegbar.';
+            $errors[] = 'Der ausgewählte Termin ist nicht mehr verfügbar.';
+        } elseif (!((bool) ($matchedOccurrence['is_bookable'] ?? true))) {
+            $errors[] = 'Der ausgewählte Termin ist nicht mehr buchbar.';
         }
     }
 
@@ -385,7 +403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
         $currentSpotsLeft = max(0, $capacity - $currentBooked);
 
         if ($formData['participants'] > $currentSpotsLeft) {
-            $errors[] = "Leider sind nur noch {$currentSpotsLeft} Pl�tze verf�gbar.";
+            $errors[] = "Leider sind nur noch {$currentSpotsLeft} Plätze verfügbar.";
         }
     }
 
@@ -624,10 +642,17 @@ $detailMetaItems[] = [
     'label' => !$isOpen ? 'Termin' : 'Terminart',
     'value' => !$isOpen ? 'Auf Anfrage' : 'Fester Termin',
 ];
-if ($isOpen && $minP > 0) {
+if ($isOpen) {
+    $statusMetaText = 'Anmeldung offen';
+    if (!$isSelectionBookable) {
+        $statusMetaText = 'Nicht buchbar';
+    } elseif ($minP > 0) {
+        $statusMetaText = $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen';
+    }
+
     $detailMetaItems[] = [
         'label' => 'Status',
-        'value' => $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen',
+        'value' => $statusMetaText,
         'field' => 'status',
     ];
 }
@@ -646,7 +671,7 @@ if ($capacity > 0) {
     ];
     $detailMetaItems[] = [
         'label' => 'Verfügbar',
-        'value' => $isFull ? 'Ausgebucht' : ($spotsLeft . ' frei'),
+        'value' => !$isSelectionBookable ? 'Nicht buchbar' : ($isFull ? 'Ausgebucht' : ($spotsLeft . ' frei')),
         'field' => 'availability',
     ];
 }
@@ -719,20 +744,27 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                 <!-- Type badge + format tag -->
                 <div class="badge-row badge-row-detail">
                     <?php if ($isOpen): ?>
-                        <?php if ($minP > 0): ?>
-                            <?php
+                        <?php
+                            $statusBadgeClass = 'type-badge-open';
+                            $statusBadgeLabel = 'Anmeldung offen';
+                            if (!$isSelectionBookable) {
+                                $statusBadgeClass = 'type-badge-unavailable';
+                                $statusBadgeLabel = 'Nicht buchbar';
+                            } elseif ($minP > 0) {
                                 $statusBadgeClass = $isGuaranteed ? 'type-badge-confirmed' : 'type-badge-open-pending';
                                 $statusBadgeLabel = $isGuaranteed ? 'Findet statt' : 'Mindestanzahl offen';
-                            ?>
-                            <span class="type-badge <?= e($statusBadgeClass) ?>" data-detail-status-badge>
-                                <span class="badge-dot"></span>
-                                <span data-detail-status-badge-text><?= e($statusBadgeLabel) ?></span>
-                            </span>
-                        <?php else: ?>
-                            <span class="type-badge type-badge-open"><span class="badge-dot"></span>Anmeldung offen</span>
-                        <?php endif; ?>
+                            }
+                        ?>
+                        <span class="type-badge <?= e($statusBadgeClass) ?>" data-detail-status-badge>
+                            <span class="badge-dot"></span>
+                            <span data-detail-status-badge-text><?= e($statusBadgeLabel) ?></span>
+                        </span>
                     <?php else: ?>
-                        <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
+                        <?php if ($isWorkshopBookable): ?>
+                            <span class="type-badge type-badge-anfrage"><span class="badge-dot"></span>Auf Anfrage</span>
+                        <?php else: ?>
+                            <span class="type-badge type-badge-unavailable"><span class="badge-dot"></span>Nicht buchbar</span>
+                        <?php endif; ?>
                     <?php endif; ?>
                     <div class="detail-tag"><span class="card-tag-dot"></span> <?= e($workshop['tag_label']) ?></div>
                     <?php if ($workshop['featured']): ?>
@@ -761,16 +793,19 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                             <div class="detail-occurrence-kicker">Termin <?= ($occurrenceIdx + 1) ?> von <?= count($occurrences) ?></div>
                             <div class="detail-occurrence-date"><?= e((string) ($occurrenceRow['formatted_date'] ?? '')) ?></div>
                             <div class="detail-occurrence-meta">
-                                <?php if ($capacity > 0): ?>
+                                <?php $occurrenceIsBookable = (bool) ($occurrenceRow['is_bookable'] ?? true); ?>
+                                <?php if (!$occurrenceIsBookable): ?>
+                                    Nicht buchbar
+                                <?php elseif ($capacity > 0): ?>
                                     <?= (int) ($occurrenceRow['booked'] ?? 0) ?> / <?= $capacity ?> gebucht
                                 <?php else: ?>
-                                    Offen fuer Buchung
+                                    Offen für Buchung
                                 <?php endif; ?>
                             </div>
                         </article>
                         <?php endforeach; ?>
                     </div>
-                    <a href="<?= e($nextOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-next" data-detail-occurrence-next aria-label="Naechster Termin">
+                    <a href="<?= e($nextOccurrenceUrl) ?>" class="detail-occurrence-nav detail-occurrence-nav-next" data-detail-occurrence-next aria-label="Nächster Termin">
                         &#10095;
                     </a>
                 </div>
@@ -911,7 +946,11 @@ $hasMoreMetaItems = !empty($extraMetaItems);
 
             <!-- Right: Booking form -->
             <div class="booking-box">
-                <?php if ($isFull): ?>
+                <?php if (!$isSelectionBookable): ?>
+                    <h3>Nicht buchbar</h3>
+                    <p style="color:var(--muted);line-height:1.7;">Dieser Workshop ist aktuell nicht mehr buchbar. Kontaktieren Sie uns gern für Rückfragen oder Alternativtermine.</p>
+                    <a href="<?= e(app_url('kontakt')) ?>" class="btn-submit" style="margin-top:1.5rem;display:block;text-align:center;text-decoration:none;">Kontakt aufnehmen</a>
+                <?php elseif ($isFull): ?>
                     <h3>Ausgebucht</h3>
                     <p style="color:var(--muted);line-height:1.7;">Dieser Workshop ist leider voll ausgebucht. Kontaktieren Sie uns für Alternativtermine.</p>
                     <a href="<?= e(app_url('kontakt')) ?>" class="btn-submit" style="margin-top:1.5rem;display:block;text-align:center;text-decoration:none;">Kontakt aufnehmen</a>
@@ -942,7 +981,8 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         <?= csrf_field() ?>
                         <input type="hidden" name="book" value="1">
 
-                        <div class="flash flash-error" id="detailBookingUnavailable" hidden style="margin-bottom:0.9rem;">Dieser Termin ist aktuell ausgebucht. Bitte waehlen Sie einen anderen Termin.</div>
+                        <div class="flash flash-error" id="detailBookingUnavailable" hidden style="margin-bottom:0.9rem;">Dieser Termin ist aktuell ausgebucht. Bitte wählen Sie einen anderen Termin.</div>
+                        <div class="flash flash-error" id="detailBookingClosed" hidden style="margin-bottom:0.9rem;">Dieser Termin ist nicht mehr buchbar. Bitte wählen Sie einen anderen Termin.</div>
 
                         <div class="form-group">
                             <label for="name">Name *</label>
@@ -1430,6 +1470,7 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
     const bookingForm = document.getElementById('bookingForm');
     const bookingSubmitBtn = document.getElementById('bookingSubmitBtn');
     const bookingUnavailable = document.getElementById('detailBookingUnavailable');
+    const bookingClosed = document.getElementById('detailBookingClosed');
     const canSwitchClientSide = Boolean(bookingForm);
 
     let index = parseInt(slider.getAttribute('data-occurrence-index') || '0', 10);
@@ -1465,34 +1506,48 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
         const spotsLeft = (occurrence.spotsLeft === null || typeof occurrence.spotsLeft === 'undefined')
             ? Math.max(0, capacity - booked)
             : Number(occurrence.spotsLeft || 0);
+        const occurrenceIsBookable = occurrence.isBookable !== false;
+        const occurrenceIsFull = Boolean(occurrence.isFull);
+        const canBookOccurrence = occurrenceIsBookable && !occurrenceIsFull;
 
         dateFields.forEach((el) => {
             el.textContent = String(occurrence.date || '');
         });
 
-        if (minParticipants > 0) {
+        let statusText = occurrenceIsBookable ? 'Anmeldung offen' : 'Nicht buchbar';
+        let statusClass = occurrenceIsBookable ? 'type-badge-open' : 'type-badge-unavailable';
+
+        if (occurrenceIsBookable && minParticipants > 0) {
             const occurrenceIsGuaranteed = Boolean(occurrence.isGuaranteed);
-            const statusText = occurrenceIsGuaranteed ? 'Findet statt' : 'Mindestanzahl offen';
-            statusFields.forEach((el) => {
-                el.textContent = statusText;
-            });
-            if (statusBadgeText) {
-                statusBadgeText.textContent = statusText;
-            }
-            if (statusBadge) {
-                statusBadge.classList.remove('type-badge-confirmed', 'type-badge-open-pending');
-                statusBadge.classList.add(occurrenceIsGuaranteed ? 'type-badge-confirmed' : 'type-badge-open-pending');
-            }
+            statusText = occurrenceIsGuaranteed ? 'Findet statt' : 'Mindestanzahl offen';
+            statusClass = occurrenceIsGuaranteed ? 'type-badge-confirmed' : 'type-badge-open-pending';
+        }
+
+        statusFields.forEach((el) => {
+            el.textContent = statusText;
+        });
+        if (statusBadgeText) {
+            statusBadgeText.textContent = statusText;
+        }
+        if (statusBadge) {
+            statusBadge.classList.remove('type-badge-confirmed', 'type-badge-open-pending', 'type-badge-open', 'type-badge-unavailable');
+            statusBadge.classList.add(statusClass);
         }
 
         availabilityFields.forEach((el) => {
-            el.textContent = occurrence.isFull ? 'Ausgebucht' : (String(spotsLeft) + ' frei');
+            el.textContent = !occurrenceIsBookable
+                ? 'Nicht buchbar'
+                : (occurrenceIsFull ? 'Ausgebucht' : (String(spotsLeft) + ' frei'));
         });
 
         if (minNoteText && minParticipants > 0) {
-            minNoteText.textContent = occurrence.isGuaranteed
-                ? 'Mindestanzahl erreicht: Dieser Workshop findet statt.'
-                : ('Dieser Workshop findet statt, sobald mindestens ' + minParticipants + ' Teilnehmer:innen gebucht sind.');
+            if (!occurrenceIsBookable) {
+                minNoteText.textContent = 'Dieser Termin ist aktuell nicht buchbar.';
+            } else {
+                minNoteText.textContent = occurrence.isGuaranteed
+                    ? 'Mindestanzahl erreicht: Dieser Workshop findet statt.'
+                    : ('Dieser Workshop findet statt, sobald mindestens ' + minParticipants + ' Teilnehmer:innen gebucht sind.');
+            }
         }
 
         if (seatsWrap) {
@@ -1527,10 +1582,12 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
         }
 
         if (bookingSubmitBtn) {
-            const occurrenceIsFull = Boolean(occurrence.isFull);
-            bookingSubmitBtn.disabled = occurrenceIsFull;
+            bookingSubmitBtn.disabled = !canBookOccurrence;
             if (bookingUnavailable) {
                 bookingUnavailable.hidden = !occurrenceIsFull;
+            }
+            if (bookingClosed) {
+                bookingClosed.hidden = occurrenceIsBookable;
             }
         }
 
@@ -1801,5 +1858,4 @@ if (descToggle && descWrap && descContent) {
 
 </body>
 </html>
-
 

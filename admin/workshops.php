@@ -20,6 +20,7 @@ function ensure_workshop_archive_schema(SQLite3 $db): void {
         'archived_at' => 'DATETIME',
         'archived_by' => "TEXT NOT NULL DEFAULT ''",
         'archive_note' => "TEXT NOT NULL DEFAULT ''",
+        'bookable' => 'INTEGER NOT NULL DEFAULT 1',
     ];
 
     foreach ($cols as $name => $def) {
@@ -32,6 +33,18 @@ function ensure_workshop_archive_schema(SQLite3 $db): void {
 }
 
 ensure_workshop_archive_schema($db);
+
+function ensure_workshop_occurrence_bookable_schema(SQLite3 $db): void {
+    $res = $db->query('PRAGMA table_info(workshop_occurrences)');
+    while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+        if ((string) ($row['name'] ?? '') === 'bookable') {
+            return;
+        }
+    }
+    $db->exec('ALTER TABLE workshop_occurrences ADD COLUMN bookable INTEGER NOT NULL DEFAULT 1');
+}
+
+ensure_workshop_occurrence_bookable_schema($db);
 function add_cancellation_recipient(array &$map, string $email, string $name): void {
     $mail = trim($email);
     if (!filter_var($mail, FILTER_VALIDATE_EMAIL)) {
@@ -119,7 +132,7 @@ function archive_open_workshop_bookings(SQLite3 $db, int $workshopId, string $ar
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_verify()) {
-    flash('error', 'Ungueltige Sitzung.');
+    flash('error', 'Ungültige Sitzung.');
     redirect(admin_url('workshops'));
 }
 
@@ -251,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restore_id'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hard_delete_id'])) {
     $hardDeleteId = max(0, (int) ($_POST['hard_delete_id'] ?? 0));
     if ($hardDeleteId <= 0) {
-        flash('error', 'Workshop konnte nicht endgueltig geloescht werden.');
+        flash('error', 'Workshop konnte nicht endgültig gelöscht werden.');
         redirect(admin_url('workshops'));
     }
 
@@ -264,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hard_delete_id'])) {
         redirect(admin_url('workshops'));
     }
     if ((int) ($workshopRow['archived'] ?? 0) !== 1) {
-        flash('error', 'Nur archivierte Workshops koennen endgueltig geloescht werden.');
+        flash('error', 'Nur archivierte Workshops können endgültig gelöscht werden.');
         redirect(admin_url('workshops'));
     }
 
@@ -282,12 +295,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hard_delete_id'])) {
 
         $db->exec('COMMIT');
         $inTransaction = false;
-        flash('success', 'Workshop endgueltig geloescht.');
+        flash('success', 'Workshop endgültig gelöscht.');
     } catch (Throwable $e) {
         if ($inTransaction) {
             $db->exec('ROLLBACK');
         }
-        flash('error', 'Workshop konnte nicht endgueltig geloescht werden (z. B. wegen bestehender Rechnungen).');
+        flash('error', 'Workshop konnte nicht endgültig gelöscht werden (z. B. wegen bestehender Rechnungen).');
     }
 
     redirect(admin_url('workshops'));
@@ -305,15 +318,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_id'])) {
     redirect(admin_url('workshops'));
 }
 
+// Handle toggle bookable (only non-archived workshops)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_bookable_id'])) {
+    $toggleBookableId = max(0, (int) ($_POST['toggle_bookable_id'] ?? 0));
+    if ($toggleBookableId > 0) {
+        $stmt = $db->prepare('UPDATE workshops SET bookable = CASE WHEN COALESCE(bookable, 1) = 1 THEN 0 ELSE 1 END, updated_at = datetime("now") WHERE id = :id AND COALESCE(archived, 0) = 0');
+        $stmt->bindValue(':id', $toggleBookableId, SQLITE3_INTEGER);
+        $stmt->execute();
+        flash('success', 'Buchbarkeit aktualisiert.');
+    }
+    redirect(admin_url('workshops'));
+}
+
+// Handle toggle bookable for one workshop date
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_occurrence_bookable_id'])) {
+    $toggleOccurrenceBookableId = max(0, (int) ($_POST['toggle_occurrence_bookable_id'] ?? 0));
+    if ($toggleOccurrenceBookableId > 0) {
+        $stmt = $db->prepare('
+            UPDATE workshop_occurrences
+            SET
+                bookable = CASE WHEN COALESCE(bookable, 1) = 1 THEN 0 ELSE 1 END,
+                updated_at = datetime("now")
+            WHERE
+                id = :id
+                AND active = 1
+                AND workshop_id IN (
+                    SELECT id FROM workshops WHERE COALESCE(archived, 0) = 0
+                )
+        ');
+        $stmt->bindValue(':id', $toggleOccurrenceBookableId, SQLITE3_INTEGER);
+        $stmt->execute();
+        flash('success', 'Termin-Buchbarkeit aktualisiert.');
+    }
+    redirect(admin_url('workshops'));
+}
+
 // Fetch all workshops and split into active vs archived sections
 $result = $db->query('SELECT * FROM workshops ORDER BY COALESCE(archived, 0) ASC, sort_order ASC, id ASC');
 $activeWorkshops = [];
 $archivedWorkshops = [];
+$occurrenceRowsByWorkshop = [];
+
+$occurrenceResult = $db->query('
+    SELECT id, workshop_id, start_at, end_at, sort_order, active, COALESCE(bookable, 1) AS bookable
+    FROM workshop_occurrences
+    WHERE active = 1
+    ORDER BY workshop_id ASC, sort_order ASC, start_at ASC, id ASC
+');
+while ($occurrenceRow = $occurrenceResult->fetchArray(SQLITE3_ASSOC)) {
+    $wid = (int) ($occurrenceRow['workshop_id'] ?? 0);
+    if ($wid <= 0) {
+        continue;
+    }
+    if (!isset($occurrenceRowsByWorkshop[$wid])) {
+        $occurrenceRowsByWorkshop[$wid] = [];
+    }
+    $occurrenceRowsByWorkshop[$wid][] = $occurrenceRow;
+}
 
 $totalBookingStmt = $db->prepare('SELECT COUNT(*) AS cnt FROM bookings WHERE workshop_id = :wid');
 
 while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     $wid = (int) ($row['id'] ?? 0);
+    $row['bookable'] = (int) ($row['bookable'] ?? 1);
+    $row['occurrences'] = $occurrenceRowsByWorkshop[$wid] ?? [];
+
+    if (($row['workshop_type'] ?? 'auf_anfrage') === 'open' && empty($row['occurrences']) && trim((string) ($row['event_date'] ?? '')) !== '') {
+        $row['occurrences'][] = [
+            'id' => 0,
+            'workshop_id' => $wid,
+            'start_at' => (string) ($row['event_date'] ?? ''),
+            'end_at' => (string) ($row['event_date_end'] ?? ''),
+            'sort_order' => 0,
+            'active' => 1,
+            'bookable' => (int) ($row['bookable'] ?? 1),
+        ];
+    }
 
     $row['booking_count'] = count_confirmed_bookings($db, $wid);
 
@@ -349,6 +429,211 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/style.css">
+    <style>
+        :root {
+            --workshop-action-height: 36px;
+            --workshop-primary-width: 132px;
+        }
+        .workshop-main-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+        }
+        .workshop-occurrence-row td {
+            background: var(--surface-soft);
+            border-top: 1px dashed var(--border);
+            font-size: 0.86rem;
+        }
+        .workshop-occurrence-row td:first-child {
+            padding-left: 2.6rem;
+        }
+        .workshop-occurrence-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.42rem;
+            color: var(--muted);
+        }
+        .workshop-occurrence-thread {
+            color: var(--dim);
+            font-weight: 700;
+            font-size: 0.76rem;
+            letter-spacing: 0.6px;
+            width: 1.1rem;
+            flex: 0 0 1.1rem;
+            text-align: center;
+        }
+        .workshop-occurrence-actions {
+            display: inline-flex;
+            gap: 0.45rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .admin-actions form,
+        .workshop-occurrence-actions form {
+            margin: 0;
+        }
+        .admin-actions .btn-admin,
+        .workshop-occurrence-actions .btn-admin {
+            min-height: var(--workshop-action-height);
+            height: var(--workshop-action-height);
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        .workshop-primary-control {
+            width: var(--workshop-primary-width);
+            min-width: var(--workshop-primary-width);
+            flex: 0 0 var(--workshop-primary-width);
+        }
+        .workshop-primary-control.btn-admin {
+            width: var(--workshop-primary-width);
+        }
+        .workshop-primary-control.admin-switch-form {
+            display: inline-flex;
+        }
+        .workshop-primary-control.admin-switch-form .admin-switch {
+            width: 100%;
+            justify-content: center;
+        }
+        .workshop-status-stack {
+            display: inline-flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+        }
+        .workshop-status-stack .status-badge {
+            min-width: 112px;
+            justify-content: center;
+            display: inline-flex;
+        }
+        .workshop-actions {
+            display: inline-flex;
+            align-items: flex-start;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+        }
+        .workshop-more-toggle {
+            justify-content: center;
+            gap: 0;
+        }
+        .workshop-more-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.92rem;
+            line-height: 1;
+            transform: rotate(0deg);
+            transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .workshop-more-toggle[aria-expanded="true"] .workshop-more-icon {
+            transform: rotate(180deg);
+        }
+        .workshop-extra-actions {
+            flex-basis: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.45rem;
+            width: var(--workshop-primary-width);
+            max-width: var(--workshop-primary-width);
+            margin-left: calc((var(--workshop-primary-width) + 0.45rem) * 2);
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transform: translateY(-8px);
+            pointer-events: none;
+            transition:
+                max-height 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+                opacity 0.24s ease,
+                transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .workshop-extra-actions.is-open {
+            max-height: 170px;
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+        .workshop-extra-actions > .btn-admin,
+        .workshop-extra-actions > form,
+        .workshop-extra-actions > form > .btn-admin {
+            width: 100%;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .workshop-more-icon,
+            .workshop-extra-actions {
+                transition: none !important;
+            }
+        }
+        .admin-switch-form {
+            display: inline-flex;
+            align-items: center;
+            min-height: var(--workshop-action-height);
+        }
+        .admin-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.46rem;
+            min-height: var(--workshop-action-height);
+            padding: 0 0.6rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--btn-glass);
+            cursor: pointer;
+            user-select: none;
+        }
+        .admin-switch-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            padding: 0;
+            border: 0;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        .admin-switch-track {
+            width: 2.05rem;
+            height: 1.16rem;
+            border-radius: 999px;
+            background: rgba(231, 76, 60, 0.25);
+            border: 1px solid rgba(231, 76, 60, 0.38);
+            position: relative;
+            transition: background-color 0.22s ease, border-color 0.22s ease;
+        }
+        .admin-switch-thumb {
+            position: absolute;
+            top: 50%;
+            left: 2px;
+            width: 0.82rem;
+            height: 0.82rem;
+            border-radius: 999px;
+            background: #fff;
+            transform: translateY(-50%);
+            transition: left 0.22s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+        }
+        .admin-switch-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.75px;
+            color: var(--muted);
+            font-weight: 600;
+            line-height: 1;
+        }
+        .admin-switch-input:checked + .admin-switch-track {
+            background: rgba(46, 204, 113, 0.3);
+            border-color: rgba(46, 204, 113, 0.44);
+        }
+        .admin-switch-input:checked + .admin-switch-track .admin-switch-thumb {
+            left: calc(100% - 0.82rem - 2px);
+        }
+        .admin-switch-input:focus-visible + .admin-switch-track {
+            outline: 2px solid var(--border-h);
+            outline-offset: 2px;
+        }
+    </style>
 </head>
 <body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
@@ -388,43 +673,144 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                     </thead>
                     <tbody>
                         <?php foreach ($activeWorkshops as $w): ?>
+                        <?php
+                            $workshopId = (int) ($w['id'] ?? 0);
+                            $isWorkshopBookable = ((int) ($w['bookable'] ?? 1) === 1);
+                            $occurrenceRows = array_values((array) ($w['occurrences'] ?? []));
+                            $showOccurrenceRows = count($occurrenceRows) > 1;
+                        ?>
                         <tr>
                             <td style="color:var(--text);">
-                                <?= e((string) ($w['title'] ?? '')) ?>
-                                <?php if ((int) ($w['featured'] ?? 0) === 1): ?>
-                                    <span style="font-size:0.65rem;background:var(--featured-pill-bg);color:var(--featured-pill-text);padding:2px 6px;border-radius:3px;margin-left:0.5rem;">Featured</span>
-                                <?php endif; ?>
+                                <span class="workshop-main-title">
+                                    <?= e((string) ($w['title'] ?? '')) ?>
+                                    <?php if ((int) ($w['featured'] ?? 0) === 1): ?>
+                                        <span style="font-size:0.65rem;background:var(--featured-pill-bg);color:var(--featured-pill-text);padding:2px 6px;border-radius:3px;">Featured</span>
+                                    <?php endif; ?>
+                                </span>
                             </td>
                             <td><?= e((string) ($w['tag_label'] ?? '')) ?></td>
                             <td><?= (int) ($w['capacity'] ?? 0) ?: '&infin;' ?></td>
                             <td><?= (int) ($w['booking_count'] ?? 0) ?></td>
                             <td>
-                                <?php if ((int) ($w['active'] ?? 0) === 1): ?>
-                                    <span class="status-badge status-confirmed">Aktiv</span>
-                                <?php else: ?>
-                                    <span class="status-badge status-pending">Inaktiv</span>
-                                <?php endif; ?>
+                                <div class="workshop-status-stack">
+                                    <?php if ((int) ($w['active'] ?? 0) === 1): ?>
+                                        <span class="status-badge status-confirmed">Aktiv</span>
+                                    <?php else: ?>
+                                        <span class="status-badge status-pending">Inaktiv</span>
+                                    <?php endif; ?>
+                                    <?php if ($isWorkshopBookable): ?>
+                                        <span class="status-badge status-confirmed">Buchbar</span>
+                                    <?php else: ?>
+                                        <span class="status-badge status-pending">Nicht buchbar</span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td><?= (int) ($w['sort_order'] ?? 0) ?></td>
                             <td>
-                                <div class="admin-actions">
-                                    <a href="<?= e(admin_url('workshop-edit', ['id' => (int) $w['id']])) ?>" class="btn-admin">Bearbeiten</a>
-                                    <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $w['id']])) ?>" class="btn-admin">Buchungen</a>
-
-                                    <form method="POST" style="display:inline;">
+                                <?php $extraActionsId = 'workshop-extra-actions-' . (int) $w['id']; ?>
+                                <div class="admin-actions workshop-actions">
+                                    <form method="POST" class="admin-switch-form workshop-primary-control">
                                         <?= csrf_field() ?>
-                                        <input type="hidden" name="toggle_id" value="<?= (int) $w['id'] ?>">
-                                        <button type="submit" class="btn-admin"><?= ((int) ($w['active'] ?? 0) === 1) ? 'Deaktivieren' : 'Aktivieren' ?></button>
+                                        <input type="hidden" name="toggle_bookable_id" value="<?= (int) $w['id'] ?>">
+                                        <label class="admin-switch">
+                                            <input
+                                                type="checkbox"
+                                                class="admin-switch-input"
+                                                <?= $isWorkshopBookable ? 'checked' : '' ?>
+                                                aria-label="Buchbar umschalten"
+                                                onchange="this.form.submit()">
+                                            <span class="admin-switch-track" aria-hidden="true"><span class="admin-switch-thumb"></span></span>
+                                            <span class="admin-switch-label">BUCHBAR</span>
+                                        </label>
                                     </form>
 
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop wirklich archivieren? Bei bestaetigten Buchungen werden Stornomails versendet und Buchungen archiviert.')">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="archive_id" value="<?= (int) $w['id'] ?>">
-                                        <button type="submit" class="btn-admin btn-danger">Archivieren</button>
-                                    </form>
+                                    <a href="<?= e(admin_url('workshop-edit', ['id' => (int) $w['id']])) ?>" class="btn-admin workshop-primary-control">Bearbeiten</a>
+
+                                    <button
+                                        type="button"
+                                        class="btn-admin workshop-more-toggle workshop-primary-control"
+                                        data-workshop-actions-toggle
+                                        aria-expanded="false"
+                                        aria-controls="<?= e($extraActionsId) ?>"
+                                        aria-label="Mehr Aktionen anzeigen oder ausblenden"
+                                        title="Mehr Aktionen">
+                                        <span class="workshop-more-icon" aria-hidden="true">&#9662;</span>
+                                    </button>
+
+                                    <div class="workshop-extra-actions" id="<?= e($extraActionsId) ?>" data-workshop-actions-panel>
+                                        <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $w['id']])) ?>" class="btn-admin">Buchungen</a>
+
+                                        <form method="POST">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="toggle_id" value="<?= (int) $w['id'] ?>">
+                                            <button type="submit" class="btn-admin"><?= ((int) ($w['active'] ?? 0) === 1) ? 'Deaktivieren' : 'Aktivieren' ?></button>
+                                        </form>
+
+                                        <form method="POST" onsubmit="return confirm('Workshop wirklich archivieren? Bei bestätigten Buchungen werden Stornomails versendet und Buchungen archiviert.')">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="archive_id" value="<?= (int) $w['id'] ?>">
+                                            <button type="submit" class="btn-admin btn-danger">Arch.</button>
+                                        </form>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
+                        <?php if ($showOccurrenceRows): ?>
+                            <?php foreach ($occurrenceRows as $occIdx => $occurrence): ?>
+                                <?php
+                                    $occurrenceId = (int) ($occurrence['id'] ?? 0);
+                                    $occurrenceBookableSelf = ((int) ($occurrence['bookable'] ?? 1) === 1);
+                                    $occurrenceBookable = $isWorkshopBookable && $occurrenceBookableSelf;
+                                    $occurrenceBooked = $occurrenceId > 0
+                                        ? count_confirmed_bookings($db, $workshopId, $occurrenceId)
+                                        : count_confirmed_bookings($db, $workshopId);
+                                ?>
+                                <tr class="workshop-occurrence-row">
+                                    <td>
+                                        <span class="workshop-occurrence-title">
+                                            <span class="workshop-occurrence-thread"><?= ($occIdx + 1 === count($occurrenceRows)) ? '&#9492;' : '&#9500;' ?></span>
+                                            Termin <?= ($occIdx + 1) ?>: <?= e(format_event_date((string) ($occurrence['start_at'] ?? ''), (string) ($occurrence['end_at'] ?? ''))) ?>
+                                        </span>
+                                    </td>
+                                    <td><?= e((string) ($w['tag_label'] ?? '')) ?></td>
+                                    <td><?= (int) ($w['capacity'] ?? 0) ?: '&infin;' ?></td>
+                                    <td><?= (int) $occurrenceBooked ?></td>
+                                    <td>
+                                        <div class="workshop-status-stack">
+                                            <?php if ($occurrenceBookable): ?>
+                                                <span class="status-badge status-confirmed">Buchbar</span>
+                                            <?php else: ?>
+                                                <span class="status-badge status-pending">Nicht buchbar</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                    <td><?= (int) ($occurrence['sort_order'] ?? $occIdx) ?></td>
+                                    <td>
+                                        <div class="workshop-occurrence-actions">
+                                            <?php if ($occurrenceId > 0): ?>
+                                                <form method="POST" class="admin-switch-form workshop-primary-control">
+                                                    <?= csrf_field() ?>
+                                                    <input type="hidden" name="toggle_occurrence_bookable_id" value="<?= $occurrenceId ?>">
+                                                    <label class="admin-switch">
+                                                        <input
+                                                            type="checkbox"
+                                                            class="admin-switch-input"
+                                                            <?= $occurrenceBookableSelf ? 'checked' : '' ?>
+                                                            aria-label="Buchbar umschalten"
+                                                            onchange="this.form.submit()">
+                                                        <span class="admin-switch-track" aria-hidden="true"><span class="admin-switch-thumb"></span></span>
+                                                        <span class="admin-switch-label">BUCHBAR</span>
+                                                    </label>
+                                                </form>
+                                            <?php else: ?>
+                                                <span style="color:var(--dim);font-size:0.75rem;">Legacy-Termin</span>
+                                            <?php endif; ?>
+                                            <a href="<?= e(admin_url('workshop-edit', ['id' => $workshopId])) ?>" class="btn-admin workshop-primary-control">Bearbeiten</a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
@@ -459,16 +845,16 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                             <td><?= e(format_admin_datetime((string) ($w['archived_at'] ?? ''))) ?></td>
                             <td>
                                 <div class="admin-actions">
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop reaktivieren?')">
+                                    <form method="POST" onsubmit="return confirm('Workshop reaktivieren?')">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="restore_id" value="<?= (int) $w['id'] ?>">
                                         <button type="submit" class="btn-admin btn-success">Reaktivieren</button>
                                     </form>
 
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Workshop endgueltig loeschen? Diese Aktion ist nicht rueckgaengig und loescht den Datensatz komplett.')">
+                                    <form method="POST" onsubmit="return confirm('Workshop endgültig löschen? Diese Aktion ist nicht rückgängig und löscht den Datensatz komplett.')">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="hard_delete_id" value="<?= (int) $w['id'] ?>">
-                                        <button type="submit" class="btn-admin btn-danger">Endgueltig loeschen</button>
+                                        <button type="submit" class="btn-admin btn-danger">Endgültig löschen</button>
                                     </form>
                                 </div>
                             </td>
@@ -480,6 +866,79 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         <?php endif; ?>
     </div>
 </div>
+<script>
+(function () {
+    var toggleButtons = document.querySelectorAll('[data-workshop-actions-toggle]');
+    if (!toggleButtons.length) {
+        return;
+    }
+
+    function closePanel(toggle, panel) {
+        toggle.setAttribute('aria-expanded', 'false');
+        panel.classList.remove('is-open');
+    }
+
+    function openPanel(toggle, panel) {
+        toggle.setAttribute('aria-expanded', 'true');
+        panel.classList.add('is-open');
+    }
+
+    function closeAllExcept(exceptToggle) {
+        toggleButtons.forEach(function (button) {
+            if (button === exceptToggle) {
+                return;
+            }
+            var panelId = button.getAttribute('aria-controls');
+            if (!panelId) {
+                return;
+            }
+            var panel = document.getElementById(panelId);
+            if (!panel) {
+                return;
+            }
+            closePanel(button, panel);
+        });
+    }
+
+    toggleButtons.forEach(function (button) {
+        var panelId = button.getAttribute('aria-controls');
+        if (!panelId) {
+            return;
+        }
+        var panel = document.getElementById(panelId);
+        if (!panel) {
+            return;
+        }
+
+        closePanel(button, panel);
+
+        button.addEventListener('click', function () {
+            var isOpen = button.getAttribute('aria-expanded') === 'true';
+            if (isOpen) {
+                closePanel(button, panel);
+                return;
+            }
+
+            closeAllExcept(button);
+            openPanel(button, panel);
+        });
+    });
+
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        var insideActions = target.closest('.workshop-actions');
+        if (insideActions) {
+            return;
+        }
+
+        closeAllExcept(null);
+    });
+})();
+</script>
 <script src="/assets/site-ui.js"></script>
 </body>
 </html>
