@@ -149,10 +149,6 @@ $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_archived_workshop ON bookings
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_occurrence ON bookings(occurrence_id, confirmed, archived);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_bookings_pending_expiry ON bookings(confirmed, archived, created_at);");
 $db->exec("CREATE INDEX IF NOT EXISTS idx_workshops_archived_active ON workshops(archived, active, sort_order, id);");
-$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at DESC, id DESC);");
-$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(send_status, created_at DESC);");
-$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_type ON email_logs(mail_type, created_at DESC);");
-$db->exec("CREATE INDEX IF NOT EXISTS idx_email_logs_recipient ON email_logs(recipient_email, created_at DESC);");
 
 
 // Backfill legacy single-date workshops into the new occurrences table.
