@@ -621,6 +621,21 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                             <td><?= (int) ($w['sort_order'] ?? 0) ?></td>
                             <td>
                                 <div class="admin-actions">
+                                    <form method="POST" class="admin-switch-form">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="toggle_bookable_id" value="<?= (int) $w['id'] ?>">
+                                        <label class="admin-switch">
+                                            <input
+                                                type="checkbox"
+                                                class="admin-switch-input"
+                                                <?= $isWorkshopBookable ? 'checked' : '' ?>
+                                                aria-label="Buchbar umschalten"
+                                                onchange="this.form.submit()">
+                                            <span class="admin-switch-track" aria-hidden="true"><span class="admin-switch-thumb"></span></span>
+                                            <span class="admin-switch-label">BUCHBAR</span>
+                                        </label>
+                                    </form>
+
                                     <a href="<?= e(admin_url('workshop-edit', ['id' => (int) $w['id']])) ?>" class="btn-admin">Bearbeiten</a>
                                     <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $w['id']])) ?>" class="btn-admin">Buchungen</a>
 
@@ -630,25 +645,10 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                         <button type="submit" class="btn-admin"><?= ((int) ($w['active'] ?? 0) === 1) ? 'Deaktivieren' : 'Aktivieren' ?></button>
                                     </form>
 
-                                    <form method="POST" class="admin-switch-form">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="toggle_bookable_id" value="<?= (int) $w['id'] ?>">
-                                        <label class="admin-switch">
-                                            <input
-                                                type="checkbox"
-                                                class="admin-switch-input"
-                                                <?= $isWorkshopBookable ? 'checked' : '' ?>
-                                                aria-label="Workshop buchbar umschalten"
-                                                onchange="this.form.submit()">
-                                            <span class="admin-switch-track" aria-hidden="true"><span class="admin-switch-thumb"></span></span>
-                                            <span class="admin-switch-label">Buchbar</span>
-                                        </label>
-                                    </form>
-
                                     <form method="POST" onsubmit="return confirm('Workshop wirklich archivieren? Bei bestätigten Buchungen werden Stornomails versendet und Buchungen archiviert.')">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="archive_id" value="<?= (int) $w['id'] ?>">
-                                        <button type="submit" class="btn-admin btn-danger">Archivieren</button>
+                                        <button type="submit" class="btn-admin btn-danger">Arch.</button>
                                     </form>
                                 </div>
                             </td>
@@ -692,10 +692,10 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                                             type="checkbox"
                                                             class="admin-switch-input"
                                                             <?= $occurrenceBookableSelf ? 'checked' : '' ?>
-                                                            aria-label="Termin buchbar umschalten"
+                                                            aria-label="Buchbar umschalten"
                                                             onchange="this.form.submit()">
                                                         <span class="admin-switch-track" aria-hidden="true"><span class="admin-switch-thumb"></span></span>
-                                                        <span class="admin-switch-label">Termin</span>
+                                                        <span class="admin-switch-label">BUCHBAR</span>
                                                     </label>
                                                 </form>
                                             <?php else: ?>

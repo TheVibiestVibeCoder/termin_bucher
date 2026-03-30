@@ -2,7 +2,7 @@
     const root = document.documentElement;
     const body = document.body;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const getCurrentTheme = () => (root.getAttribute("data-theme") === "light" ? "light" : "dark");
+    const getCurrentTheme = () => (root.getAttribute("data-theme") === "dark" ? "dark" : "light");
 
     const getToggleLabel = (theme) => (theme === "light" ? "\u2600" : "\u263E");
 

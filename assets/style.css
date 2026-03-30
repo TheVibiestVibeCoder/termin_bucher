@@ -78,6 +78,7 @@ body.page-transition-out {
     will-change: transform, opacity;
 }
 
+html:not([data-theme]),
 html[data-theme="light"] {
     --bg:        #f3efe8;
     --bg-alt:    #ebe5dc;
