@@ -85,6 +85,17 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/style.css">
     <style>
+        .dashboard-link-plain {
+            color: inherit;
+            text-decoration: none;
+            border-bottom: none;
+        }
+        .dashboard-link-plain:visited,
+        .dashboard-link-plain:hover,
+        .dashboard-link-plain:active {
+            color: inherit;
+            text-decoration: none;
+        }
         .booking-workshop-name-request {
             color: #f5c26b;
             font-weight: 600;
@@ -167,7 +178,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                     <?php foreach ($revenueByWorkshop as $r): ?>
                     <tr>
                         <td style="color:var(--text);">
-                            <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $r['workshop_id']])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
+                            <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $r['workshop_id']])) ?>" class="dashboard-link-plain">
                                 <?= e($r['title']) ?>
                             </a>
                         </td>
@@ -225,7 +236,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><?= e($b['email']) ?></td>
                         <td>
-                            <a href="<?= e(admin_url('bookings', ['workshop_id' => $bookingFilterValue])) ?>" class="<?= $isOnRequestBooking ? 'booking-workshop-name-request' : '' ?>" style="text-decoration:none;border-bottom:1px solid var(--border-h);">
+                            <a href="<?= e(admin_url('bookings', ['workshop_id' => $bookingFilterValue])) ?>" class="dashboard-link-plain <?= $isOnRequestBooking ? 'booking-workshop-name-request' : '' ?>">
                                 <?= e($b['workshop_title']) ?>
                             </a>
                             <?php if (!empty($b['occurrence_start_at'])): ?>
