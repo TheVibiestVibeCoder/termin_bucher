@@ -692,10 +692,12 @@ function render_booking_details_block(array $booking = [], array $workshop = [])
         return '';
     }
 
+    $detailsHeading = $workshopType === 'auf_anfrage' ? 'Anfragedetails' : 'Buchungsdetails';
+
     return '
         <div style="margin:22px 0;padding:15px 14px;border:1px solid #222;border-radius:8px;background:rgba(255,255,255,0.02);box-sizing:border-box;max-width:100%;">
             <div style="font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#777;margin-bottom:8px;">
-                Buchungsdetails
+                ' . e($detailsHeading) . '
             </div>
             <table role="presentation" style="width:100%;max-width:100%;table-layout:fixed;border-collapse:collapse;font-size:14px;line-height:1.5;">
                 ' . implode('', $rows) . '
@@ -750,6 +752,11 @@ function render_cancellation_policy_block(): string {
                 Bei späteren Absagen stellen wir 80&nbsp;% des vereinbarten Gesamtpreises in Rechnung.
             </p>
         </div>';
+}
+
+function is_workshop_on_request(array $workshop = [], array $booking = []): bool {
+    $workshopType = trim((string) ($workshop['workshop_type'] ?? $booking['workshop_type'] ?? ''));
+    return $workshopType === 'auf_anfrage';
 }
 
 function booking_ics_timezone(): DateTimeZone {
@@ -945,7 +952,7 @@ function build_booking_ics_attachment(array $booking = [], array $workshop = [])
 
     $dateLabel = format_event_date($startRaw, $endRaw);
     $descriptionParts = [
-        'Ihre Workshop-Buchung wurde bestaetigt.',
+        'Ihre Workshop-Buchung wurde bestätigt.',
         'Workshop: ' . $title,
     ];
     if ($dateLabel !== '') {
@@ -1033,9 +1040,35 @@ function send_confirmation_email(
     if (!isset($workshop['title']) || trim((string) $workshop['title']) === '') {
         $workshop['title'] = $workshopTitle;
     }
+    $isOnRequest = is_workshop_on_request($workshop, $booking);
     $detailsBlock      = render_booking_details_block($booking, $workshop);
     $participantsBlock = render_booking_participants_block($participants);
-    $cancellationBlock = render_cancellation_policy_block();
+    $cancellationBlock = $isOnRequest ? '' : render_cancellation_policy_block();
+
+    if ($isOnRequest) {
+        $content = '
+            <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Interesse bestätigen</h2>
+            <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
+            <p style="color:#a0a0a0;line-height:1.7;">vielen Dank für Ihr Interesse am folgenden Workshop:</p>
+            <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
+            <p style="color:#a0a0a0;line-height:1.7;">Bitte bestätigen Sie Ihr Interesse über den folgenden Button:</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:20px 0 18px;">
+                <tr>
+                    <td align="left">
+                        <a href="' . e($confirmUrl) . '" style="display:inline-block;max-width:100%;box-sizing:border-box;padding:14px 20px;background:#ffffff;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;line-height:1.35;word-break:break-word;">Interesse bestätigen &rarr;</a>
+                    </td>
+                </tr>
+            </table>
+            <p style="color:#a0a0a0;line-height:1.7;margin:0 0 14px;"><strong style="color:#ffffff;">Wichtiger Hinweis:</strong> Mit dieser Bestätigung entsteht noch keine verbindliche Buchung. Wir melden uns im Anschluss persönlich bei Ihnen.</p>
+            <p style="color:#666;font-size:13px;line-height:1.5;">Dieser Link ist 48 Stunden gültig. Falls Sie diese Anfrage nicht gesendet haben, können Sie diese E-Mail ignorieren.</p>
+            <p style="color:#a0a0a0;line-height:1.7;margin-top:20px;">Hier finden Sie alle Details zu Ihrer Anfrage:</p>
+            ' . $detailsBlock . '
+            ' . $participantsBlock . '
+            <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
+            <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
+
+        return send_email($to, 'Interesse bestätigen: ' . $workshopTitle, render_booking_email_shell($content), 'booking_confirmation_request');
+    }
 
     $content = '
         <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Buchung bestätigen</h2>
@@ -1075,13 +1108,39 @@ function send_booking_confirmed_email(
     if (!isset($workshop['title']) || trim((string) $workshop['title']) === '') {
         $workshop['title'] = $workshopTitle;
     }
+    $isOnRequest = is_workshop_on_request($workshop, $booking);
     $detailsBlock      = render_booking_details_block($booking, $workshop);
     $participantsBlock = render_booking_participants_block($participants);
-    $cancellationBlock = render_cancellation_policy_block();
+    $cancellationBlock = $isOnRequest ? '' : render_cancellation_policy_block();
     $attachments = [];
-    $icsAttachment = build_booking_ics_attachment($booking, $workshop);
-    if (is_array($icsAttachment)) {
-        $attachments[] = $icsAttachment;
+    if (!$isOnRequest) {
+        $icsAttachment = build_booking_ics_attachment($booking, $workshop);
+        if (is_array($icsAttachment)) {
+            $attachments[] = $icsAttachment;
+        }
+    }
+
+    if ($isOnRequest) {
+        $content = '
+            <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Anfrage bestätigt!</h2>
+            <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($name) . ',</p>
+            <p style="color:#a0a0a0;line-height:1.7;">vielen Dank! Sie haben Ihr Interesse am folgenden Workshop erfolgreich bestätigt:</p>
+            <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
+            ' . $detailsBlock . '
+            ' . $participantsBlock . '
+            <p style="color:#a0a0a0;line-height:1.7;">Wir melden uns zeitnah bei Ihnen, um die nächsten Schritte abzustimmen.</p>
+            <p style="color:#a0a0a0;line-height:1.7;"><strong style="color:#ffffff;">Hinweis:</strong> Diese Bestätigung ist noch keine verbindliche Buchung.</p>
+            <p style="color:#a0a0a0;line-height:1.7;">Bei Fragen erreichen Sie uns unter <a href="mailto:' . e(MAIL_FROM) . '" style="color:#ffffff;">' . e(MAIL_FROM) . '</a>.</p>
+            <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
+            <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
+
+        return send_email_with_attachments(
+            $to,
+            'Anfrage bestätigt: ' . $workshopTitle,
+            render_booking_email_shell($content),
+            $attachments,
+            'booking_confirmed'
+        );
     }
 
     $content = '
@@ -1117,17 +1176,21 @@ function send_admin_notification(
     if (!isset($workshop['title']) || trim((string) $workshop['title']) === '') {
         $workshop['title'] = $workshopTitle;
     }
+    $isOnRequest = is_workshop_on_request($workshop, $booking);
     $detailsBlock      = render_booking_details_block($booking, $workshop);
     $participantsBlock = render_booking_participants_block($participants);
 
+    $headline = $isOnRequest ? 'Neue Anfrage bestätigt' : 'Neue Buchung bestätigt';
+    $subjectPrefix = $isOnRequest ? 'Neue Anfrage: ' : 'Neue Buchung: ';
+
     $content = '
-        <h2 style="margin:0 0 14px;color:#ffffff;">Neue Buchung bestätigt</h2>
+        <h2 style="margin:0 0 14px;color:#ffffff;">' . e($headline) . '</h2>
         <p style="margin:0 0 10px;color:#c8c8c8;"><strong style="color:#ffffff;">Workshop:</strong> ' . e($workshopTitle) . '</p>
         ' . $detailsBlock . '
         ' . $participantsBlock . '
         <p style="margin:14px 0 0;color:#8c8c8c;font-size:12px;">Automatische Admin-Benachrichtigung</p>';
 
-    return send_email(MAIL_FROM, 'Neue Buchung: ' . $workshopTitle, render_booking_email_shell($content), 'booking_admin_notification');
+    return send_email(MAIL_FROM, $subjectPrefix . $workshopTitle, render_booking_email_shell($content), 'booking_admin_notification');
 }
 
 /**
@@ -1144,12 +1207,37 @@ function send_participant_confirmed_email(
     if (!isset($workshop['title']) || trim((string) $workshop['title']) === '') {
         $workshop['title'] = $workshopTitle;
     }
+    $isOnRequest = is_workshop_on_request($workshop, $booking);
     $detailsBlock = render_booking_details_block($booking, $workshop);
-    $cancellationBlock = render_cancellation_policy_block();
+    $cancellationBlock = $isOnRequest ? '' : render_cancellation_policy_block();
     $attachments = [];
-    $icsAttachment = build_booking_ics_attachment($booking, $workshop);
-    if (is_array($icsAttachment)) {
-        $attachments[] = $icsAttachment;
+    if (!$isOnRequest) {
+        $icsAttachment = build_booking_ics_attachment($booking, $workshop);
+        if (is_array($icsAttachment)) {
+            $attachments[] = $icsAttachment;
+        }
+    }
+
+    if ($isOnRequest) {
+        $content = '
+            <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:24px;line-height:1.25;margin-bottom:16px;">Interesse bestätigt!</h2>
+            <p style="color:#a0a0a0;line-height:1.7;">Hallo ' . e($participantName) . ',</p>
+            <p style="color:#a0a0a0;line-height:1.7;"><strong style="color:#ffffff;">' . e($bookerName) . '</strong> hat Sie als interessierte Person für den folgenden Workshop eingetragen:</p>
+            <p style="font-size:18px;font-weight:bold;margin:20px 0;color:#ffffff;">' . e($workshopTitle) . '</p>
+            ' . $detailsBlock . '
+            <p style="color:#a0a0a0;line-height:1.7;">Wir melden uns zeitnah mit weiteren Informationen.</p>
+            <p style="color:#a0a0a0;line-height:1.7;"><strong style="color:#ffffff;">Hinweis:</strong> Diese Bestätigung ist noch keine verbindliche Buchung.</p>
+            <p style="color:#a0a0a0;line-height:1.7;">Bei Fragen erreichen Sie uns unter <a href="mailto:' . e(MAIL_FROM) . '" style="color:#ffffff;">' . e(MAIL_FROM) . '</a>.</p>
+            <hr style="border:none;border-top:1px solid #222;margin:30px 0;">
+            <p style="color:#666;font-size:12px;">' . e(MAIL_FROM_NAME) . ' &middot; ' . e(MAIL_FROM) . '</p>';
+
+        return send_email_with_attachments(
+            $to,
+            'Interesse bestätigt: ' . $workshopTitle,
+            render_booking_email_shell($content),
+            $attachments,
+            'participant_confirmed'
+        );
     }
 
     $content = '

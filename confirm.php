@@ -5,6 +5,7 @@ require __DIR__ . '/includes/email.php';
 $token = trim($_GET['token'] ?? '');
 $status = 'invalid';
 $workshopTitle = '';
+$workshopTypeForMessage = '';
 
 if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
     $confirmedBooking = null;
@@ -42,6 +43,7 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
             $status = 'invalid';
         } else {
             $workshopTitle = $booking['workshop_title'];
+            $workshopTypeForMessage = trim((string) ($booking['workshop_type'] ?? ''));
 
             if ((int) $booking['confirmed'] === 1) {
                 $status = 'already';
@@ -63,7 +65,7 @@ if ($token && strlen($token) === 64 && ctype_xdigit($token)) {
                     ");
                     if ($expireStmt instanceof SQLite3Stmt) {
                         $expireStmt->bindValue(':archived_by', 'system', SQLITE3_TEXT);
-                        $expireStmt->bindValue(':archive_note', 'Automatisch archiviert: Bestaetigungslink abgelaufen.', SQLITE3_TEXT);
+                        $expireStmt->bindValue(':archive_note', 'Automatisch archiviert: Bestätigungslink abgelaufen.', SQLITE3_TEXT);
                         $expireStmt->bindValue(':id', (int) $booking['id'], SQLITE3_INTEGER);
                         $expireStmt->execute();
                     }
@@ -148,6 +150,19 @@ $messages = [
     'full'      => ['Workshop ausgebucht', 'Leider ist der Workshop inzwischen ausgebucht. Bitte kontaktieren Sie uns für Alternativen.', 'alert'],
     'invalid'   => ['Ungültiger Link', 'Dieser Bestätigungslink ist ungültig. Bitte überprüfen Sie die URL aus Ihrer E-Mail.', 'alert'],
 ];
+
+if ($workshopTypeForMessage === 'auf_anfrage') {
+    $messages['confirmed'] = [
+        'Anfrage bestätigt!',
+        'Vielen Dank! Ihr Interesse wurde bestätigt. Wir melden uns in Kürze bei Ihnen. Hinweis: Das ist noch keine verbindliche Buchung.',
+        'check',
+    ];
+    $messages['already'] = [
+        'Bereits bestätigt',
+        'Diese Anfrage wurde bereits bestätigt. Sie brauchen nichts weiter zu tun.',
+        'info',
+    ];
+}
 
 $msg = $messages[$status];
 ?>
