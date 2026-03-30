@@ -495,6 +495,17 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             width: 100%;
             justify-content: center;
         }
+        .workshop-status-stack {
+            display: inline-flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+        }
+        .workshop-status-stack .status-badge {
+            min-width: 112px;
+            justify-content: center;
+            display: inline-flex;
+        }
         .workshop-actions {
             display: inline-flex;
             align-items: flex-start;
@@ -681,16 +692,18 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                             <td><?= (int) ($w['capacity'] ?? 0) ?: '&infin;' ?></td>
                             <td><?= (int) ($w['booking_count'] ?? 0) ?></td>
                             <td>
-                                <?php if ((int) ($w['active'] ?? 0) === 1): ?>
-                                    <span class="status-badge status-confirmed">Aktiv</span>
-                                <?php else: ?>
-                                    <span class="status-badge status-pending">Inaktiv</span>
-                                <?php endif; ?>
-                                <?php if ($isWorkshopBookable): ?>
-                                    <span class="status-badge status-confirmed">Buchbar</span>
-                                <?php else: ?>
-                                    <span class="status-badge status-pending">Nicht buchbar</span>
-                                <?php endif; ?>
+                                <div class="workshop-status-stack">
+                                    <?php if ((int) ($w['active'] ?? 0) === 1): ?>
+                                        <span class="status-badge status-confirmed">Aktiv</span>
+                                    <?php else: ?>
+                                        <span class="status-badge status-pending">Inaktiv</span>
+                                    <?php endif; ?>
+                                    <?php if ($isWorkshopBookable): ?>
+                                        <span class="status-badge status-confirmed">Buchbar</span>
+                                    <?php else: ?>
+                                        <span class="status-badge status-pending">Nicht buchbar</span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td><?= (int) ($w['sort_order'] ?? 0) ?></td>
                             <td>
@@ -763,11 +776,13 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                     <td><?= (int) ($w['capacity'] ?? 0) ?: '&infin;' ?></td>
                                     <td><?= (int) $occurrenceBooked ?></td>
                                     <td>
-                                        <?php if ($occurrenceBookable): ?>
-                                            <span class="status-badge status-confirmed">Buchbar</span>
-                                        <?php else: ?>
-                                            <span class="status-badge status-pending">Nicht buchbar</span>
-                                        <?php endif; ?>
+                                        <div class="workshop-status-stack">
+                                            <?php if ($occurrenceBookable): ?>
+                                                <span class="status-badge status-confirmed">Buchbar</span>
+                                            <?php else: ?>
+                                                <span class="status-badge status-pending">Nicht buchbar</span>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                     <td><?= (int) ($occurrence['sort_order'] ?? $occIdx) ?></td>
                                     <td>
