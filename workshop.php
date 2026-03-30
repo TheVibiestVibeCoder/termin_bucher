@@ -780,7 +780,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         <p class="detail-desc"><?= nl2br(e($workshop['description'])) ?></p>
                     </div>
                     <button class="detail-desc-toggle" id="detailDescToggle" aria-expanded="false">
-                        Vollständig lesen <span class="toggle-arrow">&#8595;</span>
+                        Vollst&auml;ndig lesen <span class="toggle-arrow">&#8595;</span>
                     </button>
                 </div>
 
@@ -1373,7 +1373,7 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
                 <div class="form-group">
                     <label>Name *</label>
                     <input type="text" name="participant_name[]" value="${escAttr(pName)}"
-                           required placeholder="Vollstaendiger Name">
+                           required placeholder="Vollst&auml;ndiger Name">
                 </div>
                 <div class="form-group">
                     <label>E-Mail *</label>
@@ -1722,21 +1722,77 @@ document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 // Description expand/collapse (all screen sizes)
 const descWrap = document.getElementById('detailDescWrap');
 const descToggle = document.getElementById('detailDescToggle');
-if (descToggle && descWrap) {
+const descContent = descWrap ? descWrap.querySelector('.detail-desc-content') : null;
+if (descToggle && descWrap && descContent) {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function readCollapsedHeight() {
+        const raw = getComputedStyle(descWrap).getPropertyValue('--detail-desc-collapsed-height').trim();
+        const parsed = parseFloat(raw);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 130;
+    }
+
     function updateDescToggle(expanded) {
         descToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
         descToggle.innerHTML = expanded
             ? 'Weniger anzeigen <span class="toggle-arrow">&#8595;</span>'
-            : 'Vollstaendig lesen <span class="toggle-arrow">&#8595;</span>';
+            : 'Vollst&auml;ndig lesen <span class="toggle-arrow">&#8595;</span>';
+    }
+
+    function collapseDescription(animate = true) {
+        const collapsedHeight = readCollapsedHeight();
+        const currentHeight = descContent.getBoundingClientRect().height;
+
+        descWrap.classList.remove('expanded');
+        updateDescToggle(false);
+
+        if (!animate || prefersReducedMotion) {
+            descContent.style.maxHeight = collapsedHeight + 'px';
+            return;
+        }
+
+        descContent.style.maxHeight = currentHeight + 'px';
+        // Trigger reflow so the next max-height value animates reliably.
+        void descContent.offsetHeight;
+        descContent.style.maxHeight = collapsedHeight + 'px';
+    }
+
+    function expandDescription(animate = true) {
+        const collapsedHeight = readCollapsedHeight();
+        const targetHeight = Math.max(descContent.scrollHeight, collapsedHeight);
+
+        descWrap.classList.add('expanded');
+        updateDescToggle(true);
+
+        if (!animate || prefersReducedMotion) {
+            descContent.style.maxHeight = 'none';
+            return;
+        }
+
+        descContent.style.maxHeight = collapsedHeight + 'px';
+        // Trigger reflow so the next max-height value animates reliably.
+        void descContent.offsetHeight;
+        descContent.style.maxHeight = targetHeight + 'px';
+
+        const onExpandEnd = (event) => {
+            if (event.propertyName !== 'max-height') {
+                return;
+            }
+            descContent.style.maxHeight = 'none';
+            descContent.removeEventListener('transitionend', onExpandEnd);
+        };
+        descContent.addEventListener('transitionend', onExpandEnd);
     }
 
     // Always start collapsed to declutter the detail page.
-    descWrap.classList.remove('expanded');
-    updateDescToggle(false);
+    collapseDescription(false);
 
     descToggle.addEventListener('click', () => {
-        const expanded = descWrap.classList.toggle('expanded');
-        updateDescToggle(expanded);
+        if (descWrap.classList.contains('expanded')) {
+            collapseDescription(true);
+            return;
+        }
+        expandDescription(true);
     });
 }
 </script>
