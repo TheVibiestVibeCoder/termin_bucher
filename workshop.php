@@ -592,7 +592,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book'])) {
                 $rollbackStmt->execute();
                 $errors[] = 'Die Bestätigungs-E-Mail konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
             } else {
-                flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschließen.');
+                if (($workshop['workshop_type'] ?? 'auf_anfrage') === 'auf_anfrage') {
+                    flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihr Interesse zu bestätigen. Hinweis: Dadurch entsteht noch keine verbindliche Buchung.');
+                } else {
+                    flash('success', 'Vielen Dank! Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihre Buchung abzuschließen.');
+                }
                 redirect($workshopPageUrl);
             }
         }
@@ -684,6 +688,15 @@ if ($minP > 0) {
 $primaryMetaItems = array_slice($detailMetaItems, 0, 3);
 $extraMetaItems = array_slice($detailMetaItems, 3);
 $hasMoreMetaItems = !empty($extraMetaItems);
+$isOnRequestWorkshop = (($workshop['workshop_type'] ?? 'auf_anfrage') === 'auf_anfrage');
+$bookingHeading = $isOnRequestWorkshop ? 'Interesse anfragen' : 'Platz buchen';
+$bookingIntroText = $isOnRequestWorkshop
+    ? 'Füllen Sie das Formular aus. Sie erhalten eine E-Mail, um Ihr Interesse zu bestätigen. Danach melden wir uns persönlich bei Ihnen.'
+    : 'Füllen Sie das Formular aus. Sie erhalten eine E-Mail zur Bestätigung Ihrer Buchung.';
+$bookingSubmitLabel = $isOnRequestWorkshop ? 'Interesse anfragen &rarr;' : 'Buchung anfragen &rarr;';
+$bookingDisclaimerText = $isOnRequestWorkshop
+    ? 'Sie erhalten eine Bestätigungs-E-Mail – erst danach melden wir uns persönlich bei Ihnen. Hinweis: Das ist noch keine verbindliche Buchung.'
+    : 'Sie erhalten eine Bestätigungs-E-Mail – erst danach ist Ihr Platz reserviert.';
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -955,7 +968,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                     <p style="color:var(--muted);line-height:1.7;">Dieser Workshop ist leider voll ausgebucht. Kontaktieren Sie uns für Alternativtermine.</p>
                     <a href="<?= e(app_url('kontakt')) ?>" class="btn-submit" style="margin-top:1.5rem;display:block;text-align:center;text-decoration:none;">Kontakt aufnehmen</a>
                 <?php else: ?>
-                    <h3>Platz buchen</h3>
+                    <h3><?= e($bookingHeading) ?></h3>
 
                     <?php if ($price > 0): ?>
                     <div style="background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:var(--radius);padding:0.875rem 1rem;margin-bottom:1.5rem;">
@@ -965,7 +978,7 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                     <?php endif; ?>
 
                     <p style="color:var(--muted);font-size:0.85rem;line-height:1.6;margin-bottom:1.5rem;">
-                        Füllen Sie das Formular aus. Sie erhalten eine E-Mail zur Bestätigung Ihrer Buchung.
+                        <?= e($bookingIntroText) ?>
                     </p>
 
                     <?php if ($errors): ?>
@@ -1073,12 +1086,12 @@ $hasMoreMetaItems = !empty($extraMetaItems);
                         </div>
                         <?php endif; ?>
 
-                        <button type="submit" class="btn-submit" id="bookingSubmitBtn">Buchung anfragen &rarr;</button>
+                        <button type="submit" class="btn-submit" id="bookingSubmitBtn"><?= $bookingSubmitLabel ?></button>
 
                         <p class="form-disclaimer">
                             Mit dem Absenden erklären Sie sich mit unserer
                             <a href="<?= e(app_url('datenschutz')) ?>">Datenschutzerklärung</a> einverstanden.
-                            Sie erhalten eine Bestätigungs-E-Mail – erst danach ist Ihr Platz reserviert.
+                            <?= e($bookingDisclaimerText) ?>
                         </p>
                     </form>
                 <?php endif; ?>

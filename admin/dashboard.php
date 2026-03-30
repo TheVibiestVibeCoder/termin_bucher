@@ -46,6 +46,7 @@ $recentResult = $db->query('
         b.*,
         w.id AS workshop_id,
         w.title AS workshop_title,
+        w.workshop_type,
         w.price_netto,
         w.price_currency,
         o.start_at AS occurrence_start_at,
@@ -83,6 +84,26 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/style.css">
+    <style>
+        .dashboard-link-plain {
+            color: inherit;
+            text-decoration: none;
+            border-bottom: none;
+        }
+        .dashboard-link-plain:visited,
+        .dashboard-link-plain:hover,
+        .dashboard-link-plain:active {
+            color: inherit;
+            text-decoration: none;
+        }
+        .booking-workshop-name-request {
+            color: #f5c26b;
+            font-weight: 600;
+        }
+        html[data-theme="light"] .booking-workshop-name-request {
+            color: #b26a00;
+        }
+    </style>
 </head>
 <body class="admin-page">
 <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false">&#9790;</button>
@@ -157,7 +178,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                     <?php foreach ($revenueByWorkshop as $r): ?>
                     <tr>
                         <td style="color:var(--text);">
-                            <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $r['workshop_id']])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
+                            <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $r['workshop_id']])) ?>" class="dashboard-link-plain">
                                 <?= e($r['title']) ?>
                             </a>
                         </td>
@@ -197,6 +218,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                 </thead>
                 <tbody>
                     <?php foreach ($recentBookings as $b):
+                        $isOnRequestBooking = (($b['workshop_type'] ?? 'open') === 'auf_anfrage');
                         if ((float) $b['subtotal_netto'] > 0 || (float) $b['total_netto'] > 0 || (float) $b['discount_amount'] > 0) {
                             $bRev = (float) $b['total_netto'];
                         } elseif ((float) $b['price_per_person_netto'] > 0) {
@@ -214,7 +236,7 @@ while ($row = $recentResult->fetchArray(SQLITE3_ASSOC)) {
                         <td style="color:var(--text);"><?= e($b['name']) ?></td>
                         <td><?= e($b['email']) ?></td>
                         <td>
-                            <a href="<?= e(admin_url('bookings', ['workshop_id' => $bookingFilterValue])) ?>" style="color:var(--text);text-decoration:none;border-bottom:1px solid var(--border-h);">
+                            <a href="<?= e(admin_url('bookings', ['workshop_id' => $bookingFilterValue])) ?>" class="dashboard-link-plain <?= $isOnRequestBooking ? 'booking-workshop-name-request' : '' ?>">
                                 <?= e($b['workshop_title']) ?>
                             </a>
                             <?php if (!empty($b['occurrence_start_at'])): ?>

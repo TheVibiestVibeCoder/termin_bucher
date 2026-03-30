@@ -611,6 +611,7 @@ $sql = '
         b.*,
         w.title AS workshop_title,
         w.slug AS workshop_slug,
+        w.workshop_type,
         w.price_currency AS workshop_currency,
         o.start_at AS occurrence_start_at,
         o.end_at AS occurrence_end_at
@@ -823,6 +824,13 @@ if ($workshop && !$isArchiveView) {
     
         .booking-filter-bar {
             margin-bottom: 1.5rem;
+        }
+        .booking-workshop-name-request {
+            color: #f5c26b;
+            font-weight: 600;
+        }
+        html[data-theme="light"] .booking-workshop-name-request {
+            color: #b26a00;
         }
         .booking-filter-form {
             display: flex;
@@ -1082,8 +1090,14 @@ if ($workshop && !$isArchiveView) {
         <div class="admin-header">
             <h1>
                 Buchungen
-                <?php if ($workshop && !$isArchiveView): ?>
-                    <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - <?= e($workshop['title']) ?><?php if ($selectedOccurrenceLabel !== ''): ?> - <?= e($selectedOccurrenceLabel) ?><?php endif; ?></span>
+                    <?php if ($workshop && !$isArchiveView): ?>
+                    <span style="color:var(--muted);font-size:0.6em;font-weight:300;">
+                        -
+                        <span class="<?= (($workshop['workshop_type'] ?? 'open') === 'auf_anfrage') ? 'booking-workshop-name-request' : '' ?>">
+                            <?= e($workshop['title']) ?>
+                        </span>
+                        <?php if ($selectedOccurrenceLabel !== ''): ?> - <?= e($selectedOccurrenceLabel) ?><?php endif; ?>
+                    </span>
                 <?php elseif ($isArchiveView): ?>
                     <span style="color:var(--muted);font-size:0.6em;font-weight:300;"> - Archiv</span>
                 <?php endif; ?>
@@ -1158,6 +1172,7 @@ if ($workshop && !$isArchiveView) {
                     <?php foreach ($bookings as $b):
     $bParts = $participantsByBooking[(int)$b['id']] ?? [];
     $isIndividual = ($b['booking_mode'] ?? 'group') === 'individual';
+    $isOnRequestBooking = (($b['workshop_type'] ?? 'open') === 'auf_anfrage');
     $bookingCurrency = trim((string)($b['booking_currency'] ?? ''));
     if ($bookingCurrency === '') {
         $bookingCurrency = trim((string)($b['workshop_currency'] ?? 'EUR'));
@@ -1172,7 +1187,7 @@ if ($workshop && !$isArchiveView) {
                         <td><a href="mailto:<?= e($b['email']) ?>" style="color:var(--muted);"><?= e($b['email']) ?></a></td>
                         <td><?= e($b['organization']) ?></td>
                         <td>
-                            <?= e($b['workshop_title']) ?>
+                            <span class="<?= $isOnRequestBooking ? 'booking-workshop-name-request' : '' ?>"><?= e($b['workshop_title']) ?></span>
                             <?php if (!empty($b['occurrence_start_at'])): ?>
                                 <div style="font-size:0.72rem;color:var(--dim);"><?= e(format_event_date((string) ($b['occurrence_start_at'] ?? ''), (string) ($b['occurrence_end_at'] ?? ''))) ?></div>
                             <?php endif; ?>
