@@ -432,6 +432,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
     <style>
         :root {
             --workshop-action-height: 36px;
+            --workshop-primary-width: 132px;
         }
         .workshop-main-title {
             display: inline-flex;
@@ -478,6 +479,70 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
             height: var(--workshop-action-height);
             padding-top: 0;
             padding-bottom: 0;
+        }
+        .workshop-primary-control {
+            width: var(--workshop-primary-width);
+            min-width: var(--workshop-primary-width);
+            flex: 0 0 var(--workshop-primary-width);
+        }
+        .workshop-primary-control.btn-admin {
+            width: var(--workshop-primary-width);
+        }
+        .workshop-primary-control.admin-switch-form {
+            display: inline-flex;
+        }
+        .workshop-primary-control.admin-switch-form .admin-switch {
+            width: 100%;
+            justify-content: center;
+        }
+        .workshop-actions {
+            display: inline-flex;
+            align-items: flex-start;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+        }
+        .workshop-more-toggle {
+            justify-content: space-between;
+            gap: 0.42rem;
+        }
+        .workshop-more-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.78rem;
+            line-height: 1;
+            transform: rotate(0deg);
+            transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .workshop-more-toggle[aria-expanded="true"] .workshop-more-icon {
+            transform: rotate(180deg);
+        }
+        .workshop-extra-actions {
+            flex-basis: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transform: translateY(-8px);
+            pointer-events: none;
+            transition:
+                max-height 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+                opacity 0.24s ease,
+                transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .workshop-extra-actions.is-open {
+            max-height: 170px;
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .workshop-more-icon,
+            .workshop-extra-actions {
+                transition: none !important;
+            }
         }
         .admin-switch-form {
             display: inline-flex;
@@ -620,8 +685,9 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                             </td>
                             <td><?= (int) ($w['sort_order'] ?? 0) ?></td>
                             <td>
-                                <div class="admin-actions">
-                                    <form method="POST" class="admin-switch-form">
+                                <?php $extraActionsId = 'workshop-extra-actions-' . (int) $w['id']; ?>
+                                <div class="admin-actions workshop-actions">
+                                    <form method="POST" class="admin-switch-form workshop-primary-control">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="toggle_bookable_id" value="<?= (int) $w['id'] ?>">
                                         <label class="admin-switch">
@@ -636,20 +702,33 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                         </label>
                                     </form>
 
-                                    <a href="<?= e(admin_url('workshop-edit', ['id' => (int) $w['id']])) ?>" class="btn-admin">Bearbeiten</a>
-                                    <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $w['id']])) ?>" class="btn-admin">Buchungen</a>
+                                    <a href="<?= e(admin_url('workshop-edit', ['id' => (int) $w['id']])) ?>" class="btn-admin workshop-primary-control">Bearbeiten</a>
 
-                                    <form method="POST">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="toggle_id" value="<?= (int) $w['id'] ?>">
-                                        <button type="submit" class="btn-admin"><?= ((int) ($w['active'] ?? 0) === 1) ? 'Deaktivieren' : 'Aktivieren' ?></button>
-                                    </form>
+                                    <button
+                                        type="button"
+                                        class="btn-admin workshop-more-toggle workshop-primary-control"
+                                        data-workshop-actions-toggle
+                                        aria-expanded="false"
+                                        aria-controls="<?= e($extraActionsId) ?>">
+                                        Mehr Aktionen
+                                        <span class="workshop-more-icon" aria-hidden="true">&#9662;</span>
+                                    </button>
 
-                                    <form method="POST" onsubmit="return confirm('Workshop wirklich archivieren? Bei bestätigten Buchungen werden Stornomails versendet und Buchungen archiviert.')">
-                                        <?= csrf_field() ?>
-                                        <input type="hidden" name="archive_id" value="<?= (int) $w['id'] ?>">
-                                        <button type="submit" class="btn-admin btn-danger">Arch.</button>
-                                    </form>
+                                    <div class="workshop-extra-actions" id="<?= e($extraActionsId) ?>" data-workshop-actions-panel>
+                                        <a href="<?= e(admin_url('bookings', ['workshop_id' => (int) $w['id']])) ?>" class="btn-admin">Buchungen</a>
+
+                                        <form method="POST">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="toggle_id" value="<?= (int) $w['id'] ?>">
+                                            <button type="submit" class="btn-admin"><?= ((int) ($w['active'] ?? 0) === 1) ? 'Deaktivieren' : 'Aktivieren' ?></button>
+                                        </form>
+
+                                        <form method="POST" onsubmit="return confirm('Workshop wirklich archivieren? Bei bestätigten Buchungen werden Stornomails versendet und Buchungen archiviert.')">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="archive_id" value="<?= (int) $w['id'] ?>">
+                                            <button type="submit" class="btn-admin btn-danger">Arch.</button>
+                                        </form>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -684,7 +763,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                     <td>
                                         <div class="workshop-occurrence-actions">
                                             <?php if ($occurrenceId > 0): ?>
-                                                <form method="POST" class="admin-switch-form">
+                                                <form method="POST" class="admin-switch-form workshop-primary-control">
                                                     <?= csrf_field() ?>
                                                     <input type="hidden" name="toggle_occurrence_bookable_id" value="<?= $occurrenceId ?>">
                                                     <label class="admin-switch">
@@ -701,7 +780,7 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
                                             <?php else: ?>
                                                 <span style="color:var(--dim);font-size:0.75rem;">Legacy-Termin</span>
                                             <?php endif; ?>
-                                            <a href="<?= e(admin_url('workshop-edit', ['id' => $workshopId])) ?>" class="btn-admin">Bearbeiten</a>
+                                            <a href="<?= e(admin_url('workshop-edit', ['id' => $workshopId])) ?>" class="btn-admin workshop-primary-control">Bearbeiten</a>
                                         </div>
                                     </td>
                                 </tr>
@@ -762,6 +841,79 @@ while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         <?php endif; ?>
     </div>
 </div>
+<script>
+(function () {
+    var toggleButtons = document.querySelectorAll('[data-workshop-actions-toggle]');
+    if (!toggleButtons.length) {
+        return;
+    }
+
+    function closePanel(toggle, panel) {
+        toggle.setAttribute('aria-expanded', 'false');
+        panel.classList.remove('is-open');
+    }
+
+    function openPanel(toggle, panel) {
+        toggle.setAttribute('aria-expanded', 'true');
+        panel.classList.add('is-open');
+    }
+
+    function closeAllExcept(exceptToggle) {
+        toggleButtons.forEach(function (button) {
+            if (button === exceptToggle) {
+                return;
+            }
+            var panelId = button.getAttribute('aria-controls');
+            if (!panelId) {
+                return;
+            }
+            var panel = document.getElementById(panelId);
+            if (!panel) {
+                return;
+            }
+            closePanel(button, panel);
+        });
+    }
+
+    toggleButtons.forEach(function (button) {
+        var panelId = button.getAttribute('aria-controls');
+        if (!panelId) {
+            return;
+        }
+        var panel = document.getElementById(panelId);
+        if (!panel) {
+            return;
+        }
+
+        closePanel(button, panel);
+
+        button.addEventListener('click', function () {
+            var isOpen = button.getAttribute('aria-expanded') === 'true';
+            if (isOpen) {
+                closePanel(button, panel);
+                return;
+            }
+
+            closeAllExcept(button);
+            openPanel(button, panel);
+        });
+    });
+
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        var insideActions = target.closest('.workshop-actions');
+        if (insideActions) {
+            return;
+        }
+
+        closeAllExcept(null);
+    });
+})();
+</script>
 <script src="/assets/site-ui.js"></script>
 </body>
 </html>
