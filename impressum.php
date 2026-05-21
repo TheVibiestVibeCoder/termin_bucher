@@ -61,7 +61,7 @@ require __DIR__ . '/includes/config.php';
                 <p>Disinfo Combat GmbH</p>
 
                 <h2>Anschrift</h2>
-                <p>Hettenkofergasse 34/I<br>1160 Wien<br>Österreich</p>
+                <p>Neustiftgasse 36<br>1070 Wien<br>Österreich</p>
 
                 <h2>Firmenbuch</h2>
                 <p>FN 563690 g<br>Handelsgericht Wien</p>
