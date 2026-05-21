@@ -189,6 +189,13 @@ nav {
     height: 30px; width: auto;
     display: block;
     border-radius: 4px;
+    filter: brightness(0) invert(1);
+    transition: filter 0.45s ease;
+}
+
+html:not([data-theme]) .nav-logo img,
+html[data-theme="light"] .nav-logo img {
+    filter: none;
 }
 
 .nav-links {

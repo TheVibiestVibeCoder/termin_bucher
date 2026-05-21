@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(ls \"c:\\\\Users\\\\schwi\\\\termin_bucher\\\\termin_bucher\\\\\" -Recurse | Where-Object { $_.Extension -match \"\\\\.\\(png|jpg|svg|gif|webp\\)$\" })"
+    ]
+  }
+}
