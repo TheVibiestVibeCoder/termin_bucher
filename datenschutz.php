@@ -57,7 +57,7 @@ require __DIR__ . '/includes/config.php';
             <p class="legal-intro">Erklärung zur Informationspflicht gemäß Art. 13 DSGVO / Datenschutzerklärung</p>
 
             <div class="legal-content">
-                <p>Der Schutz Ihrer persönlichen Daten ist uns ein besonderes Anliegen. Wir verarbeiten Ihre Daten daher ausschließlich auf Grundlage der gesetzlichen Bestimmungen (DSGVO, TKG 2003). In dieser Datenschutzerklärung informieren wir Sie über die wichtigsten Aspekte der Datenverarbeitung im Rahmen unserer Website und unserer Dienstleistungen.</p>
+                <p>Der Schutz Ihrer persönlichen Daten ist uns ein besonderes Anliegen. Wir verarbeiten Ihre Daten daher ausschließlich auf Grundlage der gesetzlichen Bestimmungen (DSGVO, DSG, TKG 2021). In dieser Datenschutzerklärung informieren wir Sie über die wichtigsten Aspekte der Datenverarbeitung im Rahmen unserer Website und unserer Dienstleistungen.</p>
 
                 <h2>1. Verantwortlicher</h2>
                 <p>Verantwortlicher im Sinne der DSGVO ist:<br>
@@ -69,10 +69,12 @@ require __DIR__ . '/includes/config.php';
                 <p>Wenn Sie uns per E-Mail oder über das Kontaktformular kontaktieren oder ein PDF anfordern, verarbeiten wir Ihre angegebenen Daten (z. B. Name, E-Mail-Adresse) zur Bearbeitung Ihrer Anfrage und zur Übermittlung des angeforderten Dokuments.</p>
                 <p>Im Einzelnen werden folgende Daten verarbeitet:</p>
                 <ul>
-                    <li>Name (sofern angegeben)</li>
+                    <li>Name</li>
                     <li>E-Mail-Adresse</li>
-                    <li>Inhalt Ihrer Nachricht</li>
+                    <li>Inhalt Ihrer Nachricht (sofern angegeben)</li>
                     <li>Zeitpunkt der Kontaktaufnahme</li>
+                    <li>Organisation (sofern angegeben)</li>
+                    <li>Telefonnummer(sofern angegeben)</li>
                 </ul>
                 <p>Diese Daten werden ausschließlich zur Bearbeitung Ihres Anliegens verwendet, nicht an Dritte weitergegeben und nach Abschluss der Bearbeitung bzw. spätestens nach sechs Monaten gelöscht, sofern keine gesetzlichen Aufbewahrungspflichten entgegenstehen.<br>
                 Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung bzw. vorvertragliche Maßnahmen) sowie Art. 6 Abs. 1 lit. a DSGVO (Einwilligung), soweit zutreffend.</p>
