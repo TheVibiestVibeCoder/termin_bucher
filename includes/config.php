@@ -145,6 +145,7 @@ if ($siteUrl === '') {
 
 define('SITE_URL', $siteUrl);
 define('SITE_NAME', $getEnv('SITE_NAME', 'Disinfo Consulting - Workshops'));
+define('SITE_LOGO', $getEnv('SITE_LOGO', 'https://disinfoconsulting.eu/wp-content/uploads/2026/05/DCblaustacked3.png'));
 define('DB_PATH', __DIR__ . '/../' . $getEnv('DB_PATH', 'data/bookings.db'));
 
 // ── Database ────────────────────────────────────────────────────────────────

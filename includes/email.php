@@ -1079,10 +1079,11 @@ function send_confirmation_email(
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:20px 0 18px;">
             <tr>
                 <td align="left">
-                    <a href="' . e($confirmUrl) . '" style="display:inline-block;max-width:100%;box-sizing:border-box;padding:14px 20px;background:#ffffff;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;line-height:1.35;word-break:break-word;">Buchung bestätigen &rarr;</a>
+                    <a href="' . e($confirmUrl) . '" style="display:inline-block;max-width:100%;box-sizing:border-box;padding:14px 20px;background:#ffffff;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;line-height:1.35;word-break:break-word;">Buchung zahlungspflichtig bestätigen &rarr;</a>
                 </td>
             </tr>
         </table>
+        <p style="color:#a0a0a0;line-height:1.7;margin:0 0 16px;">Die Rechnung erhalten Sie rechtzeitig vor dem Workshop per E-Mail.</p>
         <p style="color:#666;font-size:13px;line-height:1.5;">Dieser Link ist 48 Stunden gültig. Falls Sie diese Anmeldung nicht durchgeführt haben, können Sie diese E-Mail ignorieren.</p>
         <p style="color:#a0a0a0;line-height:1.7;margin-top:20px;">Hier finden Sie alle Details zu Ihrer Anfrage:</p>
         ' . $detailsBlock . '

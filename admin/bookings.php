@@ -310,7 +310,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($updateResult !== false && $db->changes() === 1) {
             if ((int) ($drow['confirmed'] ?? 0) === 1) {
-                send_booking_cancelled_email((string) $drow['email'], (string) $drow['name'], (string) $drow['workshop_title']);
+                $notifiedRecipients = [];
+
+                $bookerEmail = trim((string) ($drow['email'] ?? ''));
+                if (filter_var($bookerEmail, FILTER_VALIDATE_EMAIL)) {
+                    send_booking_cancelled_email($bookerEmail, (string) $drow['name'], (string) $drow['workshop_title']);
+                    $notifiedRecipients[strtolower($bookerEmail)] = true;
+                }
+
+                $participantStmt = $db->prepare('SELECT name, email FROM booking_participants WHERE booking_id = :bid');
+                $participantStmt->bindValue(':bid', $archiveId, SQLITE3_INTEGER);
+                $participantRes = $participantStmt->execute();
+                while ($participant = $participantRes->fetchArray(SQLITE3_ASSOC)) {
+                    $participantEmail = trim((string) ($participant['email'] ?? ''));
+                    if (!filter_var($participantEmail, FILTER_VALIDATE_EMAIL)) {
+                        continue;
+                    }
+
+                    $participantEmailKey = strtolower($participantEmail);
+                    if (isset($notifiedRecipients[$participantEmailKey])) {
+                        continue;
+                    }
+
+                    send_booking_cancelled_email(
+                        $participantEmail,
+                        (string) ($participant['name'] ?? ''),
+                        (string) $drow['workshop_title']
+                    );
+                    $notifiedRecipients[$participantEmailKey] = true;
+                }
             }
             flash('success', 'Buchung archiviert.' . ((int) ($drow['confirmed'] ?? 0) === 1 ? ' Stornierungsmail gesendet.' : ''));
         } else {
@@ -443,105 +471,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['rechnung_submit'])) {
         $rwid = (int) ($_POST['rechnung_workshop_id'] ?? 0);
         $roccurrenceId = max(0, (int) ($_POST['rechnung_occurrence_id'] ?? 0));
-        if (!$rwid) {
-            flash('error', 'Kein Workshop ausgewählt.');
-        } else {
-            $commonData = [
-                'rechnung_datum'       => trim($_POST['r_rechnung_datum']       ?? date('Y-m-d')),
-                'fuer_text'            => trim($_POST['r_fuer_text']            ?? ''),
-                'workshop_titel'       => trim($_POST['r_workshop_titel']       ?? ''),
-                'veranstaltungs_datum' => trim($_POST['r_veranstaltungs_datum'] ?? ''),
-                'pos1_label'           => trim($_POST['r_pos1_label']           ?? ''),
-                'pos1_betrag'          => trim($_POST['r_pos1_betrag']          ?? '0'),
-                'pos2_label'           => trim($_POST['r_pos2_label']           ?? ''),
-                'pos2_betrag'          => trim($_POST['r_pos2_betrag']          ?? ''),
-                'absender_name'        => trim($_POST['r_absender_name']        ?? ''),
-            ];
-
-            // r_booking_selected is an assoc array: index => "1" for checked cards
-            $selectedCards = $_POST['r_booking_selected'] ?? [];
-            $baseLineItems = [];
-            $pos1Label = trim((string) ($commonData['pos1_label'] ?? ''));
-            $pos2Label = trim((string) ($commonData['pos2_label'] ?? ''));
-            $pos1Amount = parse_rechnung_amount((string) ($commonData['pos1_betrag'] ?? '0'));
-            $pos2Amount = parse_rechnung_amount((string) ($commonData['pos2_betrag'] ?? '0'));
-
-            if ($pos1Label !== '' && abs($pos1Amount) > 0.00001) {
-                $baseLineItems[] = ['label' => $pos1Label, 'amount' => $pos1Amount];
-            }
-            if ($pos2Label !== '' && abs($pos2Amount) > 0.00001) {
-                $baseLineItems[] = ['label' => $pos2Label, 'amount' => $pos2Amount];
-            }
-
-            $baseSubtotal = 0.0;
-            foreach ($baseLineItems as $lineItem) {
-                $baseSubtotal += (float) $lineItem['amount'];
-            }
-
-            $rsent = 0;
-
-            foreach (array_keys($selectedCards) as $i) {
-                $i = (int) $i;
-                $email = trim($_POST['r_booking_kontakt_email'][$i] ?? '');
-                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
-
-                $bookingId = (int) ($_POST['r_booking_id'][$i] ?? 0);
-                $discountCode = '';
-                $discountAmount = 0.0;
-                if ($bookingId > 0) {
-                    $rbSql = 'SELECT discount_code, discount_amount FROM bookings WHERE id = :id AND workshop_id = :wid AND confirmed = 1 AND COALESCE(archived, 0) = 0';
-                    if ($roccurrenceId > 0) {
-                        $rbSql .= ' AND occurrence_id = :oid';
-                    }
-                    $rbSql .= ' LIMIT 1';
-                    $rbStmt = $db->prepare($rbSql);
-                    $rbStmt->bindValue(':id', $bookingId, SQLITE3_INTEGER);
-                    $rbStmt->bindValue(':wid', $rwid, SQLITE3_INTEGER);
-                    if ($roccurrenceId > 0) {
-                        $rbStmt->bindValue(':oid', $roccurrenceId, SQLITE3_INTEGER);
-                    }
-                    $rbRow = $rbStmt->execute()->fetchArray(SQLITE3_ASSOC);
-                    if ($rbRow) {
-                        $discountCode = trim((string) ($rbRow['discount_code'] ?? ''));
-                        $discountAmount = max(0.0, (float) ($rbRow['discount_amount'] ?? 0));
-                    }
-                }
-
-                $invoiceLineItems = $baseLineItems;
-                if ($discountAmount > 0 && $baseSubtotal > 0) {
-                    $effectiveDiscount = min($discountAmount, $baseSubtotal);
-                    $discountLabel = 'Rabatt';
-                    if ($discountCode !== '') {
-                        $discountLabel .= ' (' . $discountCode . ')';
-                    }
-                    $invoiceLineItems[] = [
-                        'label' => $discountLabel,
-                        'amount' => -$effectiveDiscount,
-                    ];
-                }
-
-                $invoiceData = array_merge($commonData, [
-                    'empfaenger'    => trim($_POST['r_booking_empfaenger'][$i]   ?? ''),
-                    'adresse'       => trim($_POST['r_booking_adresse'][$i]      ?? ''),
-                    'plz_ort'       => trim($_POST['r_booking_plz_ort'][$i]      ?? ''),
-                    'anrede'        => trim($_POST['r_booking_anrede'][$i]       ?? 'Herrn'),
-                    'kontakt_name'  => trim($_POST['r_booking_kontakt_name'][$i] ?? ''),
-                    'kontakt_email' => $email,
-                    'rechnungs_nr'  => trim($_POST['r_booking_rechnungs_nr'][$i] ?? ''),
-                    'line_items'    => $invoiceLineItems,
-                ]);
-
-                if (send_rechnung_email($email, $invoiceData)) {
-                    $rsent++;
-                }
-            }
-            if ($rsent === 0) {
-                flash('error', 'Keine Empfänger ausgewählt oder keine gültigen E-Mail-Adressen vorhanden.');
-            } else {
-                flash('success', "Rechnung an {$rsent} Empfänger gesendet.");
-            }
+        $invoiceRedirectParams = [];
+        if ($rwid > 0) {
+            $invoiceRedirectParams['workshop_id'] = $roccurrenceId > 0 ? ($rwid . ':' . $roccurrenceId) : (string) $rwid;
+        } elseif ($workshopId > 0) {
+            $invoiceRedirectParams['workshop_id'] = $occurrenceId > 0 ? ($workshopId . ':' . $occurrenceId) : (string) $workshopId;
         }
-        redirect($returnUrl);
+
+        flash('error', 'Rechnungsversand in "Buchungen" ist deaktiviert. Bitte den Reiter "Rechnungen" verwenden.');
+        redirect(admin_url('invoices', $invoiceRedirectParams));
     }
 
     // Bulk email to ALL participants of a workshop

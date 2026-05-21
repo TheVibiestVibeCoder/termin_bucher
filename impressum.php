@@ -31,7 +31,7 @@ require __DIR__ . '/includes/config.php';
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
         <a href="<?= e(app_url()) ?>" class="nav-logo" aria-label="Disinfo Consulting Workshops – Startseite">
-            <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/02/Gemini_Generated_Image_vjal0gvjal0gvjal-scaled.png"
+            <img src="<?= e(SITE_LOGO) ?>"
                  alt="Disinfo Consulting" height="30">
         </a>
         <button class="nav-burger" aria-label="Navigation öffnen" aria-expanded="false" id="burger">
@@ -61,7 +61,7 @@ require __DIR__ . '/includes/config.php';
                 <p>Disinfo Combat GmbH</p>
 
                 <h2>Anschrift</h2>
-                <p>Hettenkofergasse 34/I<br>1160 Wien<br>Österreich</p>
+                <p>Neustiftgasse 36<br>1070 Wien<br>Österreich</p>
 
                 <h2>Firmenbuch</h2>
                 <p>FN 563690 g<br>Handelsgericht Wien</p>
