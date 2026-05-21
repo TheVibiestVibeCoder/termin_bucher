@@ -31,7 +31,7 @@ require __DIR__ . '/includes/config.php';
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
         <a href="<?= e(app_url()) ?>" class="nav-logo" aria-label="Disinfo Consulting Workshops – Startseite">
-            <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/02/Gemini_Generated_Image_vjal0gvjal0gvjal-scaled.png"
+            <img src="<?= e(SITE_LOGO) ?>"
                  alt="Disinfo Consulting" height="30">
         </a>
         <button class="nav-burger" aria-label="Navigation öffnen" aria-expanded="false" id="burger">
@@ -121,7 +121,6 @@ require __DIR__ . '/includes/config.php';
 
                 <h2>8. Aktualität dieser Erklärung</h2>
                 <p>Wir behalten uns vor, diese Datenschutzerklärung bei Bedarf zu aktualisieren, um sie an geänderte Rechtslage oder Leistungsänderungen anzupassen. Es gilt jeweils die zum Zeitpunkt Ihres Besuchs aktuelle Fassung.</p>
-                <p>Stand: <?= date('F Y') ?></p>
 
                 <h2>Kontakt</h2>
                 <p>Disinfo Combat GmbH<br>
