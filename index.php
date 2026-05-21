@@ -219,7 +219,7 @@ if (empty($workshopSections)) {
 <nav role="navigation" aria-label="Hauptnavigation">
     <div class="nav-inner">
         <a href="https://workshops.disinfoconsulting.eu/" class="nav-logo" aria-label="Disinfo Consulting Workshops &ndash; Startseite">
-            <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/02/Gemini_Generated_Image_vjal0gvjal0gvjal-scaled.png"
+            <img src="https://disinfoconsulting.eu/wp-content/uploads/2026/05/DCblaustacked3.png"
                  alt="Disinfo Consulting" height="30">
         </a>
         <button class="nav-burger" aria-label="Navigation &ouml;ffnen" aria-expanded="false" id="burger">
